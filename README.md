@@ -45,6 +45,8 @@ cargo build --release
 ./target/release/kontor          # Windows: target\release\kontor.exe
 ```
 
+**macOS-App:** `macos/build-macos.command` per Doppelklick ausführen – baut `Kontor.app` neben dem Projektordner (mit Icon, ad-hoc signiert) und startet sie.
+
 Ohne GPU/OpenGL (z. B. VMs): `SLINT_BACKEND=winit-software ./target/release/kontor`.
 Protokoll-Logging: `RUST_LOG=debug` (zeigt FinTS-Nachrichten inkl. PIN im Klartext – nur zum Debuggen).
 
