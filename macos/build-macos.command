@@ -4,6 +4,17 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$(cd "$DIR/.." && pwd)/Kontor.app"
 LOG="$(cd "$DIR/.." && pwd)/kontor-build.log"
 cd "$DIR" || exit 1
+
+# Run in the background: minimise this Terminal window right away, close it when done.
+WIN_MATCH="build-macos"
+term() { osascript -e "tell application \"Terminal\" to $1" >/dev/null 2>&1; }
+term "set miniaturized of (every window whose name contains \"$WIN_MATCH\") to true"
+build_failed() {
+  term "set miniaturized of (every window whose name contains \"$WIN_MATCH\") to false"
+  term "activate"
+  read -r -p "Enter zum Schließen"
+  exit 1
+}
 LOCK="${TMPDIR:-/tmp}/kontor-build.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then echo "Build läuft bereits."; exit 0; fi
 trap 'rmdir "$LOCK"' EXIT
@@ -18,13 +29,13 @@ export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 if ! command -v cargo >/dev/null; then
   echo "FEHLER: cargo nicht gefunden (rustup installieren: https://rustup.rs)" | tee -a "$LOG"
-  read -r -p "Enter zum Schließen"; exit 1
+  build_failed
 fi
 
 cargo build --release 2>&1 | tee -a "$LOG"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   echo "BUILD FAILED" | tee -a "$LOG"
-  read -r -p "Enter zum Schließen"; exit 1
+  build_failed
 fi
 
 # laufende Instanz beenden, damit die neue Version startet
@@ -51,3 +62,6 @@ codesign --force --deep --sign - "$APP" 2>&1 | tee -a "$LOG"
 
 echo "BUILD OK: $APP" | tee -a "$LOG"
 open "$APP"
+# close the (finished) Terminal window shortly after this script has exited
+( sleep 2; term "close (every window whose name contains \"$WIN_MATCH\")" ) >/dev/null 2>&1 &
+disown
