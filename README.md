@@ -17,6 +17,7 @@ Zahlungsverkehr-Formulare, Auswertungen.
 | Zahlungsverkehr | SEPA-Überweisung (HKCCS), Echtzeit (HKIPZ), Terminüberweisung (HKCSE), Daueraufträge anlegen/abrufen/löschen (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
 | Auswertungen | Automatische Kategorisierung mit lernenden Regeln, Monats- und 12-Monats-Auswertung |
 | Export | CSV (Excel-tauglich, `;`, deutsches Zahlenformat) und camt.052.001.08 in den Download-Ordner |
+| Bankverzeichnis | 2.787 Institute mit PIN/TAN-URL bzw. HBCI-Host, Suche nach Name, Ort, BLZ, BIC (umlauttolerant), eingebettet in `app/data/banks.tsv` |
 | Datenschutz | Lokaler Tresor: AES-256-GCM, Schlüssel per Argon2id aus dem Tresor-Passwort; PINs werden nie gespeichert |
 
 ## REINER SCT cyberJack (secoder)
@@ -55,7 +56,8 @@ Protokoll-Logging: `RUST_LOG=debug` (zeigt FinTS-Nachrichten inkl. PIN im Klarte
 1. Tresor-Passwort festlegen.
 2. **Einstellungen → FinTS-Produktregistrierung**: Banken akzeptieren FinTS-Zugriffe nur mit
    einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID (kostenlos, fints.org).
-3. **Bankzugänge → Neuer Bankzugang**: PIN/TAN mit BLZ, Kennung und FinTS-URL, oder
+3. **Bankzugänge → Neuer Bankzugang**: Bank über die Suche (Name, Ort, BLZ oder BIC) wählen –
+   BLZ und FinTS-URL bzw. HBCI-Host werden übernommen. Dann PIN/TAN-Kennung eintragen, oder
    HBCI-Chipkarte: Leser wählen, „Daten von Karte lesen“.
 4. **Kontenrundruf** auf der Übersicht.
 
@@ -70,6 +72,13 @@ crates/fints       FinTS 3.0: Syntax, Nachrichten, Sicherheit (PIN/TAN, DDV), BP
 crates/cardreader  PC/SC: DDV-Chipkarte, chipTAN USB, Pinpad, Diagnose
 app                Slint-Oberfläche, Tresor, Kategorisierung, Hintergrund-Jobs
 ```
+
+## Bankverzeichnis
+
+`app/data/banks.tsv` stammt aus `blz.properties` von [hbci4java](https://github.com/hbci4j/hbci4java)
+(LGPL-2.1, Stand Oktober 2026). Veraltete Adressen wurden umgeschrieben: `hbci-pintan.gad.de` →
+`fints1.atruvia.de`, `hbci11.fiducia.de` → `fints2.atruvia.de`, ehemalige Dresdner-Bank-Adressen →
+Commerzbank. Maßgeblich bleibt die Angabe der jeweiligen Bank; die URL ist im Formular editierbar.
 
 ## Stand der Verifikation
 

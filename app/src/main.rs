@@ -3,6 +3,7 @@
 
 slint::include_modules!();
 
+mod banks;
 mod bridge;
 mod categorize;
 mod demo;
@@ -24,6 +25,8 @@ thread_local! {
     static VIEW: RefCell<view::ViewState> = RefCell::new(view::ViewState::default());
     static CTX: RefCell<Option<Ctx>> = const { RefCell::new(None) };
     static CONFIRM: RefCell<Option<Box<dyn FnOnce()>>> = RefCell::new(None);
+    static BANK_HITS: RefCell<Vec<&'static banks::Bank>> = const { RefCell::new(Vec::new()) };
+    static AUTO_NAME: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 fn ctx() -> Ctx {
@@ -389,8 +392,52 @@ fn main() {
             st.set_af_customer(SharedString::default());
             st.set_af_url(SharedString::default());
             st.set_af_record("1".into());
+            st.set_bank_query(SharedString::default());
+            st.set_bank_picked(SharedString::default());
+            st.set_bank_results(ModelRc::new(VecModel::from(Vec::<BankRow>::new())));
             st.set_af_open(true);
             refresh_readers(&app);
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_bank_search(move |q| {
+            let app = weak.unwrap();
+            let st = app.global::<AppState>();
+            let chip = st.get_af_kind() == 1;
+            st.set_bank_picked(SharedString::default());
+            let hits = banks::search(&q, chip, 8);
+            let rows: Vec<BankRow> = hits
+                .iter()
+                .enumerate()
+                .map(|(i, b)| BankRow {
+                    index: i as i32,
+                    name: b.name.into(),
+                    detail: format!("BLZ {} · {} · {}", b.blz, b.city, b.bic).into(),
+                    endpoint: if chip { b.host } else { b.url.trim_start_matches("https://") }.into(),
+                })
+                .collect();
+            BANK_HITS.with(|h| *h.borrow_mut() = hits);
+            st.set_bank_results(ModelRc::new(VecModel::from(rows)));
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_bank_pick(move |i| {
+            let app = weak.unwrap();
+            let st = app.global::<AppState>();
+            let Some(b) = BANK_HITS.with(|h| h.borrow().get(i as usize).copied()) else { return };
+            let chip = st.get_af_kind() == 1;
+            st.set_af_blz(b.blz.into());
+            st.set_af_url(if chip { b.host } else { b.url }.into());
+            let current = st.get_af_name().trim().to_string();
+            if current.is_empty() || AUTO_NAME.with(|n| *n.borrow() == current) {
+                st.set_af_name(b.name.into());
+                AUTO_NAME.with(|n| *n.borrow_mut() = b.name.to_string());
+            }
+            st.set_bank_query(b.name.into());
+            st.set_bank_picked(format!("✓ {} · BLZ {} übernommen", b.name, b.blz).into());
+            st.set_bank_results(ModelRc::new(VecModel::from(Vec::<BankRow>::new())));
         });
     }
     {
@@ -415,7 +462,8 @@ fn main() {
                         Ok(b) => {
                             st.set_af_blz(b.blz.clone().into());
                             st.set_af_user(b.user_id.clone().into());
-                            st.set_af_url(b.host.clone().into());
+                            let host = if b.host.trim().is_empty() { banks::by_blz(&b.blz).map(|x| x.host.to_string()).unwrap_or_default() } else { b.host.clone() };
+                            st.set_af_url(host.into());
                             if st.get_af_name().is_empty() {
                                 st.set_af_name(format!("{} (Chipkarte)", b.short_name).into());
                             }

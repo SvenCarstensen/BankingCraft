@@ -1,4 +1,4 @@
-import { AccountRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, Toast } from "types.slint";
+import { AccountRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast } from "types.slint";
 
 export global AppState {
     // ---- vault / shell
@@ -71,6 +71,9 @@ export global AppState {
     in-out property <string> af-url;
     in-out property <int> af-reader;
     in-out property <string> af-record: "1";
+    in-out property <string> bank-query;
+    in-out property <[BankRow]> bank-results;
+    in-out property <string> bank-picked;
 
     // ---- card reader
     in-out property <[string]> reader-names;
@@ -139,6 +142,8 @@ export global AppState {
     callback sync-access(int);
     callback reset-tan(int);
     callback read-card();
+    callback bank-search(string);
+    callback bank-pick(int);
     callback reader-refresh();
     callback reader-diagnose();
     callback save-settings();

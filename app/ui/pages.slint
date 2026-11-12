@@ -1137,6 +1137,58 @@ export component AccessesPage inherits ScrollView {
                     width: 360px;
                     options: ["PIN/TAN (FinTS)", "HBCI-Chipkarte"];
                     selected <=> AppState.af-kind;
+                    changed => { AppState.bank-search(AppState.bank-query); }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Bank suchen"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                    LineEdit {
+                        placeholder-text: "Name, Ort, BLZ oder BIC – z. B. „Förde Sparkasse“, „ING“, „Volksbank Kiel“";
+                        text <=> AppState.bank-query;
+                        edited(t) => { AppState.bank-search(t); }
+                    }
+                    if AppState.bank-picked != "": Text {
+                        text: AppState.bank-picked;
+                        font-size: 11px;
+                        color: Theme.positive;
+                    }
+                }
+                if AppState.bank-results.length > 0: Rectangle {
+                    border-radius: Theme.radius-small;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+                    clip: true;
+                    VerticalLayout {
+                        for b in AppState.bank-results: Rectangle {
+                            height: 52px;
+                            background: bta.has-hover ? Theme.accent-soft : Theme.card-bg;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                spacing: 12px;
+                                Icon { name: Icons.bank; color: Theme.accent; y: (parent.height - self.height) / 2; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text { text: b.name; font-weight: 600; color: Theme.text; overflow: elide; }
+                                    Text { text: b.detail; font-size: 12px; color: Theme.text-muted; overflow: elide; }
+                                }
+                                Text {
+                                    text: b.endpoint;
+                                    font-size: 11px;
+                                    color: Theme.text-faint;
+                                    horizontal-alignment: right;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    max-width: 320px;
+                                }
+                            }
+                            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.card-border; }
+                            bta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { AppState.bank-pick(b.index); }
+                            }
+                        }
+                    }
                 }
                 LabeledField { label: "Bezeichnung"; text <=> AppState.af-name; placeholder: "z. B. Förde Sparkasse – privat"; }
                 if AppState.af-kind == 0: VerticalLayout {
@@ -1151,7 +1203,7 @@ export component AccessesPage inherits ScrollView {
                         label: "FinTS-Server-URL";
                         text <=> AppState.af-url;
                         placeholder: "https://…";
-                        hint: "Die PIN/TAN-URL finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“ oder „HBCI“). Die PIN wird nicht gespeichert.";
+                        hint: "Wird über die Banksuche ausgefüllt. Abweichende Adressen finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“). Die PIN wird nicht gespeichert.";
                     }
                 }
                 if AppState.af-kind == 1: VerticalLayout {
