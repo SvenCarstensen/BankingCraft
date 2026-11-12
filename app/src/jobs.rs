@@ -57,6 +57,39 @@ impl Ctx {
     }
 }
 
+/// Store the client state and turn a FinTS error into a user message; bank/syntax errors
+/// get a masked protocol of the last message exchange written next to the vault.
+fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -> Result<T, String> {
+    let trace = client.last_trace.clone();
+    let state = client.finish();
+    store_state(ctx, access_id, state);
+    r.map_err(|e| {
+        let mut msg = err_text(&e);
+        if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
+            if let Some(p) = write_error_report(trace.as_deref(), &msg) {
+                msg.push_str(&format!("\n\nFehlerprotokoll (PIN/TAN geschwärzt): {}", p.display()));
+            }
+        }
+        msg
+    })
+}
+
+fn write_error_report(trace: Option<&str>, msg: &str) -> Option<std::path::PathBuf> {
+    let trace = trace?;
+    let dir = crate::store::default_path().parent()?.to_path_buf();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("fints-fehlerprotokoll.txt");
+    let text = format!(
+        "Kontor {} – {}\n\nFehler:\n{}\n\nLetzter Nachrichtenaustausch:\n{}\n",
+        env!("CARGO_PKG_VERSION"),
+        Local::now().format("%d.%m.%Y %H:%M:%S"),
+        msg,
+        trace.replace('\'', "'\n")
+    );
+    std::fs::write(&path, text).ok()?;
+    Some(path)
+}
+
 fn err_text(e: &Error) -> String {
     match e {
         Error::Cancelled => "Vorgang abgebrochen.".into(),
@@ -159,9 +192,7 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
         }
         Ok(accounts.len())
     })();
-    let state = client.finish();
-    store_state(ctx, access_id, state);
-    let count = result.map_err(|e| err_text(&e))?;
+    let count = conclude(ctx, access_id, client, result)?;
     let mut msg = format!("{}: {} Konten aktualisiert, {} neue Umsätze.", access.name, count, new_tx);
     if !warnings.is_empty() {
         msg.push('\n');
@@ -193,13 +224,11 @@ pub fn reset_tan(ctx: &Ctx, access_id: u32) -> JobResult {
     let bridge = ctx.bridge.clone();
     let mut client = make_client(ctx, &access, &bridge)?;
     let r = client.open();
-    let state = client.finish();
-    let name = state
-        .tan_method
-        .as_ref()
-        .and_then(|sf| state.bpd.tan_methods.iter().find(|m| &m.security_function == sf).map(|m| m.name.clone()));
-    store_state(ctx, access_id, state);
-    r.map_err(|e| err_text(&e))?;
+    conclude(ctx, access_id, client, r)?;
+    let name = ctx.vault.lock().unwrap().access(access_id).and_then(|a| {
+        let sf = a.state.tan_method.clone()?;
+        a.state.bpd.tan_methods.iter().find(|m| m.security_function == sf).map(|m| m.name.clone())
+    });
     Ok(format!("TAN-Verfahren: {}", name.unwrap_or_else(|| "Standard".into())))
 }
 
@@ -271,9 +300,7 @@ pub fn transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool) ->
     let bridge = ctx.bridge.clone();
     let mut client = make_client(ctx, &access, &bridge)?;
     let r = if scheduled { client.scheduled_transfer(&acc, &t) } else { client.transfer(&acc, &t) };
-    let state = client.finish();
-    store_state(ctx, access.id, state);
-    let summary = r.map_err(|e| err_text(&e))?;
+    let summary = conclude(ctx, access.id, client, r)?;
     Ok(format!("Auftrag übermittelt.\n{summary}"))
 }
 
@@ -349,9 +376,7 @@ pub fn create_standing(ctx: &Ctx, account_id: u32, mut so: StandingOrder) -> Job
     let mut client = make_client(ctx, &access, &bridge)?;
     let r = client.create_standing_order(&acc, &so);
     let r2 = r.and_then(|s| client.standing_orders(&acc).map(|l| (s, l)));
-    let state = client.finish();
-    store_state(ctx, access.id, state);
-    let (summary, list) = r2.map_err(|e| err_text(&e))?;
+    let (summary, list) = conclude(ctx, access.id, client, r2)?;
     let mut v = ctx.vault.lock().unwrap();
     v.standing.retain(|s| s.account_id != account_id);
     v.standing.extend(list.into_iter().map(|order| StoredStanding { account_id, order }));
@@ -365,9 +390,7 @@ pub fn delete_standing(ctx: &Ctx, index: usize) -> JobResult {
         let bridge = ctx.bridge.clone();
         let mut client = make_client(ctx, &access, &bridge)?;
         let r = client.delete_standing_order(&acc, &item.order);
-        let state = client.finish();
-        store_state(ctx, access.id, state);
-        r.map_err(|e| err_text(&e))?;
+        conclude(ctx, access.id, client, r)?;
     } else {
         demo_tan(ctx, &format!("Dauerauftrag an {} löschen", item.order.transfer.creditor_name))?;
     }

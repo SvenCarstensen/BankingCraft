@@ -27,14 +27,14 @@ component Modal inherits Rectangle {
 export component PinDialog inherits Modal {
     VerticalLayout {
         spacing: 6px;
-        Text { text: "PIN-Eingabe"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Text { text: AppState.pin-heading; font-size: 18px; font-weight: 700; color: Theme.text; }
         Text { text: AppState.pin-title; color: Theme.text-muted; wrap: word-wrap; }
     }
     HorizontalLayout {
         spacing: 8px;
         pin := LineEdit {
-            input-type: password;
-            placeholder-text: "PIN";
+            input-type: AppState.pin-masked ? InputType.password : InputType.text;
+            placeholder-text: AppState.pin-masked ? "PIN" : "";
             text <=> AppState.pin-value;
             accepted => { AppState.pin-ok(); }
         }
@@ -49,7 +49,7 @@ export component PinDialog inherits Modal {
         }
     }
     Text {
-        text: AppState.paste-note != "" ? AppState.paste-note : "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten.";
+        text: AppState.paste-note != "" ? AppState.paste-note : AppState.pin-masked ? "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten." : "Wird zusammen mit dem Bankzugang gespeichert.";
         font-size: 11px;
         color: Theme.text-faint;
     }

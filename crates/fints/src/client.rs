@@ -49,6 +49,10 @@ pub trait Interaction: Send + Sync {
     fn choose_tan_medium(&self, media: &[String]) -> Option<String>;
     fn tan(&self, challenge: &TanChallenge) -> TanAnswer;
     fn progress(&self, text: &str);
+    /// Free text input (e.g. the name of a TAN medium). `None` = cancelled / unsupported.
+    fn text(&self, _title: &str, _prompt: &str) -> Option<String> {
+        None
+    }
 }
 
 struct DdvCtx {
@@ -68,6 +72,10 @@ pub struct Client<'a> {
     dialog_id: String,
     msg_num: u32,
     in_dialog: bool,
+    /// (segment number, segment code) of the last request, to name segments in error messages.
+    last_request: Vec<(u32, String)>,
+    /// Last request/response pair with PIN and TAN masked, for error reports.
+    pub last_trace: Option<String>,
 }
 
 const SAL_VERSIONS: &[u32] = &[5, 6, 7];
@@ -114,6 +122,8 @@ impl<'a> Client<'a> {
             dialog_id: "0".into(),
             msg_num: 1,
             in_dialog: false,
+            last_request: Vec::new(),
+            last_trace: None,
         })
     }
 
@@ -141,6 +151,7 @@ impl<'a> Client<'a> {
 
     fn exchange(&mut self, segments: Vec<SegmentBuilder>, tan: Option<&str>) -> Result<Response> {
         let pin = if self.is_pintan() { Some(self.ensure_pin()?) } else { None };
+        self.last_request = segments.iter().enumerate().map(|(k, s)| (3 + k as u32, s.code.clone())).collect();
         let sf = self.security_function();
         let raw = {
             let env = Envelope {
@@ -164,6 +175,7 @@ impl<'a> Client<'a> {
         };
         self.msg_num += 1;
         let answer = self.transport.send(&raw)?;
+        self.last_trace = Some(format!(">> {}\n\n<< {}", mask_signature(&raw), truncate_trace(&answer)));
         let segs = match (&mut self.medium, &self.ddv) {
             (Medium::Ddv(card), Some(ctx)) => open_message(&answer, Some((card.as_mut(), ctx.enc_key.num)))?,
             _ => open_message(&answer, None)?,
@@ -188,10 +200,35 @@ impl<'a> Client<'a> {
                 // wrong PIN / locked: forget cached PIN
                 self.pin = None;
             }
-            let text = resp.errors().iter().map(|c| format!("{} {}", c.code, c.text)).collect::<Vec<_>>().join("\n");
+            let text = resp.errors().iter().map(|c| self.describe_code(c)).collect::<Vec<_>>().join("\n");
             return Err(Error::Bank { code: e.code.clone(), text });
         }
         Ok(resp)
+    }
+
+    /// "9110 Text (HKTAN, Feld 4)" – names the segment a return code refers to.
+    fn describe_code(&self, c: &crate::response::ReturnCode) -> String {
+        let seg = c.segment_ref.and_then(|n| {
+            self.last_request
+                .iter()
+                .find(|(num, _)| *num == n)
+                .map(|(_, code)| code.clone())
+                .or_else(|| match n {
+                    1 => Some("HNHBK".into()),
+                    2 => Some("HNSHK".into()),
+                    998 => Some("HNVSK".into()),
+                    999 => Some("HNVSD".into()),
+                    _ => None,
+                })
+        });
+        let mut out = format!("{} {}", c.code, c.text);
+        match (seg, &c.reference_element) {
+            (Some(sg), Some(el)) => out.push_str(&format!(" ({sg}, Element {el})")),
+            (Some(sg), None) => out.push_str(&format!(" ({sg})")),
+            (None, Some(el)) => out.push_str(&format!(" (Element {el})")),
+            _ => {}
+        }
+        out
     }
 
     /// Unsigned message for anonymous dialogs (bank parameter data without login).
@@ -208,6 +245,7 @@ impl<'a> Client<'a> {
         };
         self.msg_num += 1;
         let answer = self.transport.send(&raw)?;
+        self.last_trace = Some(format!(">> {}\n\n<< {}", crate::syntax::latin1_to_string(&raw), truncate_trace(&answer)));
         let resp = Response::new(open_message(&answer, None)?);
         if let Some(id) = &resp.dialog_id {
             if self.dialog_id == "0" && id != "0" {
@@ -274,8 +312,12 @@ impl<'a> Client<'a> {
         self.state.bpd.tan_methods.iter().find(|m| m.security_function == sf).cloned()
     }
 
+    fn needs_medium(&self) -> bool {
+        self.current_method().map(|m| m.needs_medium).unwrap_or(false)
+    }
+
     fn hktan_process4(&self, reference: &str) -> SegmentBuilder {
-        let medium = if self.current_method().map(|m| m.needs_medium).unwrap_or(false) {
+        let medium = if self.needs_medium() {
             Val::from(self.state.tan_medium.clone())
         } else {
             Val::Empty
@@ -443,6 +485,10 @@ impl<'a> Client<'a> {
                 }
             }
             self.select_tan_method()?;
+            if self.state.system_id.is_empty() && self.needs_medium() && self.state.tan_medium.is_none() {
+                // the HKTAN of the synchronisation must already name the TAN medium
+                self.state.tan_medium = self.tan_medium_before_sync()?;
+            }
             if self.state.system_id.is_empty() {
                 // synchronise with the chosen two-step method (strong customer authentication)
                 match self.synchronize() {
@@ -506,6 +552,44 @@ impl<'a> Client<'a> {
         Ok(())
     }
 
+    /// Determine the TAN medium for a user without system id: dialog whose HKTAN refers to
+    /// HKTAB (TAN-free business transaction), falling back to asking the user.
+    fn tan_medium_before_sync(&mut self) -> Result<Option<String>> {
+        let mut media: Vec<String> = Vec::new();
+        if let Some(v) = self.state.bpd.version_for("HKTAB", &[4, 5]) {
+            self.ui.progress("Lade TAN-Medien …");
+            self.reset_dialog();
+            let mut segs = self.init_segments(false);
+            segs.push(SegmentBuilder::new("HKTAB", v).de("0").de("A"));
+            segs.push(self.hktan_process4("HKTAB"));
+            match self.exchange(segs, None) {
+                Ok(resp) => media = parse_hitab(&resp),
+                Err(e) => log::warn!("TAN media lookup failed: {e}"),
+            }
+            self.end_dialog().ok();
+            self.reset_dialog();
+        }
+        let chosen = match media.len() {
+            0 => None,
+            1 => Some(media[0].clone()),
+            _ => self.ui.choose_tan_medium(&media),
+        };
+        if chosen.is_some() {
+            return Ok(chosen);
+        }
+        let name = self.current_method().map(|m| m.name).unwrap_or_default();
+        Ok(self
+            .ui
+            .text(
+                "TAN-Medium",
+                &format!(
+                    "Die Bank verlangt für „{name}“ die Bezeichnung Ihres TAN-Mediums (z. B. den Gerätenamen aus der BestSign- bzw. photoTAN-App). Bitte genau so eingeben, wie er in der App bzw. im Onlinebanking angezeigt wird."
+                ),
+            )
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty()))
+    }
+
     /// TAN media list (HKTAB). Opens its own short dialog when called outside a dialog.
     fn tan_media_raw(&mut self) -> Result<Vec<String>> {
         let Some(v) = self.state.bpd.version_for("HKTAB", &[4, 5]) else { return Ok(vec![]) };
@@ -521,22 +605,7 @@ impl<'a> Client<'a> {
             self.end_dialog().ok();
             r?
         };
-        let mut names = Vec::new();
-        if let Some(s) = resp.first("HITAB") {
-            for i in 2..=s.de_count() {
-                let fields: Vec<String> = s.de(i).iter().map(|f| f.as_ref().map(|b| latin1_to_string(b)).unwrap_or_default()).collect();
-                // heuristic: the medium name is the first free text field that is not a code/date/IBAN
-                if let Some(name) = fields.iter().skip(2).find(|t| {
-                    t.len() > 1
-                        && t.chars().any(|c| c.is_alphabetic())
-                        && !crate::pain::iban_valid(t)
-                        && parse_fints_date(t).is_none()
-                }) {
-                    names.push(name.clone());
-                }
-            }
-        }
-        Ok(names)
+        Ok(parse_hitab(&resp))
     }
 
     pub fn end_dialog(&mut self) -> Result<()> {
@@ -845,4 +914,74 @@ pub fn strip_html(s: &str) -> String {
         }
     }
     out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+}
+
+/// Names of the active TAN media in a HITAB answer.
+fn parse_hitab(resp: &Response) -> Vec<String> {
+    let mut names = Vec::new();
+    for s in resp.find("HITAB") {
+        // v4: class, status, card no, card seq, card type, account(4), valid from, valid to, list no, NAME
+        // v5: class, status, security function, ... (one more field before the name)
+        let name_idx = if s.version >= 5 { 13 } else { 12 };
+        for i in 2..=s.de_count() {
+            let fields: Vec<String> = s
+                .de(i)
+                .iter()
+                .map(|f| f.as_ref().map(|b| latin1_to_string(b)).unwrap_or_default())
+                .collect();
+            // only active media (status 1)
+            if fields.get(1).map(|st| st != "1").unwrap_or(false) {
+                continue;
+            }
+            let looks_like_name = |t: &String| {
+                t.len() > 1 && t.chars().any(|c| c.is_alphabetic()) && !crate::pain::iban_valid(t) && parse_fints_date(t).is_none()
+            };
+            let name = fields
+                .get(name_idx)
+                .filter(|t| looks_like_name(t))
+                .cloned()
+                .or_else(|| fields.iter().skip(3).find(|t| looks_like_name(t)).cloned());
+            if let Some(n) = name {
+                if !names.contains(&n) {
+                    names.push(n);
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Replace the user signature (PIN/TAN) in a raw message for logging.
+fn mask_signature(raw: &[u8]) -> String {
+    let text = latin1_to_string(raw);
+    let Some(start) = text.find("HNSHA:") else { return text };
+    // end of segment = first unescaped apostrophe
+    let bytes: Vec<char> = text[start..].chars().collect();
+    let mut end = bytes.len();
+    let mut k = 0;
+    while k < bytes.len() {
+        match bytes[k] {
+            '?' => k += 2,
+            '\'' => {
+                end = k;
+                break;
+            }
+            _ => k += 1,
+        }
+    }
+    let seg: String = bytes[..end].iter().collect();
+    let masked = match seg.rfind('+') {
+        Some(p) => format!("{}+*****", &seg[..p]),
+        None => seg.clone(),
+    };
+    format!("{}{}{}", &text[..start], masked, bytes[end..].iter().collect::<String>())
+}
+
+fn truncate_trace(raw: &[u8]) -> String {
+    let t = latin1_to_string(raw);
+    if t.chars().count() > 20_000 {
+        format!("{} … [gekürzt]", t.chars().take(20_000).collect::<String>())
+    } else {
+        t
+    }
 }

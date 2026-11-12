@@ -655,6 +655,10 @@ fn main() {
             match clipboard_text() {
                 Ok(text) => {
                     st.set_pin_value(text.as_str().into());
+                    if !st.get_pin_masked() {
+                        st.set_paste_note("Eingefügt.".into());
+                        return;
+                    }
                     // do not leave the PIN lying around in the clipboard
                     let cleared = clear_clipboard_if(&text);
                     st.set_paste_note(

@@ -107,9 +107,16 @@ impl Bridge {
     }
 
     pub fn ask_pin(&self, prompt: &str) -> Option<String> {
+        self.ask_input("PIN-Eingabe", prompt, true)
+    }
+
+    pub fn ask_input(&self, heading: &str, prompt: &str, masked: bool) -> Option<String> {
         let p = SharedString::from(prompt);
+        let h = SharedString::from(heading);
         match self.ask(move |app| {
             let st = app.global::<AppState>();
+            st.set_pin_heading(h);
+            st.set_pin_masked(masked);
             st.set_pin_title(p);
             st.set_pin_value(SharedString::default());
             st.set_show_pin(true);
@@ -227,5 +234,9 @@ impl Interaction for Bridge {
 
     fn progress(&self, text: &str) {
         self.status(text);
+    }
+
+    fn text(&self, title: &str, prompt: &str) -> Option<String> {
+        self.ask_input(title, prompt, false)
     }
 }
