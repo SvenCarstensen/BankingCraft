@@ -61,6 +61,7 @@ pub fn add_demo(v: &mut Vault) {
         kind: AccessKind::Demo,
         config: fints::Config { blz: DEMO_BLZ.into(), user_id: "demo".into(), ..Default::default() },
         state: fints::State { tan_method: Some("Demo-chipTAN".into()), ..Default::default() },
+        saved_pin: None,
     });
     let giro = Account {
         iban: iban(DEMO_BLZ, "4711000"),

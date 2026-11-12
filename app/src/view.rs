@@ -236,6 +236,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
                 tan_method: ss(method),
                 accounts: v.accounts.iter().filter(|x| x.access_id == a.id).count() as i32,
                 demo: a.kind == AccessKind::Demo,
+                pin_saved: a.saved_pin.is_some(),
             }
         })
         .collect();

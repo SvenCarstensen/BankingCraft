@@ -22,6 +22,10 @@ pub struct Bridge {
     pub usb_payload: Arc<Mutex<Option<Vec<u8>>>>,
     /// PIN cached for the running job (cleared on wrong PIN).
     pub pin_cache: Arc<Mutex<Option<String>>>,
+    /// The user ticked "PIN speichern" for the PIN in `pin_cache`.
+    pub pin_save_requested: Arc<Mutex<bool>>,
+    /// Offer the "PIN speichern" option in the next PIN prompt.
+    pub pin_save_offer: Arc<Mutex<bool>>,
 }
 
 thread_local! {
@@ -71,6 +75,8 @@ impl Bridge {
             pending: Arc::new(Mutex::new(None)),
             usb_payload: Arc::new(Mutex::new(None)),
             pin_cache: Arc::new(Mutex::new(None)),
+            pin_save_requested: Arc::new(Mutex::new(false)),
+            pin_save_offer: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -111,12 +117,18 @@ impl Bridge {
     }
 
     pub fn ask_input(&self, heading: &str, prompt: &str, masked: bool) -> Option<String> {
+        self.ask_input_ext(heading, prompt, masked, false)
+    }
+
+    fn ask_input_ext(&self, heading: &str, prompt: &str, masked: bool, offer_save: bool) -> Option<String> {
         let p = SharedString::from(prompt);
         let h = SharedString::from(heading);
         match self.ask(move |app| {
             let st = app.global::<AppState>();
             st.set_pin_heading(h);
             st.set_pin_masked(masked);
+            st.set_pin_offer_save(offer_save);
+            st.set_pin_save(false);
             st.set_pin_title(p);
             st.set_pin_value(SharedString::default());
             st.set_show_pin(true);
@@ -153,7 +165,8 @@ impl Interaction for Bridge {
         if let Some(p) = self.pin_cache.lock().unwrap().clone() {
             return Some(p);
         }
-        let p = self.ask_pin(prompt)?;
+        let offer = *self.pin_save_offer.lock().unwrap();
+        let p = self.ask_input_ext("PIN-Eingabe", prompt, true, offer)?;
         *self.pin_cache.lock().unwrap() = Some(p.clone());
         Some(p)
     }

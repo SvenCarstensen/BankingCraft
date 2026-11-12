@@ -523,6 +523,7 @@ fn main() {
                         ..Default::default()
                     },
                     state: fints::State::default(),
+                    saved_pin: None,
                 });
                 id
             };
@@ -547,6 +548,19 @@ fn main() {
                     refresh_view(&app);
                 }
             });
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_forget_pin(move |id| {
+            let app = weak.unwrap();
+            let c = ctx();
+            if let Some(a) = c.vault.lock().unwrap().accesses.iter_mut().find(|a| a.id == id as u32) {
+                a.saved_pin = None;
+            }
+            let _ = c.save();
+            refresh_view(&app);
+            toast(&app, "Die gespeicherte PIN wurde gelöscht.", false);
         });
     }
     st.on_sync_access(|id| ctx().run("Bankzugang wird synchronisiert …", move |c| jobs::sync_access(c, id as u32)));
@@ -610,7 +624,10 @@ fn main() {
                 return;
             }
             let c = ctx();
-            let r = c.file.lock().unwrap().as_mut().map(|f| f.change_password(&old, &new)).unwrap_or(Err("Tresor nicht geöffnet".into()));
+            let r = {
+                let mut v = c.vault.lock().unwrap();
+                c.file.lock().unwrap().as_mut().map(|f| f.change_password(&old, &new, &mut v)).unwrap_or(Err("Tresor nicht geöffnet".into()))
+            };
             match r.and_then(|_| c.save()) {
                 Ok(()) => {
                     st.set_old_password(SharedString::default());
@@ -641,8 +658,10 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             let pin = st.get_pin_value().to_string();
+            *b.pin_save_requested.lock().unwrap() = st.get_pin_offer_save() && st.get_pin_save();
             st.set_pin_value(SharedString::default());
             st.set_paste_note(SharedString::default());
+            st.set_pin_save(false);
             st.set_show_pin(false);
             b.answer(Answer::Text(pin));
         });

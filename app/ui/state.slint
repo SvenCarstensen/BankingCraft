@@ -94,6 +94,8 @@ export global AppState {
     in-out property <string> pin-value;
     in-out property <string> pin-heading: "PIN-Eingabe";
     in-out property <bool> pin-masked: true;
+    in-out property <bool> pin-offer-save;
+    in-out property <bool> pin-save;
     in-out property <string> paste-note;
     in-out property <bool> show-pinpad;
     in-out property <string> pinpad-text;
@@ -144,6 +146,7 @@ export global AppState {
     callback delete-access(int);
     callback sync-access(int);
     callback reset-tan(int);
+    callback forget-pin(int);
     callback read-card();
     callback bank-search(string);
     callback bank-pick(int);

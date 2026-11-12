@@ -72,6 +72,8 @@ pub struct Client<'a> {
     dialog_id: String,
     msg_num: u32,
     in_dialog: bool,
+    /// Strong customer authentication completed (or waived) at dialog initialisation.
+    dialog_authenticated: bool,
     /// (segment number, segment code) of the last request, to name segments in error messages.
     last_request: Vec<(u32, String)>,
     /// Last request/response pair with PIN and TAN masked, for error reports.
@@ -122,6 +124,7 @@ impl<'a> Client<'a> {
             dialog_id: "0".into(),
             msg_num: 1,
             in_dialog: false,
+            dialog_authenticated: false,
             last_request: Vec::new(),
             last_trace: None,
         })
@@ -355,8 +358,30 @@ impl<'a> Client<'a> {
     }
 
     /// Send business segments, performing SCA if the bank requires it.
-    fn exchange_sca(&mut self, mut segments: Vec<SegmentBuilder>, reference: &str, force_tan: bool) -> Result<Response> {
-        let sca = self.uses_sca() && (force_tan || reference == "HKIDN" || self.state.bpd.needs_tan(reference));
+    fn exchange_sca(&mut self, segments: Vec<SegmentBuilder>, reference: &str, force_tan: bool) -> Result<Response> {
+        // Account information in a dialog whose initialisation was already strongly authenticated
+        // is covered by that authentication (PSD2) – an extra HKTAN would make banks like the
+        // Postbank push a new BestSign request for every single job.
+        let covered = self.dialog_authenticated && !force_tan && reference != "HKIDN" && is_account_information(reference);
+        if covered && self.state.bpd.needs_tan(reference) {
+            match self.exchange_sca_inner(segments.clone(), reference, false, true) {
+                Err(Error::Bank { code, text }) if code == "9075" || code == "9076" || text.contains("9075") || text.contains("9076") => {
+                    log::info!("{reference}: bank requires SCA despite authenticated dialog, retrying with HKTAN");
+                    if text.contains("9800") || code.starts_with("98") {
+                        // dialog was aborted: open a new one
+                        self.reset_dialog();
+                        self.open()?;
+                    }
+                    return self.exchange_sca_inner(segments, reference, true, false);
+                }
+                r => return r,
+            }
+        }
+        self.exchange_sca_inner(segments, reference, force_tan, false)
+    }
+
+    fn exchange_sca_inner(&mut self, mut segments: Vec<SegmentBuilder>, reference: &str, force_tan: bool, no_tan: bool) -> Result<Response> {
+        let sca = !no_tan && self.uses_sca() && (force_tan || reference == "HKIDN" || self.state.bpd.needs_tan(reference));
         if sca {
             segments.push(self.hktan_process4(reference));
         }
@@ -472,6 +497,7 @@ impl<'a> Client<'a> {
         self.dialog_id = "0".into();
         self.msg_num = 1;
         self.in_dialog = false;
+        self.dialog_authenticated = false;
     }
 
     /// Open a dialog; selects TAN method/medium interactively when needed.
@@ -502,6 +528,7 @@ impl<'a> Client<'a> {
         let segs = self.init_segments(false);
         self.exchange_sca(segs, "HKIDN", false)?;
         self.in_dialog = true;
+        self.dialog_authenticated = self.uses_sca();
         Ok(())
     }
 
@@ -968,4 +995,9 @@ fn truncate_trace(raw: &[u8]) -> String {
     } else {
         t
     }
+}
+
+/// Business transactions that only read account information (no orders).
+fn is_account_information(code: &str) -> bool {
+    matches!(code, "HKSPA" | "HKSAL" | "HKKAZ" | "HKCAZ" | "HKCDB" | "HKTAB" | "HKKAU" | "HKWPD" | "HKEKA" | "HKECA")
 }

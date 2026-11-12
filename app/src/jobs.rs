@@ -63,6 +63,15 @@ fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -
     let trace = client.last_trace.clone();
     let state = client.finish();
     store_state(ctx, access_id, state);
+    let wrong_pin = matches!(&r, Err(Error::Bank { code, text })
+        if ["9931", "9942", "9340", "9930"].iter().any(|c| code == c || text.contains(c)));
+    let pin_note = handle_saved_pin(ctx, access_id, wrong_pin);
+    let r = r.map(|v| {
+        if let Some(n) = &pin_note {
+            log::info!("{n}");
+        }
+        v
+    });
     r.map_err(|e| {
         let mut msg = err_text(&e);
         if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
@@ -72,6 +81,27 @@ fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -
         }
         msg
     })
+}
+
+/// Store the PIN when the user asked for it, drop a stored PIN the bank rejected.
+fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String> {
+    let bridge = &ctx.bridge;
+    let mut v = ctx.vault.lock().unwrap();
+    let access = v.accesses.iter_mut().find(|a| a.id == access_id)?;
+    if wrong_pin {
+        *bridge.pin_save_requested.lock().unwrap() = false;
+        if access.saved_pin.take().is_some() {
+            return Some("Die gespeicherte PIN wurde von der Bank abgelehnt und gelöscht.".into());
+        }
+        return None;
+    }
+    if std::mem::take(&mut *bridge.pin_save_requested.lock().unwrap()) {
+        let pin = bridge.pin_cache.lock().unwrap().clone()?;
+        let sealed = ctx.file.lock().unwrap().as_ref()?.seal_secret(&pin).ok()?;
+        access.saved_pin = Some(sealed);
+        return Some("PIN verschlüsselt gespeichert.".into());
+    }
+    None
 }
 
 fn write_error_report(trace: Option<&str>, msg: &str) -> Option<std::path::PathBuf> {
@@ -119,6 +149,20 @@ fn medium_for(ctx: &Ctx, access: &BankAccess) -> Result<Medium, String> {
 }
 
 fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result<Client<'a>, String> {
+    // saved PIN (decrypted only in memory) and the offer to save it
+    let pintan = access.kind == AccessKind::PinTan;
+    *bridge.pin_save_offer.lock().unwrap() = pintan && access.saved_pin.is_none();
+    *bridge.pin_save_requested.lock().unwrap() = false;
+    let saved = if pintan {
+        access
+            .saved_pin
+            .as_ref()
+            .and_then(|sp| ctx.file.lock().unwrap().as_ref().and_then(|f| f.open_secret(sp)))
+            .map(|p| p.to_string())
+    } else {
+        None
+    };
+    *bridge.pin_cache.lock().unwrap() = saved;
     let medium = medium_for(ctx, access)?;
     let mut cfg = access.config.clone();
     {
@@ -177,11 +221,15 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
                     .unwrap()
                     .last_booking(id)
                     .map(|d| d - Duration::days(10))
-                    .unwrap_or_else(|| Local::now().date_naive() - Duration::days(180));
+                    // PSD2: up to 90 days of history need no extra approval
+                    .unwrap_or_else(|| Local::now().date_naive() - Duration::days(89));
                 match client.transactions(acc, from, None) {
                     Ok(txs) => new_tx += ctx.vault.lock().unwrap().merge_transactions(id, txs),
                     Err(Error::NotSupported(_)) => {}
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
+                    Err(Error::Cancelled) => warnings.push(format!(
+                        "Umsätze {}: Freigabe abgebrochen – Umsätze wurden nicht abgerufen.",
+                        fints::client::display_account(acc)
+                    )),
                     Err(e) => warnings.push(format!("Umsätze {}: {}", fints::client::display_account(acc), err_text(&e))),
                 }
             }

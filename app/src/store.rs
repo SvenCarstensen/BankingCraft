@@ -26,6 +26,16 @@ pub struct BankAccess {
     pub kind: AccessKind,
     pub config: fints::Config,
     pub state: fints::State,
+    /// PIN saved on request – encrypted separately (see [`VaultFile::seal_secret`]).
+    #[serde(default)]
+    pub saved_pin: Option<SealedSecret>,
+}
+
+/// A secret (PIN) encrypted with AES-256-GCM under a key derived from the vault key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SealedSecret {
+    pub nonce: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,15 +231,59 @@ impl VaultFile {
         Ok(())
     }
 
-    pub fn change_password(&mut self, old: &str, new: &str) -> Result<(), String> {
+    /// Changes the vault password and re-encrypts saved PINs with the new key.
+    pub fn change_password(&mut self, old: &str, new: &str, vault: &mut Vault) -> Result<(), String> {
         if derive(old, &self.salt)?.as_ref() != self.key.as_ref() {
             return Err("Aktuelles Passwort ist falsch".into());
         }
+        let pins: Vec<(u32, Option<Zeroizing<String>>)> = vault
+            .accesses
+            .iter()
+            .map(|a| (a.id, a.saved_pin.as_ref().and_then(|p| self.open_secret(p))))
+            .collect();
         let mut salt = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut salt);
         self.key = derive(new, &salt)?;
         self.salt = salt;
+        for (id, pin) in pins {
+            if let Some(a) = vault.accesses.iter_mut().find(|a| a.id == id) {
+                a.saved_pin = match pin {
+                    Some(p) => Some(self.seal_secret(&p)?),
+                    None => None,
+                };
+            }
+        }
         Ok(())
+    }
+
+    /// Separate key for secrets: SHA-256("kontor-secret-v1" || vault key).
+    fn secret_key(&self) -> Zeroizing<[u8; 32]> {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(b"kontor-secret-v1");
+        h.update(self.key.as_ref());
+        let mut k = Zeroizing::new([0u8; 32]);
+        k.copy_from_slice(&h.finalize());
+        k
+    }
+
+    pub fn seal_secret(&self, secret: &str) -> Result<SealedSecret, String> {
+        let key = self.secret_key();
+        let cipher = Aes256Gcm::new_from_slice(key.as_ref()).map_err(|e| e.to_string())?;
+        let mut nonce = [0u8; 12];
+        rand::thread_rng().fill_bytes(&mut nonce);
+        let data = cipher.encrypt(Nonce::from_slice(&nonce), secret.as_bytes()).map_err(|e| e.to_string())?;
+        Ok(SealedSecret { nonce: nonce.to_vec(), data })
+    }
+
+    pub fn open_secret(&self, sealed: &SealedSecret) -> Option<Zeroizing<String>> {
+        if sealed.nonce.len() != 12 {
+            return None;
+        }
+        let key = self.secret_key();
+        let cipher = Aes256Gcm::new_from_slice(key.as_ref()).ok()?;
+        let plain = cipher.decrypt(Nonce::from_slice(&sealed.nonce), sealed.data.as_ref()).ok()?;
+        String::from_utf8(plain).ok().map(Zeroizing::new)
     }
 
     pub fn path(&self) -> &Path {

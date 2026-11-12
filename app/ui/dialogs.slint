@@ -1,4 +1,4 @@
-import { LineEdit, ScrollView, Spinner } from "std-widgets.slint";
+import { LineEdit, ScrollView, Spinner, CheckBox } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { Icon, Icons, PrimaryButton, GhostButton } from "widgets.slint";
@@ -48,8 +48,12 @@ export component PinDialog inherits Modal {
             }
         }
     }
+    if AppState.pin-offer-save: CheckBox {
+        text: "PIN für diesen Bankzugang speichern (verschlüsselt im Tresor)";
+        checked <=> AppState.pin-save;
+    }
     Text {
-        text: AppState.paste-note != "" ? AppState.paste-note : AppState.pin-masked ? "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten." : "Wird zusammen mit dem Bankzugang gespeichert.";
+        text: AppState.paste-note != "" ? AppState.paste-note : AppState.pin-save ? "Die PIN wird mit AES-256-GCM verschlüsselt im Tresor abgelegt und künftig automatisch verwendet." : AppState.pin-masked ? "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten." : "Wird zusammen mit dem Bankzugang gespeichert.";
         font-size: 11px;
         color: Theme.text-faint;
     }
