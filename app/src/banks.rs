@@ -109,6 +109,17 @@ pub fn search(query: &str, chip_card: bool, limit: usize) -> Vec<&'static Bank> 
     out
 }
 
+/// Bank specific hints for the login name.
+pub fn login_hint(b: &Bank) -> Option<&'static str> {
+    if b.bic.starts_with("PBNK") {
+        Some("Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); TAN per BestSign oder photoTAN")
+    } else if b.bic.starts_with("DEUT") {
+        Some("Anmeldename: Filiale + Konto + Unterkonto (10-stellig), TAN per BestSign oder photoTAN")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

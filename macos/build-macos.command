@@ -27,6 +27,11 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   read -r -p "Enter zum Schließen"; exit 1
 fi
 
+# laufende Instanz beenden, damit die neue Version startet
+if pgrep -x Kontor >/dev/null; then
+  osascript -e 'tell application id "de.appcreation.kontor" to quit' 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x Kontor >/dev/null || break; sleep 0.5; done
+fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/kontor "$APP/Contents/MacOS/Kontor"

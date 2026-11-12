@@ -94,7 +94,8 @@ impl Bpd {
         for g in flat[3.min(flat.len())..].chunks(size) {
             let t = |k: usize| g.get(k).map(text).unwrap_or_default();
             let sf = t(0);
-            if sf.is_empty() || self.tan_methods.iter().any(|m| m.security_function == sf) {
+            let plausible = sf.len() == 3 && sf.chars().all(|c| c.is_ascii_digit()) && !t(5).is_empty();
+            if !plausible || self.tan_methods.iter().any(|m| m.security_function == sf) {
                 continue;
             }
             let dk_id = t(3);

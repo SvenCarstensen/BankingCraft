@@ -436,7 +436,8 @@ fn main() {
                 AUTO_NAME.with(|n| *n.borrow_mut() = b.name.to_string());
             }
             st.set_bank_query(b.name.into());
-            st.set_bank_picked(format!("✓ {} · BLZ {} übernommen", b.name, b.blz).into());
+            let hint = banks::login_hint(b);
+            st.set_bank_picked(format!("✓ {} · BLZ {} übernommen{}", b.name, b.blz, hint.map(|h| format!(" – {h}")).unwrap_or_default()).into());
             st.set_bank_results(ModelRc::new(VecModel::from(Vec::<BankRow>::new())));
         });
     }

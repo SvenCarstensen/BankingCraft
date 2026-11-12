@@ -71,6 +71,7 @@ pub struct Client<'a> {
 }
 
 const SAL_VERSIONS: &[u32] = &[5, 6, 7];
+const ANONYMOUS_CUSTOMER: &str = "9999999999";
 const KAZ_VERSIONS: &[u32] = &[5, 6, 7];
 
 impl<'a> Client<'a> {
@@ -97,7 +98,7 @@ impl<'a> Client<'a> {
         if cfg.product_version.is_empty() {
             cfg.product_version = env!("CARGO_PKG_VERSION").into();
         }
-        let transport: Box<dyn Transport> = if cfg.url.starts_with("https://") {
+        let transport: Box<dyn Transport> = if cfg.url.starts_with("https://") || cfg.url.starts_with("http://") {
             Box::new(HttpsTransport::new(&cfg.url))
         } else {
             Box::new(TcpTransport::new(&cfg.url))
@@ -191,6 +192,69 @@ impl<'a> Client<'a> {
             return Err(Error::Bank { code: e.code.clone(), text });
         }
         Ok(resp)
+    }
+
+    /// Unsigned message for anonymous dialogs (bank parameter data without login).
+    fn exchange_anonymous(&mut self, segments: Vec<SegmentBuilder>) -> Result<Response> {
+        let raw = {
+            let env = Envelope {
+                dialog_id: &self.dialog_id,
+                message_number: self.msg_num,
+                blz: &self.cfg.blz,
+                user_id: ANONYMOUS_CUSTOMER,
+                system_id: "0",
+            };
+            build_message(&env, Auth::None, segments)?
+        };
+        self.msg_num += 1;
+        let answer = self.transport.send(&raw)?;
+        let resp = Response::new(open_message(&answer, None)?);
+        if let Some(id) = &resp.dialog_id {
+            if self.dialog_id == "0" && id != "0" {
+                self.dialog_id = id.clone();
+            }
+        }
+        self.state.bpd.update_from(&resp);
+        for c in &resp.codes {
+            log::info!("FinTS (anonym) {} {}", c.code, c.text);
+        }
+        if let Some(e) = resp.errors().first() {
+            let text = resp.errors().iter().map(|c| format!("{} {}", c.code, c.text)).collect::<Vec<_>>().join("\n");
+            return Err(Error::Bank { code: e.code.clone(), text });
+        }
+        Ok(resp)
+    }
+
+    /// Load the bank parameter data (incl. TAN methods) in an anonymous dialog.
+    /// Banks that only accept two-step methods reject the one-step "999" login,
+    /// so the TAN method has to be known before the first personal dialog.
+    fn fetch_bpd_anonymous(&mut self) -> Result<()> {
+        self.ui.progress("Lade Bankparameter …");
+        self.reset_dialog();
+        let segs = vec![
+            SegmentBuilder::new("HKIDN", 2)
+                .deg(vec!["280".into(), (&self.cfg.blz).into()])
+                .de(ANONYMOUS_CUSTOMER)
+                .de("0")
+                .de("0"),
+            SegmentBuilder::new("HKVVB", 3)
+                .de(self.state.bpd.version)
+                .de("0")
+                .de("0")
+                .de(self.product_id())
+                .de(&self.cfg.product_version),
+        ];
+        let r = self.exchange_anonymous(segs);
+        if self.dialog_id != "0" {
+            let end = SegmentBuilder::new("HKEND", 1).de(self.dialog_id.clone());
+            let _ = self.exchange_anonymous(vec![end]);
+        }
+        self.reset_dialog();
+        r.map(|_| ())
+    }
+
+    fn product_id(&self) -> String {
+        if self.cfg.product_id.is_empty() { "KONTOR".to_string() } else { self.cfg.product_id.clone() }
     }
 
     fn hktan_version(&self) -> u32 {
@@ -316,7 +380,7 @@ impl<'a> Client<'a> {
                 .de(self.state.bpd.version)
                 .de(self.state.upd.version)
                 .de("0")
-                .de(if self.cfg.product_id.is_empty() { "KONTOR".to_string() } else { self.cfg.product_id.clone() })
+                .de(self.product_id())
                 .de(&self.cfg.product_version),
         ];
         if with_sync {
@@ -337,6 +401,17 @@ impl<'a> Client<'a> {
         if let Some(sid) = resp.first("HISYN").and_then(|s| s.text(1, 0)) {
             self.state.system_id = sid;
         }
+        // the dialog is authenticated now: fetch TAN media here instead of in an extra dialog
+        if self.uses_sca() && self.state.tan_medium.is_none() && self.current_method().map(|m| m.needs_medium).unwrap_or(false) {
+            self.in_dialog = true;
+            let media = self.tan_media_raw().unwrap_or_default();
+            self.in_dialog = false;
+            self.state.tan_medium = match media.len() {
+                0 => None,
+                1 => Some(media[0].clone()),
+                _ => self.ui.choose_tan_medium(&media),
+            };
+        }
         self.end_dialog().ok();
         Ok(())
     }
@@ -353,13 +428,38 @@ impl<'a> Client<'a> {
             return Ok(());
         }
         if self.is_pintan() {
-            if self.state.system_id.is_empty() || self.state.bpd.tan_methods.is_empty() {
-                // first dialog with one-step method to learn BPD, allowed methods and system id
+            if self.state.bpd.tan_methods.is_empty() {
+                if let Err(e) = self.fetch_bpd_anonymous() {
+                    log::warn!("anonymous BPD request failed: {e}");
+                }
+            }
+            if self.state.bpd.tan_methods.is_empty() {
+                // bank offers no anonymous access: legacy one-step synchronisation
                 let saved = self.state.tan_method.take();
-                self.synchronize()?;
+                let r = self.synchronize();
                 self.state.tan_method = saved;
+                if self.state.bpd.tan_methods.is_empty() {
+                    r?;
+                }
             }
             self.select_tan_method()?;
+            if self.state.system_id.is_empty() {
+                // synchronise with the chosen two-step method (strong customer authentication)
+                match self.synchronize() {
+                    Ok(()) => {}
+                    Err(Error::Bank { .. })
+                        if !self.state.allowed_methods.is_empty()
+                            && !self.state.allowed_methods.contains(&self.security_function()) =>
+                    {
+                        // the bank told us which methods this user may use: choose again
+                        self.state.tan_method = None;
+                        self.state.tan_medium = None;
+                        self.select_tan_method()?;
+                        self.synchronize()?;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
         }
         self.ui.progress("Dialog wird eröffnet …");
         self.reset_dialog();
@@ -393,7 +493,7 @@ impl<'a> Client<'a> {
             };
         }
         if let Some(m) = self.current_method() {
-            if m.needs_medium && self.state.tan_medium.is_none() {
+            if m.needs_medium && self.state.tan_medium.is_none() && !self.state.system_id.is_empty() {
                 let media = self.tan_media_raw().unwrap_or_default();
                 let chosen = if media.len() == 1 {
                     Some(media[0].clone())
@@ -413,15 +513,12 @@ impl<'a> Client<'a> {
         let resp = if was_open {
             self.exchange(vec![SegmentBuilder::new("HKTAB", v).de("0").de("A")], None)?
         } else {
-            // HKTAB is allowed in a one-step (999) dialog without SCA
-            let saved = self.state.tan_method.replace("999".into());
             self.reset_dialog();
             let segs = self.init_segments(false);
             let r = self
-                .exchange(segs, None)
-                .and_then(|_| self.exchange(vec![SegmentBuilder::new("HKTAB", v).de("0").de("A")], None));
+                .exchange_sca(segs, "HKIDN", false)
+                .and_then(|_| self.exchange_sca(vec![SegmentBuilder::new("HKTAB", v).de("0").de("A")], "HKTAB", false));
             self.end_dialog().ok();
-            self.state.tan_method = saved;
             r?
         };
         let mut names = Vec::new();
@@ -507,10 +604,8 @@ impl<'a> Client<'a> {
             Some((if sign == "D" { -amount } else { amount }, date, ccy))
         };
         let Some((booked, date, ccy)) = parse_bal(4) else { return Ok(None) };
-        let available = s
-            .text(8, 0)
-            .and_then(|t| crate::syntax::parse_amount(&t))
-            .or_else(|| s.text(8, 1).and_then(|t| crate::syntax::parse_amount(&t)));
+        // HISAL: 4 gebuchter Saldo, 5 vorgemerkt, 6 Kreditlinie, 7 verfügbarer Betrag
+        let available = s.text(7, 0).and_then(|t| crate::syntax::parse_amount(&t));
         Ok(Some(Balance {
             booked,
             available,
