@@ -1,0 +1,286 @@
+import { Theme } from "theme.slint";
+import { LineEdit } from "std-widgets.slint";
+
+export global Icons {
+    out property <string> overview: "M3 3h8v8H3z M13 3h8v5h-8z M13 10h8v11h-8z M3 13h8v8H3z";
+    out property <string> bank: "M3 9 L12 4 L21 9 M5 10v8 M9.5 10v8 M14.5 10v8 M19 10v8 M3 20h18";
+    out property <string> list: "M4 6h16 M4 12h16 M4 18h10";
+    out property <string> transfer: "M4 8h14 M14 4l4 4-4 4 M20 16H6 M10 12l-4 4 4 4";
+    out property <string> repeat: "M5 11a7 7 0 0 1 12-5l2 2 M19 4v4h-4 M19 13a7 7 0 0 1-12 5l-2-2 M5 20v-4h4";
+    out property <string> chart: "M4 20h16 M7 17v-6 M12 17V7 M17 17v-9";
+    out property <string> reader: "M6 3h12v18H6z M9 6h6v4H9z M9 13h1 M12 13h1 M15 13h0.5 M9 16h1 M12 16h1 M15 16h0.5";
+    out property <string> settings: "M4 7h9 M17 7h3 M4 17h3 M11 17h9 M15 5v4 M9 15v4";
+    out property <string> key: "M15 4a5 5 0 1 1 -0.01 0 M11.5 12.5 L4 20 M7 17l2 2 M5.5 18.5l2 2";
+    out property <string> refresh: "M20 12a8 8 0 1 1-2.3-5.7 M20 4v5h-5";
+    out property <string> search: "M10 4a6 6 0 1 1-0.01 0 M15 15l5 5";
+    out property <string> plus: "M12 5v14 M5 12h14";
+    out property <string> trash: "M5 7h14 M9 7V4h6v3 M7 7l1 13h8l1-13";
+    out property <string> download: "M12 4v11 M7 10l5 5 5-5 M5 20h14";
+    out property <string> lock: "M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3";
+    out property <string> close: "M6 6l12 12 M18 6L6 18";
+    out property <string> check: "M5 12l5 5 9-10";
+    out property <string> calendar: "M4 6h16v14H4z M4 10h16 M8 3v5 M16 3v5";
+}
+
+export component Icon inherits Path {
+    in property <string> name;
+    in property <color> color: Theme.text;
+    width: 20px;
+    height: 20px;
+    commands: name;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    stroke: color;
+    stroke-width: 1.8px;
+    fill: transparent;
+}
+
+export component Card inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    background: Theme.card-bg;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: #0f1e3510;
+    drop-shadow-offset-y: 2px;
+}
+
+export component CardHeader inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    padding-bottom: 8px;
+    spacing: 8px;
+    VerticalLayout {
+        alignment: start;
+        Text {
+            text: title;
+            font-size: 15px;
+            font-weight: 650;
+            color: Theme.text;
+        }
+        if subtitle != "": Text {
+            text: subtitle;
+            font-size: Theme.font-small;
+            color: Theme.text-muted;
+        }
+    }
+    @children
+}
+
+export component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <bool> active;
+    in property <bool> indent;
+    callback clicked;
+    height: 40px;
+    border-radius: Theme.radius-small;
+    background: active ? Theme.nav-active : touch.has-hover ? Theme.nav-bg-hover : transparent;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        padding-left: indent ? 38px : 12px;
+        padding-right: 12px;
+        spacing: 12px;
+        if !indent: Icon {
+            name: icon;
+            y: (parent.height - self.height) / 2;
+            color: active ? #ffffff : Theme.nav-text;
+        }
+        Text {
+            text: label;
+            vertical-alignment: center;
+            color: active ? #ffffff : Theme.nav-text;
+            font-size: indent ? 13px : Theme.font-normal;
+            font-weight: active ? 600 : 400;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> enabled: true;
+    in property <bool> danger;
+    callback clicked;
+    height: 36px;
+    horizontal-stretch: 0;
+    width: max(110px, pl.preferred-width);
+    border-radius: Theme.radius-small;
+    background: !enabled ? #9fb4cf : danger ? (touch.has-hover ? #a8262e : Theme.negative) : (touch.has-hover ? Theme.accent-hover : Theme.accent);
+    animate background { duration: 120ms; }
+    pl := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        alignment: center;
+        if icon != "": Icon {
+            name: icon;
+            color: #ffffff;
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: root.text;
+            color: #ffffff;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component GhostButton inherits Rectangle {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 34px;
+    horizontal-stretch: 0;
+    width: max(34px, gl.preferred-width);
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: touch.has-hover ? Theme.row-hover : Theme.card-bg;
+    opacity: enabled ? 1 : 0.5;
+    gl := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        alignment: center;
+        if icon != "": Icon {
+            name: icon;
+            color: Theme.accent;
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <color> tint: Theme.accent;
+    in property <bool> selected;
+    callback clicked;
+    height: 24px;
+    width: label.preferred-width + 20px;
+    border-radius: 12px;
+    background: selected ? tint : tint.with-alpha(0.12);
+    label := Text {
+        text: root.text;
+        font-size: Theme.font-small;
+        color: selected ? #ffffff : root.tint.darker(0.25);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Avatar inherits Rectangle {
+    in property <string> text;
+    in property <color> tint;
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: tint.with-alpha(0.15);
+    Text {
+        text: root.text;
+        color: tint.darker(0.3);
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component LabeledField inherits VerticalLayout {
+    in property <string> label;
+    in property <string> placeholder;
+    in property <string> hint;
+    in property <bool> error;
+    in property <InputType> input-type: InputType.text;
+    in-out property <string> text;
+    callback edited(string);
+    spacing: 4px;
+    Text {
+        text: label;
+        font-size: Theme.font-small;
+        color: Theme.text-muted;
+        font-weight: 600;
+    }
+    LineEdit {
+        text <=> root.text;
+        placeholder-text: placeholder;
+        input-type: root.input-type;
+        edited(t) => { root.edited(t); }
+    }
+    Text {
+        text: hint;
+        height: 14px;
+        font-size: 11px;
+        color: error ? Theme.negative : Theme.text-faint;
+        wrap: word-wrap;
+    }
+}
+
+export component SegmentedControl inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> selected;
+    callback changed(int);
+    height: 34px;
+    border-radius: Theme.radius-small;
+    background: #e9eef5;
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 3px;
+        for o[i] in options: Rectangle {
+            border-radius: 5px;
+            background: i == selected ? Theme.card-bg : transparent;
+            drop-shadow-blur: i == selected ? 3px : 0;
+            drop-shadow-color: #0000001a;
+            Text {
+                text: o;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: i == selected ? Theme.text : Theme.text-muted;
+                font-weight: i == selected ? 600 : 400;
+                font-size: 13px;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.selected = i;
+                    root.changed(i);
+                }
+            }
+        }
+    }
+}
+
+export component Separator inherits Rectangle {
+    height: 1px;
+    background: Theme.card-border;
+}

@@ -1,0 +1,262 @@
+import { LineEdit, ScrollView, Spinner } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Icon, Icons, PrimaryButton, GhostButton } from "widgets.slint";
+
+component Modal inherits Rectangle {
+    in property <length> dialog-width: 460px;
+    background: #0b1424a0;
+    TouchArea { }
+    Rectangle {
+        width: dialog-width;
+        height: content.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: max(20px, (parent.height - self.height) / 2);
+        background: Theme.card-bg;
+        border-radius: 14px;
+        drop-shadow-blur: 30px;
+        drop-shadow-color: #0000004d;
+        content := VerticalLayout {
+            padding: 24px;
+            spacing: 14px;
+            @children
+        }
+    }
+}
+
+export component PinDialog inherits Modal {
+    VerticalLayout {
+        spacing: 6px;
+        Text { text: "PIN-Eingabe"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Text { text: AppState.pin-title; color: Theme.text-muted; wrap: word-wrap; }
+    }
+    pin := LineEdit {
+        input-type: password;
+        placeholder-text: "PIN";
+        text <=> AppState.pin-value;
+        accepted => { AppState.pin-ok(); }
+    }
+    Text {
+        text: "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten.";
+        font-size: 11px;
+        color: Theme.text-faint;
+    }
+    HorizontalLayout {
+        alignment: end;
+        spacing: 10px;
+        GhostButton { text: "Abbrechen"; clicked => { AppState.pin-cancel(); } }
+        PrimaryButton { text: "OK"; clicked => { AppState.pin-ok(); } }
+    }
+    init => { pin.focus(); }
+}
+
+export component PinpadOverlay inherits Modal {
+    dialog-width: 420px;
+    HorizontalLayout {
+        spacing: 16px;
+        Rectangle {
+            width: 52px;
+            height: 52px;
+            border-radius: 26px;
+            background: Theme.accent-soft;
+            Icon { name: Icons.reader; color: Theme.accent; width: 28px; height: 28px; }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+            Text { text: "Bitte am Kartenleser bestätigen"; font-size: 16px; font-weight: 700; color: Theme.text; }
+            Text { text: AppState.pinpad-text; wrap: word-wrap; color: Theme.text-muted; }
+        }
+    }
+}
+
+export component TanDialog inherits Modal {
+    dialog-width: 560px;
+    Text { text: AppState.tan-title; font-size: 18px; font-weight: 700; color: Theme.text; }
+    ScrollView {
+        height: min(170px, challenge.preferred-height + 8px);
+        challenge := Text {
+            text: AppState.tan-text;
+            wrap: word-wrap;
+            color: Theme.text;
+            width: 500px;
+        }
+    }
+    // chipTAN optical flicker code
+    if AppState.tan-kind == 1: VerticalLayout {
+        spacing: 10px;
+        alignment: center;
+        Rectangle {
+            height: AppState.flicker-width * 0.42 + 26px;
+            background: #000000;
+            border-radius: 8px;
+            Rectangle {
+                width: AppState.flicker-width;
+                height: AppState.flicker-width * 0.42;
+                // alignment triangles for the generator
+                Path {
+                    x: parent.width * 0.1 - 8px;
+                    y: -16px;
+                    width: 16px;
+                    height: 12px;
+                    commands: "M0 0 L16 0 L8 12 Z";
+                    fill: #ffffff;
+                }
+                Path {
+                    x: parent.width * 0.9 - 8px;
+                    y: -16px;
+                    width: 16px;
+                    height: 12px;
+                    commands: "M0 0 L16 0 L8 12 Z";
+                    fill: #ffffff;
+                }
+                HorizontalLayout {
+                    spacing: AppState.flicker-width * 0.04;
+                    Rectangle { background: AppState.flick0 ? #ffffff : #000000; }
+                    Rectangle { background: AppState.flick1 ? #ffffff : #000000; }
+                    Rectangle { background: AppState.flick2 ? #ffffff : #000000; }
+                    Rectangle { background: AppState.flick3 ? #ffffff : #000000; }
+                    Rectangle { background: AppState.flick4 ? #ffffff : #000000; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: center;
+            GhostButton { text: "Langsamer"; clicked => { AppState.flicker-speed(-2); } }
+            GhostButton { text: "Schneller"; clicked => { AppState.flicker-speed(2); } }
+            GhostButton { text: "Kleiner"; clicked => { AppState.flicker-width = max(160px, AppState.flicker-width - 20px); } }
+            GhostButton { text: "Größer"; clicked => { AppState.flicker-width = min(480px, AppState.flicker-width + 20px); } }
+        }
+        Text {
+            text: "Karte in den TAN-Generator stecken, „F“ drücken und das Gerät an die Markierungen halten (" + AppState.flicker-hz + " Hz).";
+            font-size: 12px;
+            color: Theme.text-muted;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    if AppState.tan-kind == 2: HorizontalLayout {
+        alignment: center;
+        Image {
+            source: AppState.tan-image;
+            width: 240px;
+            height: 240px;
+            image-fit: contain;
+            image-rendering: pixelated;
+        }
+    }
+    if AppState.tan-usb-possible: Rectangle {
+        height: 54px;
+        border-radius: 8px;
+        background: Theme.accent-soft;
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 8px;
+            spacing: 12px;
+            Icon { name: Icons.reader; color: Theme.accent; y: (parent.height - self.height) / 2; }
+            Text {
+                text: "TAN mit chipTAN-USB-Leser erzeugen (Daten am Leser-Display prüfen)";
+                vertical-alignment: center;
+                wrap: word-wrap;
+                color: Theme.text;
+                font-size: 13px;
+            }
+            PrimaryButton {
+                text: "Am Leser";
+                y: 9px;
+                clicked => { AppState.tan-usb(); }
+            }
+        }
+    }
+    if AppState.tan-kind == 3: Rectangle {
+        height: 60px;
+        border-radius: 8px;
+        background: #eef6ff;
+        Text {
+            text: "Bitte geben Sie den Auftrag in Ihrer Banking-App frei\nund klicken Sie anschließend auf „Freigegeben“.";
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: Theme.text;
+        }
+    }
+    if AppState.tan-kind != 3: tan := LineEdit {
+        placeholder-text: "TAN";
+        text <=> AppState.tan-value;
+        accepted => { AppState.tan-ok(); }
+    }
+    HorizontalLayout {
+        alignment: end;
+        spacing: 10px;
+        GhostButton { text: "Abbrechen"; clicked => { AppState.tan-cancel(); } }
+        if AppState.tan-kind == 3: PrimaryButton { text: "Freigegeben"; icon: Icons.check; clicked => { AppState.tan-confirmed(); } }
+        if AppState.tan-kind != 3: PrimaryButton { text: "TAN senden"; icon: Icons.check; clicked => { AppState.tan-ok(); } }
+    }
+}
+
+export component ChoiceDialog inherits Modal {
+    Text { text: AppState.choice-title; font-size: 18px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+    for c in AppState.choices: Rectangle {
+        height: 54px;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: ta.has-hover ? Theme.accent : Theme.card-border;
+        background: ta.has-hover ? Theme.accent-soft : Theme.card-bg;
+        VerticalLayout {
+            padding-left: 14px;
+            alignment: center;
+            Text { text: c.title; font-weight: 600; color: Theme.text; }
+            if c.subtitle != "": Text { text: c.subtitle; font-size: 12px; color: Theme.text-muted; }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { AppState.choice-picked(c.key); }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        GhostButton { text: "Abbrechen"; clicked => { AppState.choice-cancel(); } }
+    }
+}
+
+export component ConfirmDialog inherits Modal {
+    Text { text: AppState.confirm-title; font-size: 18px; font-weight: 700; color: Theme.text; }
+    Text { text: AppState.confirm-text; wrap: word-wrap; color: Theme.text-muted; }
+    HorizontalLayout {
+        alignment: end;
+        spacing: 10px;
+        GhostButton { text: "Abbrechen"; clicked => { AppState.confirm-cancel(); } }
+        PrimaryButton { text: AppState.confirm-danger ? "Löschen" : "Ausführen"; danger: AppState.confirm-danger; clicked => { AppState.confirm-ok(); } }
+    }
+}
+
+export component BusyOverlay inherits Rectangle {
+    background: #0b142460;
+    TouchArea { }
+    Rectangle {
+        width: 380px;
+        height: 84px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.card-bg;
+        border-radius: 12px;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: #00000040;
+        HorizontalLayout {
+            padding: 20px;
+            spacing: 16px;
+            Spinner {
+                width: 30px;
+                height: 30px;
+                y: 7px;
+                indeterminate: true;
+            }
+            Text {
+                text: AppState.busy-text;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                color: Theme.text;
+            }
+        }
+    }
+}

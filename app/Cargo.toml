@@ -1,0 +1,31 @@
+[package]
+name = "kontor"
+description = "Kontor – Online-Banking für Windows, Linux und macOS (FinTS/HBCI, chipTAN USB, HBCI-Chipkarte)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+fints = { path = "../crates/fints" }
+cardreader = { path = "../crates/cardreader" }
+slint = "1.18"
+chrono.workspace = true
+serde.workspace = true
+rust_decimal.workspace = true
+log.workspace = true
+serde_json = "1"
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+directories = "5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
+env_logger = "0.11"
+zeroize = "1"
+
+[build-dependencies]
+slint-build = "1.18"
+
+[package.metadata.bundle]
+name = "Kontor"
+identifier = "de.appcreation.kontor"

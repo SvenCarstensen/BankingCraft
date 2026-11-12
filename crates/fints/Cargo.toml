@@ -1,0 +1,20 @@
+[package]
+name = "fints"
+description = "FinTS 3.0 (HBCI) client: PIN/TAN incl. PSD2 SCA and HBCI chip card (DDV) security"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+chrono.workspace = true
+serde.workspace = true
+log.workspace = true
+rust_decimal.workspace = true
+base64 = "0.22"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+rand = "0.8"
+roxmltree = "0.20"
+des = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+ripemd = "0.1"

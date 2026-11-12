@@ -1,0 +1,12 @@
+[package]
+name = "cardreader"
+description = "PC/SC smart card access: HBCI chip card (DDV) and chipTAN USB, tuned for REINER SCT cyberJack readers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fints = { path = "../fints" }
+pcsc = "2.9"
+log.workspace = true
+thiserror.workspace = true

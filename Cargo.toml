@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/fints", "crates/cardreader", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["AppCreation GmbH"]
+
+[workspace.dependencies]
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

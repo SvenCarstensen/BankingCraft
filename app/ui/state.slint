@@ -1,0 +1,160 @@
+import { AccountRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, Toast } from "types.slint";
+
+export global AppState {
+    // ---- vault / shell
+    in-out property <bool> unlocked;
+    in-out property <bool> first-run;
+    in-out property <string> unlock-error;
+    in-out property <int> page;
+    in-out property <bool> busy;
+    in-out property <string> busy-text;
+    in-out property <Toast> toast;
+    in-out property <string> last-sync;
+
+    // ---- overview
+    in-out property <string> total-balance;
+    in-out property <bool> total-negative;
+    in-out property <string> month-label;
+    in-out property <string> month-income;
+    in-out property <string> month-expense;
+    in-out property <[AccountRow]> accounts;
+    in-out property <[string]> account-names;
+    in-out property <[TxRow]> recent;
+    in-out property <[BarStat]> category-stats;
+    in-out property <[MonthStat]> months;
+    in-out property <[StandingRow]> upcoming;
+
+    // ---- transactions
+    in-out property <[TxRow]> tx-rows;
+    in-out property <int> tx-account;
+    in-out property <string> tx-search;
+    in-out property <string> tx-category;
+    in-out property <int> tx-period: 2;
+    in-out property <string> tx-summary;
+    in-out property <TxDetail> tx-detail;
+    in-out property <[string]> categories;
+    in-out property <[color]> category-colors;
+
+    // ---- payments
+    in-out property <[string]> sepa-accounts;
+    in-out property <int> tf-account;
+    in-out property <string> tf-name;
+    in-out property <string> tf-iban;
+    in-out property <string> tf-bic;
+    in-out property <string> tf-amount;
+    in-out property <string> tf-purpose;
+    in-out property <int> tf-mode;
+    in-out property <string> tf-date;
+    in-out property <string> tf-iban-hint;
+    in-out property <bool> tf-iban-error;
+    in-out property <int> so-interval;
+    in-out property <string> so-first;
+    in-out property <string> so-day: "1";
+    in-out property <string> so-last;
+    in-out property <[StandingRow]> standing;
+
+    // ---- analysis
+    in-out property <[BarStat]> analysis-categories;
+    in-out property <[BarStat]> analysis-income;
+    in-out property <[MonthStat]> analysis-months;
+    in-out property <string> analysis-label;
+    in-out property <int> analysis-offset;
+
+    // ---- bank accesses
+    in-out property <[AccessRow]> accesses;
+    in-out property <bool> af-open;
+    in-out property <int> af-kind;
+    in-out property <string> af-name;
+    in-out property <string> af-blz;
+    in-out property <string> af-user;
+    in-out property <string> af-customer;
+    in-out property <string> af-url;
+    in-out property <int> af-reader;
+    in-out property <string> af-record: "1";
+
+    // ---- card reader
+    in-out property <[string]> reader-names;
+    in-out property <[string]> reader-report;
+    in-out property <bool> cyberjack-found;
+    in-out property <int> tan-reader;
+
+    // ---- settings
+    in-out property <string> product-id;
+    in-out property <string> product-version;
+    in-out property <string> data-path;
+    in-out property <string> old-password;
+    in-out property <string> new-password;
+
+    // ---- dialogs
+    in-out property <bool> show-pin;
+    in-out property <string> pin-title;
+    in-out property <string> pin-value;
+    in-out property <bool> show-pinpad;
+    in-out property <string> pinpad-text;
+
+    in-out property <bool> show-tan;
+    in-out property <string> tan-title;
+    in-out property <string> tan-text;
+    // 0 = text/SMS, 1 = chipTAN optical, 2 = photo/QR, 3 = decoupled (app)
+    in-out property <int> tan-kind;
+    in-out property <string> tan-value;
+    in-out property <image> tan-image;
+    in-out property <bool> tan-usb-possible;
+    in-out property <bool> flick0;
+    in-out property <bool> flick1;
+    in-out property <bool> flick2;
+    in-out property <bool> flick3;
+    in-out property <bool> flick4;
+    in-out property <length> flicker-width: 260px;
+    in-out property <int> flicker-hz: 15;
+
+    in-out property <bool> show-choice;
+    in-out property <string> choice-title;
+    in-out property <[ChoiceRow]> choices;
+
+    in-out property <bool> show-confirm;
+    in-out property <string> confirm-title;
+    in-out property <string> confirm-text;
+    in-out property <bool> confirm-danger;
+
+    // ---- callbacks
+    callback unlock(string);
+    callback create-vault(string, string);
+    callback navigate(int);
+    callback refresh-all();
+    callback open-account(int);
+    callback tx-filter-changed();
+    callback tx-select(int);
+    callback set-category(int, string);
+    callback export-csv();
+    callback export-camt();
+    callback check-iban(string);
+    callback send-transfer();
+    callback send-standing();
+    callback fetch-standing();
+    callback delete-standing(int);
+    callback new-access();
+    callback save-access();
+    callback delete-access(int);
+    callback sync-access(int);
+    callback reset-tan(int);
+    callback read-card();
+    callback reader-refresh();
+    callback reader-diagnose();
+    callback save-settings();
+    callback load-demo();
+    callback change-password();
+    callback analysis-shift(int);
+    callback pin-ok();
+    callback pin-cancel();
+    callback tan-ok();
+    callback tan-cancel();
+    callback tan-confirmed();
+    callback tan-usb();
+    callback flicker-speed(int);
+    callback choice-picked(string);
+    callback choice-cancel();
+    callback confirm-ok();
+    callback confirm-cancel();
+    callback toast-close();
+}

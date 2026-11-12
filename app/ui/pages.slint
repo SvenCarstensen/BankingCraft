@@ -1,0 +1,1316 @@
+import { ScrollView, ListView, LineEdit, ComboBox, CheckBox, TextEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { TxRow, BarStat, MonthStat } from "types.slint";
+import { Icon, Icons, Card, CardHeader, PrimaryButton, GhostButton, Chip, Avatar, LabeledField, SegmentedControl, Separator } from "widgets.slint";
+
+// ------------------------------------------------------------------ shared pieces
+
+component TxLine inherits Rectangle {
+    in property <TxRow> item;
+    in property <bool> selected;
+    in property <bool> compact;
+    callback clicked;
+    height: item.is-header ? 34px : (compact ? 48px : 56px);
+    background: item.is-header ? Theme.header-bg : selected ? Theme.row-selected : touch.has-hover ? Theme.row-hover : item.pending ? Theme.pending-bg : transparent;
+    if item.is-header: HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: item.date-label;
+            font-weight: 650;
+            font-size: Theme.font-small;
+            color: Theme.text-muted;
+            vertical-alignment: center;
+        }
+        Text {
+            text: item.day-balance;
+            font-size: Theme.font-small;
+            color: Theme.text-muted;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+    if !item.is-header: HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        Avatar {
+            text: item.initial;
+            tint: item.cat-color;
+            y: (parent.height - self.height) / 2;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: item.name;
+                    font-weight: 600;
+                    color: Theme.text;
+                    overflow: elide;
+                }
+                if item.pending: Rectangle {
+                    width: 70px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: #ffe7b8;
+                    Text {
+                        text: "vorgemerkt";
+                        font-size: 11px;
+                        color: Theme.warning;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Text {
+                text: compact ? item.purpose : item.purpose + (item.account != "" ? "  ·  " + item.account : "");
+                font-size: Theme.font-small;
+                color: Theme.text-muted;
+                overflow: elide;
+            }
+        }
+        if !compact: Rectangle {
+            width: 120px;
+            Chip {
+                text: item.category;
+                tint: item.cat-color;
+                x: parent.width - self.width;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+        Text {
+            width: 110px;
+            text: item.amount;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            font-weight: 650;
+            color: item.negative ? Theme.negative : Theme.positive;
+        }
+    }
+    if !item.is-header: Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.card-border.with-alpha(0.6);
+    }
+    touch := TouchArea {
+        enabled: !item.is-header;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component BarList inherits VerticalLayout {
+    in property <[BarStat]> stats;
+    spacing: 10px;
+    for s in stats: VerticalLayout {
+        spacing: 4px;
+        HorizontalLayout {
+            Text {
+                text: s.label;
+                font-size: 13px;
+                color: Theme.text;
+            }
+            Text {
+                text: s.value;
+                font-size: 13px;
+                font-weight: 600;
+                horizontal-alignment: right;
+                color: Theme.text;
+            }
+        }
+        Rectangle {
+            height: 8px;
+            border-radius: 4px;
+            background: #edf1f6;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0.02, s.ratio);
+                height: parent.height;
+                border-radius: 4px;
+                background: s.color;
+            }
+        }
+    }
+    if stats.length == 0: Text {
+        text: "Noch keine Daten in diesem Zeitraum.";
+        color: Theme.text-faint;
+        font-size: 13px;
+    }
+}
+
+component MonthChart inherits VerticalLayout {
+    in property <[MonthStat]> months;
+    spacing: 8px;
+    HorizontalLayout {
+        spacing: 14px;
+        Rectangle {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: Theme.positive;
+            y: 3px;
+        }
+        Text {
+            text: "Einnahmen";
+            font-size: 12px;
+            color: Theme.text-muted;
+        }
+        Rectangle {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: Theme.negative;
+            y: 3px;
+        }
+        Text {
+            text: "Ausgaben";
+            font-size: 12px;
+            color: Theme.text-muted;
+        }
+        Rectangle { }
+    }
+    HorizontalLayout {
+        height: 170px;
+        spacing: 10px;
+        for m in months: VerticalLayout {
+            spacing: 4px;
+            Rectangle {
+                vertical-stretch: 1;
+                HorizontalLayout {
+                    spacing: 3px;
+                    alignment: center;
+                    Rectangle {
+                        width: 14px;
+                        Rectangle {
+                            y: parent.height - self.height;
+                            height: parent.height * max(0.01, m.income);
+                            border-radius: 3px;
+                            background: Theme.positive;
+                        }
+                    }
+                    Rectangle {
+                        width: 14px;
+                        Rectangle {
+                            y: parent.height - self.height;
+                            height: parent.height * max(0.01, m.expense);
+                            border-radius: 3px;
+                            background: Theme.negative;
+                        }
+                    }
+                }
+                ta := TouchArea { }
+                if ta.has-hover: Rectangle {
+                    y: 0;
+                    height: 40px;
+                    width: 120px;
+                    x: (parent.width - self.width) / 2;
+                    background: Theme.text;
+                    border-radius: 6px;
+                    VerticalLayout {
+                        padding: 5px;
+                        Text {
+                            text: "+ " + m.income-text;
+                            color: #ffffff;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "− " + m.expense-text;
+                            color: #ffffff;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+            Text {
+                text: m.label;
+                font-size: 11px;
+                color: Theme.text-muted;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}
+
+component PageTitle inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    spacing: 10px;
+    VerticalLayout {
+        alignment: start;
+        Text {
+            text: title;
+            font-size: 24px;
+            font-weight: 700;
+            color: Theme.text;
+        }
+        if subtitle != "": Text {
+            text: subtitle;
+            color: Theme.text-muted;
+            font-size: 13px;
+        }
+    }
+    @children
+}
+
+// ------------------------------------------------------------------ overview
+
+export component OverviewPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        PageTitle {
+            title: "Finanzübersicht";
+            subtitle: AppState.last-sync;
+        }
+        HorizontalLayout {
+            spacing: 18px;
+            // total balance tile
+            Card {
+                horizontal-stretch: 2;
+                min-height: 230px;
+                background: @linear-gradient(135deg, #1e6fd9 0%, #13233a 100%);
+                border-width: 0;
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 6px;
+                    Text {
+                        text: "Gesamtsaldo aller Konten";
+                        color: #c9d9f2;
+                        font-size: 13px;
+                    }
+                    Text {
+                        text: AppState.total-balance;
+                        color: #ffffff;
+                        font-size: Theme.font-huge;
+                        font-weight: 700;
+                    }
+                    Rectangle { height: 14px; }
+                    Text {
+                        text: AppState.month-label;
+                        color: #c9d9f2;
+                        font-size: 12px;
+                    }
+                    HorizontalLayout {
+                        spacing: 28px;
+                        VerticalLayout {
+                            Text {
+                                text: "Einnahmen";
+                                color: #a8c2e8;
+                                font-size: 12px;
+                            }
+                            Text {
+                                text: AppState.month-income;
+                                color: #7ff0b0;
+                                font-size: 18px;
+                                font-weight: 650;
+                            }
+                        }
+                        VerticalLayout {
+                            Text {
+                                text: "Ausgaben";
+                                color: #a8c2e8;
+                                font-size: 12px;
+                            }
+                            Text {
+                                text: AppState.month-expense;
+                                color: #ffb3b8;
+                                font-size: 18px;
+                                font-weight: 650;
+                            }
+                        }
+                        Rectangle { }
+                    }
+                    Rectangle { vertical-stretch: 1; }
+                    HorizontalLayout {
+                        alignment: start;
+                        Rectangle {
+                            height: 32px;
+                            width: rt.preferred-width + 28px;
+                            border-radius: 16px;
+                            background: rta.has-hover ? #ffffff33 : #ffffff22;
+                            rt := Text {
+                                text: "Kontenrundruf starten";
+                                color: #ffffff;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            rta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { AppState.refresh-all(); }
+                            }
+                        }
+                    }
+                }
+            }
+            // accounts tile
+            Card {
+                horizontal-stretch: 3;
+                VerticalLayout {
+                    padding: 18px;
+                    spacing: 4px;
+                    CardHeader {
+                        title: "Konten";
+                        subtitle: AppState.accounts.length + " Konten";
+                        GhostButton {
+                            text: "Alle anzeigen";
+                            clicked => { AppState.navigate(1); }
+                        }
+                    }
+                    for a in AppState.accounts: Rectangle {
+                        height: 46px;
+                        border-radius: 6px;
+                        background: at.has-hover ? Theme.row-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            spacing: 12px;
+                            Rectangle {
+                                width: 4px;
+                                height: 28px;
+                                y: 9px;
+                                border-radius: 2px;
+                                background: a.color;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: a.name;
+                                    font-weight: 600;
+                                    color: Theme.text;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: a.bank + "  ·  " + a.iban;
+                                    font-size: 12px;
+                                    color: Theme.text-muted;
+                                    overflow: elide;
+                                }
+                            }
+                            Text {
+                                text: a.balance;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                                font-weight: 650;
+                                color: a.negative ? Theme.negative : Theme.text;
+                            }
+                        }
+                        at := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { AppState.open-account(a.id); }
+                        }
+                    }
+                    if AppState.accounts.length == 0: VerticalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: "Noch kein Bankzugang eingerichtet.";
+                            color: Theme.text-muted;
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 10px;
+                            PrimaryButton {
+                                text: "Bankzugang einrichten";
+                                icon: Icons.plus;
+                                clicked => { AppState.navigate(6); AppState.new-access(); }
+                            }
+                            GhostButton {
+                                text: "Demo-Daten laden";
+                                clicked => { AppState.load-demo(); }
+                            }
+                        }
+                    }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 18px;
+            Card {
+                horizontal-stretch: 3;
+                VerticalLayout {
+                    padding-top: 18px;
+                    padding-bottom: 8px;
+                    CardHeader {
+                        padding-left: 18px;
+                        padding-right: 18px;
+                        title: "Letzte Umsätze";
+                        GhostButton {
+                            text: "Umsatzliste";
+                            clicked => { AppState.navigate(2); }
+                        }
+                    }
+                    for r in AppState.recent: TxLine {
+                        item: r;
+                        compact: true;
+                        clicked => { AppState.navigate(2); AppState.tx-select(r.index); }
+                    }
+                    if AppState.recent.length == 0: Text {
+                        x: 18px;
+                        text: "Keine Umsätze vorhanden.";
+                        color: Theme.text-faint;
+                    }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+            Card {
+                horizontal-stretch: 2;
+                VerticalLayout {
+                    padding: 18px;
+                    CardHeader {
+                        title: "Ausgaben nach Kategorie";
+                        subtitle: AppState.month-label;
+                    }
+                    BarList { stats: AppState.category-stats; }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 18px;
+            Card {
+                horizontal-stretch: 3;
+                VerticalLayout {
+                    padding: 18px;
+                    CardHeader {
+                        title: "Einnahmen & Ausgaben";
+                        subtitle: "Letzte 6 Monate, alle Konten";
+                    }
+                    MonthChart { months: AppState.months; }
+                }
+            }
+            Card {
+                horizontal-stretch: 2;
+                VerticalLayout {
+                    padding: 18px;
+                    spacing: 6px;
+                    CardHeader {
+                        title: "Anstehende Daueraufträge";
+                        GhostButton {
+                            text: "Verwalten";
+                            clicked => { AppState.navigate(4); }
+                        }
+                    }
+                    for s in AppState.upcoming: HorizontalLayout {
+                        height: 40px;
+                        spacing: 10px;
+                        Icon {
+                            name: Icons.repeat;
+                            color: Theme.accent;
+                            y: 10px;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: s.name;
+                                font-weight: 600;
+                                overflow: elide;
+                                color: Theme.text;
+                            }
+                            Text {
+                                text: s.next;
+                                font-size: 12px;
+                                color: Theme.text-muted;
+                            }
+                        }
+                        Text {
+                            text: s.amount;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                            color: Theme.negative;
+                            font-weight: 600;
+                        }
+                    }
+                    if AppState.upcoming.length == 0: Text {
+                        text: "Keine Daueraufträge bekannt. Unter Zahlungsverkehr → Daueraufträge abrufen.";
+                        wrap: word-wrap;
+                        color: Theme.text-faint;
+                        font-size: 13px;
+                    }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ accounts
+
+export component AccountsPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        PageTitle {
+            title: "Konten";
+            subtitle: "Alle Konten Ihrer Bankzugänge";
+            Rectangle { }
+            PrimaryButton {
+                text: "Kontenrundruf";
+                icon: Icons.refresh;
+                clicked => { AppState.refresh-all(); }
+            }
+        }
+        Card {
+            VerticalLayout {
+                Rectangle {
+                    height: 38px;
+                    background: Theme.header-bg;
+                    border-radius: Theme.radius;
+                    HorizontalLayout {
+                        padding-left: 22px;
+                        padding-right: 18px;
+                        spacing: 12px;
+                        Text { text: "Konto"; horizontal-stretch: 3; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "IBAN"; horizontal-stretch: 3; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "Inhaber"; horizontal-stretch: 2; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "Verfügbar"; width: 120px; horizontal-alignment: right; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "Saldo"; width: 130px; horizontal-alignment: right; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                    }
+                }
+                for a in AppState.accounts: Rectangle {
+                    height: 60px;
+                    background: ta.has-hover ? Theme.row-hover : transparent;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 18px;
+                        spacing: 12px;
+                        Rectangle {
+                            width: 4px;
+                            height: 34px;
+                            y: 13px;
+                            border-radius: 2px;
+                            background: a.color;
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 3;
+                            alignment: center;
+                            Text { text: a.name; font-weight: 600; color: Theme.text; overflow: elide; }
+                            Text { text: a.bank + "  ·  " + a.kind + "  ·  " + a.last-sync; font-size: 12px; color: Theme.text-muted; overflow: elide; }
+                        }
+                        Text { text: a.iban; horizontal-stretch: 3; vertical-alignment: center; color: Theme.text; font-size: 13px; }
+                        Text { text: a.owner; horizontal-stretch: 2; vertical-alignment: center; color: Theme.text-muted; font-size: 13px; overflow: elide; }
+                        Text { text: a.available; width: 120px; horizontal-alignment: right; vertical-alignment: center; color: Theme.text-muted; }
+                        Text { text: a.balance; width: 130px; horizontal-alignment: right; vertical-alignment: center; font-weight: 700; color: a.negative ? Theme.negative : Theme.text; }
+                    }
+                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.card-border; }
+                    ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { AppState.open-account(a.id); }
+                    }
+                }
+                if AppState.accounts.length == 0: Text {
+                    text: "Keine Konten. Richten Sie unter „Bankzugänge“ einen Zugang ein.";
+                    color: Theme.text-muted;
+                    x: 22px;
+                    height: 60px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+component DetailLine inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    visible: value != "";
+    height: value != "" ? self.preferred-height : 0;
+    spacing: 2px;
+    Text {
+        text: label;
+        font-size: 11px;
+        color: Theme.text-faint;
+    }
+    Text {
+        text: value;
+        font-size: 13px;
+        wrap: word-wrap;
+        color: Theme.text;
+    }
+}
+
+// ------------------------------------------------------------------ transactions
+
+export component TransactionsPage inherits Rectangle {
+    property <[string]> periods: ["30 Tage", "90 Tage", "Dieses Jahr", "Alle"];
+    VerticalLayout {
+        padding: 24px;
+        spacing: 14px;
+        PageTitle {
+            title: "Umsätze";
+            subtitle: AppState.tx-summary;
+            Rectangle { }
+            GhostButton {
+                text: "CSV";
+                icon: Icons.download;
+                clicked => { AppState.export-csv(); }
+            }
+            GhostButton {
+                text: "camt.052";
+                icon: Icons.download;
+                clicked => { AppState.export-camt(); }
+            }
+            PrimaryButton {
+                text: "Aktualisieren";
+                icon: Icons.refresh;
+                clicked => { AppState.refresh-all(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            ComboBox {
+                width: 260px;
+                model: AppState.account-names;
+                current-index <=> AppState.tx-account;
+                selected => { AppState.tx-filter-changed(); }
+            }
+            SegmentedControl {
+                width: 360px;
+                options: periods;
+                selected <=> AppState.tx-period;
+                changed => { AppState.tx-filter-changed(); }
+            }
+            LineEdit {
+                placeholder-text: "Suche nach Name, Zweck, IBAN oder Betrag …";
+                text <=> AppState.tx-search;
+                edited => { AppState.tx-filter-changed(); }
+            }
+        }
+        Flickable {
+            height: 26px;
+            content-width: chips.preferred-width;
+            interactive: true;
+            chips := HorizontalLayout {
+                spacing: 6px;
+            Chip {
+                text: "Alle Kategorien";
+                tint: Theme.accent;
+                selected: AppState.tx-category == "";
+                clicked => { AppState.tx-category = ""; AppState.tx-filter-changed(); }
+            }
+            for c[i] in AppState.categories: Chip {
+                text: c;
+                tint: AppState.category-colors[i];
+                selected: AppState.tx-category == c;
+                clicked => {
+                    AppState.tx-category = AppState.tx-category == c ? "" : c;
+                    AppState.tx-filter-changed();
+                }
+            }
+            }
+        }
+        HorizontalLayout {
+            spacing: 18px;
+            vertical-stretch: 1;
+            Card {
+                horizontal-stretch: 1;
+                clip: true;
+                ListView {
+                    for r in AppState.tx-rows: TxLine {
+                        item: r;
+                        selected: AppState.tx-detail.valid && AppState.tx-detail.index == r.index && !r.is-header;
+                        clicked => { AppState.tx-select(r.index); }
+                    }
+                }
+                if AppState.tx-rows.length == 0: Text {
+                    text: "Keine Umsätze für diese Auswahl.";
+                    color: Theme.text-faint;
+                }
+            }
+            Card {
+                width: 340px;
+                if !AppState.tx-detail.valid: VerticalLayout {
+                    alignment: center;
+                    padding: 24px;
+                    Text {
+                        text: "Wählen Sie einen Umsatz aus, um Details zu sehen und die Kategorie zu ändern.";
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        color: Theme.text-faint;
+                    }
+                }
+                if AppState.tx-detail.valid: ScrollView {
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        Text {
+                            text: AppState.tx-detail.amount;
+                            font-size: 28px;
+                            font-weight: 700;
+                            color: AppState.tx-detail.negative ? Theme.negative : Theme.positive;
+                        }
+                        Text {
+                            text: AppState.tx-detail.name;
+                            font-size: 16px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                            color: Theme.text;
+                        }
+                        if AppState.tx-detail.pending: Text {
+                            text: "Vorgemerkter Umsatz – noch nicht gebucht";
+                            color: Theme.warning;
+                            font-size: 12px;
+                        }
+                        Separator { }
+                        DetailLine { label: "Konto"; value: AppState.tx-detail.account; }
+                        DetailLine { label: "Buchungstag"; value: AppState.tx-detail.booking-date; }
+                        DetailLine { label: "Wertstellung"; value: AppState.tx-detail.value-date; }
+                        DetailLine { label: "IBAN"; value: AppState.tx-detail.iban; }
+                        DetailLine { label: "BIC"; value: AppState.tx-detail.bic; }
+                        DetailLine { label: "Verwendungszweck"; value: AppState.tx-detail.purpose; }
+                        DetailLine { label: "Buchungstext"; value: AppState.tx-detail.posting-text; }
+                        DetailLine { label: "End-to-End-Referenz"; value: AppState.tx-detail.eref; }
+                        DetailLine { label: "Mandatsreferenz"; value: AppState.tx-detail.mref; }
+                        DetailLine { label: "Gläubiger-ID"; value: AppState.tx-detail.creditor-id; }
+                        Separator { }
+                        Text {
+                            text: "Kategorie";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Theme.text-muted;
+                        }
+                        ComboBox {
+                            model: AppState.categories;
+                            current-value: AppState.tx-detail.category;
+                            selected(v) => { AppState.set-category(AppState.tx-detail.index, v); }
+                        }
+                        Text {
+                            text: "Gleiche Gegenparteien werden künftig automatisch so kategorisiert.";
+                            font-size: 11px;
+                            wrap: word-wrap;
+                            color: Theme.text-faint;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ transfer
+
+export component TransferPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        alignment: start;
+        PageTitle {
+            title: "Überweisung";
+            subtitle: "SEPA-Überweisung, Echtzeitüberweisung oder Terminüberweisung";
+        }
+        HorizontalLayout {
+            spacing: 18px;
+            Card {
+                horizontal-stretch: 3;
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 14px;
+                    Text { text: "Auftraggeberkonto"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                    ComboBox {
+                        model: AppState.sepa-accounts;
+                        current-index <=> AppState.tf-account;
+                    }
+                    Separator { }
+                    LabeledField {
+                        label: "Empfänger";
+                        placeholder: "Name des Empfängers";
+                        text <=> AppState.tf-name;
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        LabeledField {
+                            horizontal-stretch: 3;
+                            label: "IBAN";
+                            placeholder: "DE00 0000 0000 0000 0000 00";
+                            text <=> AppState.tf-iban;
+                            hint: AppState.tf-iban-hint;
+                            error: AppState.tf-iban-error;
+                            edited(t) => { AppState.check-iban(t); }
+                        }
+                        LabeledField {
+                            width: 200px;
+                            label: "BIC (optional)";
+                            placeholder: "optional";
+                            text <=> AppState.tf-bic;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        LabeledField {
+                            width: 180px;
+                            label: "Betrag (EUR)";
+                            placeholder: "0,00";
+                            text <=> AppState.tf-amount;
+                        }
+                        LabeledField {
+                            label: "Verwendungszweck";
+                            placeholder: "max. 140 Zeichen";
+                            text <=> AppState.tf-purpose;
+                            hint: AppState.tf-purpose.character-count + " / 140";
+                            error: AppState.tf-purpose.character-count > 140;
+                        }
+                    }
+                    Text { text: "Ausführung"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        SegmentedControl {
+                            width: 420px;
+                            options: ["Standard", "Echtzeit", "Terminüberweisung"];
+                            selected <=> AppState.tf-mode;
+                        }
+                        if AppState.tf-mode == 2: LineEdit {
+                            width: 150px;
+                            placeholder-text: "TT.MM.JJJJ";
+                            text <=> AppState.tf-date;
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        padding-top: 6px;
+                        PrimaryButton {
+                            text: "Überweisung senden";
+                            icon: Icons.transfer;
+                            enabled: !AppState.busy;
+                            clicked => { AppState.send-transfer(); }
+                        }
+                    }
+                }
+            }
+            Card {
+                horizontal-stretch: 2;
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 12px;
+                    alignment: start;
+                    CardHeader { title: "So funktioniert die Freigabe"; }
+                    Text {
+                        wrap: word-wrap;
+                        color: Theme.text-muted;
+                        font-size: 13px;
+                        text: "Nach dem Senden fordert Ihre Bank eine Freigabe an. Je nach Verfahren erscheint ein Flickercode (chipTAN optisch), ein Farbcode (photoTAN/QR-TAN) oder Sie bestätigen in Ihrer Banking-App.";
+                    }
+                    Text {
+                        wrap: word-wrap;
+                        color: Theme.text-muted;
+                        font-size: 13px;
+                        text: "Mit einem chipTAN-USB-Leser wie dem REINER SCT cyberJack prüfen Sie Empfänger und Betrag auf dem Display des Lesers – die TAN wird direkt übernommen.";
+                    }
+                    Text {
+                        wrap: word-wrap;
+                        color: Theme.text-muted;
+                        font-size: 13px;
+                        text: "Bei der HBCI-Chipkarte signiert die Karte den Auftrag; die PIN geben Sie am Pinpad des Lesers ein.";
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ standing orders
+
+export component StandingPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        alignment: start;
+        PageTitle {
+            title: "Daueraufträge";
+            subtitle: "Bestand abrufen, neue Daueraufträge anlegen, bestehende löschen";
+            Rectangle { }
+            PrimaryButton {
+                text: "Bestand abrufen";
+                icon: Icons.refresh;
+                clicked => { AppState.fetch-standing(); }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding-top: 12px;
+                padding-bottom: 12px;
+                for s in AppState.standing: Rectangle {
+                    height: 62px;
+                    HorizontalLayout {
+                        padding-left: 18px;
+                        padding-right: 12px;
+                        spacing: 14px;
+                        Icon {
+                            name: Icons.repeat;
+                            color: Theme.accent;
+                            y: 21px;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 2;
+                            Text { text: s.name; font-weight: 600; color: Theme.text; overflow: elide; }
+                            Text { text: s.iban + "  ·  " + s.purpose; font-size: 12px; color: Theme.text-muted; overflow: elide; }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text { text: s.schedule; font-size: 13px; color: Theme.text; }
+                            Text { text: s.next + "  ·  " + s.account; font-size: 12px; color: Theme.text-muted; overflow: elide; }
+                        }
+                        Text { text: s.amount; width: 110px; horizontal-alignment: right; vertical-alignment: center; font-weight: 650; color: Theme.negative; }
+                        GhostButton {
+                            icon: Icons.trash;
+                            y: 14px;
+                            clicked => { AppState.delete-standing(s.index); }
+                        }
+                    }
+                    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.card-border; }
+                }
+                if AppState.standing.length == 0: Text {
+                    x: 18px;
+                    height: 40px;
+                    vertical-alignment: center;
+                    text: "Noch keine Daueraufträge geladen.";
+                    color: Theme.text-faint;
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                CardHeader { title: "Neuer Dauerauftrag"; subtitle: "Empfänger, Betrag und Zweck werden aus dem Überweisungsformular übernommen."; }
+                Text { text: "Auftraggeberkonto"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                ComboBox {
+                    model: AppState.sepa-accounts;
+                    current-index <=> AppState.tf-account;
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    LabeledField { label: "Empfänger"; text <=> AppState.tf-name; placeholder: "Name"; }
+                    LabeledField {
+                        label: "IBAN";
+                        text <=> AppState.tf-iban;
+                        placeholder: "DE…";
+                        hint: AppState.tf-iban-hint;
+                        error: AppState.tf-iban-error;
+                        edited(t) => { AppState.check-iban(t); }
+                    }
+                    LabeledField { width: 140px; label: "Betrag (EUR)"; text <=> AppState.tf-amount; placeholder: "0,00"; }
+                }
+                LabeledField { label: "Verwendungszweck"; text <=> AppState.tf-purpose; placeholder: "z. B. Miete"; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Turnus"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                        ComboBox {
+                            width: 200px;
+                            model: ["monatlich", "vierteljährlich", "halbjährlich", "jährlich", "wöchentlich"];
+                            current-index <=> AppState.so-interval;
+                        }
+                    }
+                    LabeledField { width: 150px; label: "Erste Ausführung"; text <=> AppState.so-first; placeholder: "TT.MM.JJJJ"; }
+                    LabeledField { width: 120px; label: "Ausführungstag"; text <=> AppState.so-day; placeholder: "1–31 / 99 = Ultimo"; }
+                    LabeledField { width: 150px; label: "Letzte Ausführung"; text <=> AppState.so-last; placeholder: "optional"; }
+                    Rectangle { }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton {
+                        text: "Dauerauftrag anlegen";
+                        icon: Icons.plus;
+                        enabled: !AppState.busy;
+                        clicked => { AppState.send-standing(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ analysis
+
+export component AnalysisPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        alignment: start;
+        PageTitle {
+            title: "Auswertungen";
+            subtitle: "Einnahmen und Ausgaben nach Kategorien";
+            Rectangle { }
+            GhostButton {
+                text: "‹";
+                clicked => { AppState.analysis-shift(-1); }
+            }
+            Text {
+                text: AppState.analysis-label;
+                vertical-alignment: center;
+                font-weight: 600;
+                min-width: 130px;
+                horizontal-alignment: center;
+                color: Theme.text;
+            }
+            GhostButton {
+                text: "›";
+                clicked => { AppState.analysis-shift(1); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 18px;
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    CardHeader { title: "Ausgaben"; subtitle: AppState.analysis-label; }
+                    BarList { stats: AppState.analysis-categories; }
+                }
+            }
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    CardHeader { title: "Einnahmen"; subtitle: AppState.analysis-label; }
+                    BarList { stats: AppState.analysis-income; }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                CardHeader { title: "Jahresverlauf"; subtitle: "12 Monate bis " + AppState.analysis-label; }
+                MonthChart { months: AppState.analysis-months; }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ bank accesses
+
+export component AccessesPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        alignment: start;
+        PageTitle {
+            title: "Bankzugänge";
+            subtitle: "FinTS PIN/TAN oder HBCI-Chipkarte";
+            Rectangle { }
+            PrimaryButton {
+                text: "Neuer Bankzugang";
+                icon: Icons.plus;
+                clicked => { AppState.new-access(); }
+            }
+        }
+        for a in AppState.accesses: Card {
+            HorizontalLayout {
+                padding: 18px;
+                spacing: 14px;
+                Rectangle {
+                    width: 42px;
+                    height: 42px;
+                    border-radius: 21px;
+                    background: Theme.accent-soft;
+                    Icon {
+                        name: a.kind == "HBCI-Chipkarte" ? Icons.reader : Icons.key;
+                        color: Theme.accent;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: a.name; font-weight: 650; font-size: 15px; color: Theme.text; }
+                    Text { text: a.kind + "  ·  " + a.detail; font-size: 12px; color: Theme.text-muted; }
+                    Text { text: "TAN-Verfahren: " + a.tan-method + "  ·  " + a.accounts + " Konten"; font-size: 12px; color: Theme.text-muted; }
+                }
+                Rectangle { }
+                GhostButton { text: "Synchronisieren"; icon: Icons.refresh; y: 12px; clicked => { AppState.sync-access(a.id); } }
+                if a.kind == "PIN/TAN": GhostButton { text: "TAN-Verfahren wählen"; y: 12px; clicked => { AppState.reset-tan(a.id); } }
+                GhostButton { icon: Icons.trash; y: 12px; clicked => { AppState.delete-access(a.id); } }
+            }
+        }
+        if AppState.af-open: Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                CardHeader { title: "Bankzugang einrichten"; }
+                SegmentedControl {
+                    width: 360px;
+                    options: ["PIN/TAN (FinTS)", "HBCI-Chipkarte"];
+                    selected <=> AppState.af-kind;
+                }
+                LabeledField { label: "Bezeichnung"; text <=> AppState.af-name; placeholder: "z. B. Förde Sparkasse – privat"; }
+                if AppState.af-kind == 0: VerticalLayout {
+                    spacing: 14px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        LabeledField { width: 160px; label: "Bankleitzahl"; text <=> AppState.af-blz; placeholder: "8 Ziffern"; }
+                        LabeledField { label: "Anmeldename / Benutzerkennung"; text <=> AppState.af-user; }
+                        LabeledField { label: "Kunden-ID (optional)"; text <=> AppState.af-customer; }
+                    }
+                    LabeledField {
+                        label: "FinTS-Server-URL";
+                        text <=> AppState.af-url;
+                        placeholder: "https://…";
+                        hint: "Die PIN/TAN-URL finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“ oder „HBCI“). Die PIN wird nicht gespeichert.";
+                    }
+                }
+                if AppState.af-kind == 1: VerticalLayout {
+                    spacing: 14px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Kartenleser"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                            ComboBox {
+                                width: 340px;
+                                model: AppState.reader-names;
+                                current-index <=> AppState.af-reader;
+                            }
+                        }
+                        LabeledField { width: 120px; label: "Karteneintrag"; text <=> AppState.af-record; placeholder: "1–5"; }
+                        VerticalLayout {
+                            alignment: end;
+                            padding-bottom: 18px;
+                            GhostButton { text: "Daten von Karte lesen"; icon: Icons.reader; clicked => { AppState.read-card(); } }
+                        }
+                        Rectangle { }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        LabeledField { width: 160px; label: "Bankleitzahl"; text <=> AppState.af-blz; }
+                        LabeledField { label: "Benutzerkennung"; text <=> AppState.af-user; }
+                        LabeledField { label: "Server (Host oder URL)"; text <=> AppState.af-url; hint: "Von der Karte gelesen; HBCI über TCP-Port 3000."; }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 10px;
+                    GhostButton { text: "Abbrechen"; clicked => { AppState.af-open = false; } }
+                    PrimaryButton { text: "Speichern & verbinden"; icon: Icons.check; clicked => { AppState.save-access(); } }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ card reader
+
+export component ReaderPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        alignment: start;
+        PageTitle {
+            title: "Kartenleser";
+            subtitle: "PC/SC-Leser für HBCI-Chipkarte und chipTAN USB";
+            Rectangle { }
+            GhostButton { text: "Neu suchen"; icon: Icons.refresh; clicked => { AppState.reader-refresh(); } }
+            PrimaryButton { text: "Leser & Karte prüfen"; icon: Icons.check; clicked => { AppState.reader-diagnose(); } }
+        }
+        if AppState.cyberjack-found: Card {
+            background: #eaf6ef;
+            border-color: #bfe3cc;
+            HorizontalLayout {
+                padding: 16px;
+                spacing: 12px;
+                Icon { name: Icons.check; color: Theme.positive; y: 2px; }
+                Text {
+                    wrap: word-wrap;
+                    color: #1f5d3a;
+                    text: "REINER SCT cyberJack erkannt. Kontor nutzt automatisch die sichere PIN-Eingabe am Pinpad und – sofern der Leser es meldet – chipTAN USB mit Anzeige der Auftragsdaten im Display.";
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                CardHeader { title: "Leser für chipTAN USB"; subtitle: "Wird im TAN-Dialog verwendet"; }
+                ComboBox {
+                    width: 380px;
+                    model: AppState.reader-names;
+                    current-index <=> AppState.tan-reader;
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 6px;
+                CardHeader { title: "Diagnose"; subtitle: "Gefundene Leser, gemeldete Features und erkannte Karte"; }
+                for line in AppState.reader-report: Text {
+                    text: line;
+                    font-family: "monospace";
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    color: Theme.text;
+                }
+                if AppState.reader-report.length == 0: Text {
+                    text: "Noch keine Prüfung durchgeführt.";
+                    color: Theme.text-faint;
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ settings
+
+export component SettingsPage inherits ScrollView {
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        alignment: start;
+        PageTitle { title: "Einstellungen"; }
+        Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                CardHeader { title: "FinTS-Produktregistrierung"; }
+                Text {
+                    wrap: word-wrap;
+                    font-size: 13px;
+                    color: Theme.text-muted;
+                    text: "Banken akzeptieren FinTS-Zugriffe nur mit einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID. Die Registrierung ist für Software-Hersteller kostenlos (fints.org → Produktregistrierung).";
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    LabeledField { label: "Produkt-ID"; text <=> AppState.product-id; placeholder: "25-stellige Registrierungsnummer"; }
+                    LabeledField { width: 140px; label: "Produktversion"; text <=> AppState.product-version; }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton { text: "Speichern"; clicked => { AppState.save-settings(); } }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                CardHeader { title: "Tresor-Passwort ändern"; subtitle: "Alle Daten werden lokal mit AES-256-GCM verschlüsselt (Schlüssel per Argon2id)."; }
+                HorizontalLayout {
+                    spacing: 12px;
+                    LabeledField { label: "Aktuelles Passwort"; input-type: password; text <=> AppState.old-password; }
+                    LabeledField { label: "Neues Passwort"; input-type: password; text <=> AppState.new-password; }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton { text: "Passwort ändern"; icon: Icons.lock; clicked => { AppState.change-password(); } }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 10px;
+                CardHeader { title: "Daten"; }
+                Text { text: "Speicherort: " + AppState.data-path; font-size: 13px; color: Theme.text-muted; wrap: word-wrap; }
+                HorizontalLayout {
+                    alignment: start;
+                    GhostButton { text: "Demo-Bankzugang hinzufügen"; clicked => { AppState.load-demo(); } }
+                }
+            }
+        }
+    }
+}

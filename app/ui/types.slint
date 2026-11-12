@@ -1,0 +1,99 @@
+export struct AccountRow {
+    id: int,
+    name: string,
+    bank: string,
+    iban: string,
+    owner: string,
+    balance: string,
+    available: string,
+    negative: bool,
+    last-sync: string,
+    kind: string,
+    color: color,
+}
+
+export struct TxRow {
+    is-header: bool,
+    // header rows
+    date-label: string,
+    day-balance: string,
+    // transaction rows
+    index: int,
+    name: string,
+    purpose: string,
+    amount: string,
+    negative: bool,
+    pending: bool,
+    category: string,
+    cat-color: color,
+    initial: string,
+    account: string,
+}
+
+export struct TxDetail {
+    valid: bool,
+    index: int,
+    name: string,
+    iban: string,
+    bic: string,
+    amount: string,
+    negative: bool,
+    booking-date: string,
+    value-date: string,
+    purpose: string,
+    posting-text: string,
+    eref: string,
+    mref: string,
+    creditor-id: string,
+    category: string,
+    account: string,
+    pending: bool,
+}
+
+export struct BarStat {
+    label: string,
+    value: string,
+    ratio: float,
+    color: color,
+}
+
+export struct MonthStat {
+    label: string,
+    income: float,
+    expense: float,
+    income-text: string,
+    expense-text: string,
+}
+
+export struct StandingRow {
+    index: int,
+    name: string,
+    iban: string,
+    amount: string,
+    purpose: string,
+    schedule: string,
+    next: string,
+    account: string,
+}
+
+export struct AccessRow {
+    id: int,
+    name: string,
+    kind: string,
+    detail: string,
+    tan-method: string,
+    accounts: int,
+    demo: bool,
+}
+
+export struct ChoiceRow {
+    key: string,
+    title: string,
+    subtitle: string,
+}
+
+export struct Toast {
+    visible: bool,
+    text: string,
+    error: bool,
+}
