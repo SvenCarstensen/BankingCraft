@@ -35,7 +35,41 @@ pub fn sepa_charset(s: &str) -> String {
 pub fn msg_id() -> String {
     use rand::Rng;
     let r: u64 = rand::thread_rng().gen();
-    format!("KONTOR-{}-{:08X}", Local::now().format("%Y%m%d%H%M%S"), r as u32)
+    // PmtInfId adds "-1"; both identifiers must remain within 35 characters.
+    format!("BC-{}-{:08X}", Local::now().format("%Y%m%d%H%M%S"), r as u32)
+}
+
+/// Reject invalid payment data before opening a bank dialog or rounding amounts.
+pub fn validate_transfer(t: &SepaTransfer) -> crate::Result<()> {
+    if !iban_valid(&t.debtor_iban) || !iban_valid(&t.creditor_iban) {
+        return Err(crate::Error::Other("Ungültige Auftraggeber- oder Empfänger-IBAN".into()));
+    }
+    if t.amount <= rust_decimal::Decimal::ZERO || t.amount.normalize().scale() > 2 {
+        return Err(crate::Error::Other("Betrag muss positiv sein und darf höchstens zwei Nachkommastellen haben".into()));
+    }
+    for name in [&t.debtor_name, &t.creditor_name] {
+        let converted = sepa_charset(name);
+        if converted.trim().is_empty() || converted.chars().count() > 70 {
+            return Err(crate::Error::Other("Auftraggeber und Empfänger benötigen einen Namen mit höchstens 70 SEPA-Zeichen".into()));
+        }
+    }
+    if sepa_charset(&t.purpose).chars().count() > 140 || sepa_charset(&t.end_to_end_id).chars().count() > 35 {
+        return Err(crate::Error::Other("Verwendungszweck oder Ende-zu-Ende-Referenz ist zu lang".into()));
+    }
+    Ok(())
+}
+
+pub fn validate_standing_schedule(so: &crate::model::StandingOrder) -> crate::Result<()> {
+    let day_valid = match so.interval {
+        crate::model::Interval::Weekly => (1..=7).contains(&so.day),
+        crate::model::Interval::Monthly => (1..=31).contains(&so.day) || (97..=99).contains(&so.day),
+    };
+    if !day_valid || so.every == 0 || so.first_date < Local::now().date_naive()
+        || so.last_date.map(|last| last < so.first_date).unwrap_or(false)
+    {
+        return Err(crate::Error::Other("Ungültiger Ausführungsrhythmus oder Zeitraum des Dauerauftrags".into()));
+    }
+    Ok(())
 }
 
 /// Build a pain.001 document for `descriptor` (the urn from HISPAS).
@@ -100,7 +134,7 @@ fn truncate(s: &str, n: usize) -> String {
 /// Read the first transaction of a pain.001 document (used for standing order lists).
 pub fn read_pain001(xml: &[u8]) -> Option<SepaTransfer> {
     let s = String::from_utf8_lossy(xml);
-    let doc = roxmltree::Document::parse(&s).ok()?;
+    let doc = roxmltree::Document::parse_with_options(&s, roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: 25_000 }).ok()?;
     let find = |name: &str| doc.descendants().find(|n| n.is_element() && n.tag_name().name() == name);
     let text_in = |parent: Option<roxmltree::Node>, names: &[&str]| -> String {
         let mut cur = match parent {
@@ -132,7 +166,8 @@ pub fn read_pain001(xml: &[u8]) -> Option<SepaTransfer> {
         purpose: text_in(tx, &["RmtInf", "Ustrd"]),
         end_to_end_id: text_in(tx, &["PmtId", "EndToEndId"]),
         execution_date: None,
-        instant: false,
+        instant: text_in(tx, &["PmtTpInf", "LclInstrm", "Cd"]) == "INST"
+            || text_in(pmt, &["PmtTpInf", "LclInstrm", "Cd"]) == "INST",
     })
 }
 
@@ -140,6 +175,10 @@ pub fn read_pain001(xml: &[u8]) -> Option<SepaTransfer> {
 pub fn iban_valid(iban: &str) -> bool {
     let s: String = iban.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase();
     if s.len() < 15 || s.len() > 34 || !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return false;
+    }
+    if !s.as_bytes()[..2].iter().all(u8::is_ascii_alphabetic)
+        || !s.as_bytes()[2..4].iter().all(u8::is_ascii_digit) {
         return false;
     }
     let rearranged = format!("{}{}", &s[4..], &s[..4]);

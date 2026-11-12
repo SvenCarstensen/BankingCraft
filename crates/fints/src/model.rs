@@ -22,6 +22,17 @@ impl Account {
     pub fn is_sepa(&self) -> bool {
         !self.iban.is_empty()
     }
+
+    pub fn allows(&self, code: &str) -> bool {
+        self.allowed.is_empty() || self.allowed.iter().any(|c| c == code)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct TransactionReport {
+    pub transactions: Vec<Transaction>,
+    /// Credit-card statement responses can also include the current booked balance.
+    pub balance: Option<Balance>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +47,9 @@ pub struct Balance {
 pub struct Transaction {
     pub booking_date: NaiveDate,
     pub value_date: NaiveDate,
+    /// The bank supplied neither booking nor value date. Dates above are only sort keys.
+    #[serde(default)]
+    pub date_unknown: bool,
     /// Positive = credit, negative = debit.
     pub amount: Decimal,
     pub currency: String,
@@ -56,8 +70,10 @@ impl Transaction {
     pub fn compute_fingerprint(&mut self) {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.booking_date.hash(&mut h);
-        self.value_date.hash(&mut h);
+        if !self.date_unknown {
+            self.booking_date.hash(&mut h);
+            self.value_date.hash(&mut h);
+        }
         self.amount.to_string().hash(&mut h);
         self.counterparty_iban.hash(&mut h);
         self.purpose.hash(&mut h);
@@ -94,6 +110,8 @@ pub struct StandingOrder {
     pub transfer: SepaTransfer,
     pub first_date: NaiveDate,
     pub last_date: Option<NaiveDate>,
+    #[serde(default)]
+    pub execution_time: Option<chrono::NaiveTime>,
     pub interval: Interval,
     /// Every n months/weeks.
     pub every: u32,

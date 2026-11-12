@@ -4,13 +4,19 @@
 slint::include_modules!();
 
 mod banks;
+mod bankx_import;
 mod bridge;
 mod categorize;
 mod demo;
 mod export;
 mod jobs;
+mod groups;
+mod private_file;
 mod store;
 mod view;
+mod window_state;
+#[cfg(test)]
+mod business_tests;
 
 use bridge::{Answer, Bridge};
 use chrono::Local;
@@ -20,11 +26,13 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use store::{AccessKind, BankAccess, Rule, Vault, VaultFile};
+use zeroize::Zeroizing;
 
 thread_local! {
     static VIEW: RefCell<view::ViewState> = RefCell::new(view::ViewState::default());
     static CTX: RefCell<Option<Ctx>> = const { RefCell::new(None) };
     static CONFIRM: RefCell<Option<Box<dyn FnOnce()>>> = RefCell::new(None);
+    static CONFIRM_CANCEL: RefCell<Option<Box<dyn FnOnce()>>> = RefCell::new(None);
     static BANK_HITS: RefCell<Vec<&'static banks::Bank>> = const { RefCell::new(Vec::new()) };
     static AUTO_NAME: RefCell<String> = const { RefCell::new(String::new()) };
 }
@@ -60,8 +68,23 @@ fn confirm(app: &AppWindow, title: &str, text: &str, action: impl FnOnce() + 'st
     st.set_confirm_danger(title.contains("löschen") || title.contains("entfernen"));
     st.set_confirm_title(title.into());
     st.set_confirm_text(text.into());
+    st.set_confirm_ok_text(SharedString::default());
     st.set_show_confirm(true);
     CONFIRM.with(|c| *c.borrow_mut() = Some(Box::new(action)));
+    CONFIRM_CANCEL.with(|c| *c.borrow_mut() = None);
+}
+
+/// Yes/no question from the worker thread (answered through the bridge).
+fn confirm_blocking(app: &AppWindow, title: &str, text: &str, bridge: bridge::Bridge) {
+    let st = app.global::<AppState>();
+    st.set_confirm_danger(false);
+    st.set_confirm_title(title.into());
+    st.set_confirm_text(text.into());
+    st.set_confirm_ok_text("Bestätigen".into());
+    st.set_show_confirm(true);
+    let b = bridge.clone();
+    CONFIRM.with(|c| *c.borrow_mut() = Some(Box::new(move || b.answer(bridge::Answer::Confirmed))));
+    CONFIRM_CANCEL.with(|c| *c.borrow_mut() = Some(Box::new(move || bridge.answer(bridge::Answer::Cancel))));
 }
 
 fn refresh_readers(app: &AppWindow) {
@@ -90,7 +113,8 @@ fn selected_reader(app: &AppWindow, idx: i32) -> Option<String> {
     if r.starts_with('(') { None } else { Some(r) }
 }
 
-fn after_unlock(app: &AppWindow, vault: Vault, file: VaultFile) {
+fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
+    let import_result = bankx_import::pending(&mut vault, &file);
     let st = app.global::<AppState>();
     st.set_data_path(file.path().display().to_string().into());
     st.set_product_id(vault.product_id.clone().into());
@@ -102,11 +126,38 @@ fn after_unlock(app: &AppWindow, vault: Vault, file: VaultFile) {
     st.set_unlock_error(SharedString::default());
     refresh_view(app);
     refresh_readers(app);
+    match import_result {
+        Ok(Some(message)) => toast(app, &message, false),
+        Err(e) => toast(app, &format!("Bank-X-Übernahme fehlgeschlagen: {e}"), true),
+        Ok(None) => {},
+    }
+}
+
+fn edit_groups(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<(), String>) -> bool {
+    let c = ctx();
+    if c.running.load(std::sync::atomic::Ordering::Acquire) { return false; }
+    let result = (|| {
+        let mut vault = c.vault.lock().unwrap();
+        let mut candidate = vault.clone();
+        edit(&mut candidate)?;
+        let file = c.file.lock().unwrap();
+        file.as_ref().ok_or("Tresor ist gesperrt")?.save(&candidate)?;
+        *vault = candidate;
+        Ok::<_, String>(())
+    })();
+    match result {
+        Ok(()) => { refresh_view(app); true },
+        Err(e) => { toast(app, &e, true); false },
+    }
 }
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let window_state = window_state::WindowState::new();
+    slint::BackendSelector::new().backend_name("winit".into())
+        .with_winit_custom_application_handler(window_state.clone()).select().expect("window backend");
     let app = AppWindow::new().expect("UI");
+    window_state.install(&app);
     let st = app.global::<AppState>();
     let path = store::default_path();
     st.set_first_run(!VaultFile::exists(&path));
@@ -115,7 +166,7 @@ fn main() {
 
     let bridge = Bridge::new(app.as_weak());
     CTX.with(|c| {
-        *c.borrow_mut() = Some(Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)), bridge: bridge.clone() })
+        *c.borrow_mut() = Some(Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)), bridge: bridge.clone(), running: Arc::new(std::sync::atomic::AtomicBool::new(false)) })
     });
 
     // ---------------------------------------------------------------- vault
@@ -171,6 +222,44 @@ fn main() {
         });
     }
     st.on_refresh_all(|| ctx().run("Kontenrundruf …", jobs::sync_all));
+    {
+        let weak = app.as_weak();
+        st.on_move_account(move |source, target, after| {
+            edit_groups(&weak.unwrap(), |v| v.move_account(source as u32, target as u32, after))
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_create_group(move |name| {
+            let app = weak.unwrap();
+            if edit_groups(&app, |v| v.create_group(&name).map(|_| ())) {
+                app.global::<AppState>().set_new_group_name(SharedString::default());
+            }
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_rename_group(move |id, name| { edit_groups(&weak.unwrap(), |v| v.rename_group(id as u32, &name)); });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_assign_group(move |account, index| {
+            edit_groups(&weak.unwrap(), |v| {
+                let id = if index == 0 { None } else { Some(v.groups.get((index - 1) as usize).ok_or("Gruppe nicht gefunden")?.id) };
+                v.assign_group(account as u32, id)
+            });
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_delete_group(move |id| {
+            let app = weak.unwrap();
+            let weak = app.as_weak();
+            confirm(&app, "Gruppe entfernen", "Die Konten bleiben erhalten und werden unter „Ohne Gruppe“ angezeigt.", move || {
+                edit_groups(&weak.unwrap(), |v| v.delete_group(id as u32));
+            });
+        });
+    }
     {
         let weak = app.as_weak();
         st.on_open_account(move |id| {
@@ -328,8 +417,19 @@ fn main() {
                 toast(&app, "Bitte das Datum der ersten Ausführung als TT.MM.JJJJ angeben.", true);
                 return;
             };
-            let last = view::parse_date(&st.get_so_last());
-            let day: u32 = st.get_so_day().trim().parse().unwrap_or(1);
+            let last = if st.get_so_last().trim().is_empty() {
+                None
+            } else {
+                let Some(date) = view::parse_date(&st.get_so_last()) else {
+                    toast(&app, "Bitte ein gültiges Enddatum als TT.MM.JJJJ angeben.", true);
+                    return;
+                };
+                Some(date)
+            };
+            let Ok(day) = st.get_so_day().trim().parse::<u32>() else {
+                toast(&app, "Bitte einen gültigen Ausführungstag angeben.", true);
+                return;
+            };
             let (interval, every) = match st.get_so_interval() {
                 1 => (Interval::Monthly, 3),
                 2 => (Interval::Monthly, 6),
@@ -339,6 +439,7 @@ fn main() {
             };
             let so = StandingOrder {
                 order_id: String::new(),
+                execution_time: None,
                 transfer: t,
                 first_date: first,
                 last_date: last,
@@ -348,6 +449,10 @@ fn main() {
                 raw_pain: Vec::new(),
                 descriptor: String::new(),
             };
+            if let Err(e) = fints::pain::validate_standing_schedule(&so) {
+                toast(&app, &e.to_string(), true);
+                return;
+            }
             let text = format!("{} an {}, {}", view::fmt_eur(so.transfer.amount), so.transfer.creditor_name, view::schedule_text(&so));
             confirm(&app, "Dauerauftrag anlegen?", &text, move || {
                 ctx().run("Dauerauftrag wird angelegt …", move |c| jobs::create_standing(c, account_id, so));
@@ -404,7 +509,7 @@ fn main() {
         st.on_bank_search(move |q| {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
-            let chip = st.get_af_kind() == 1;
+            let chip = st.get_af_kind() == 1 || st.get_af_kind() == 2;
             st.set_bank_picked(SharedString::default());
             let hits = banks::search(&q, chip, 8);
             let rows: Vec<BankRow> = hits
@@ -427,7 +532,7 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             let Some(b) = BANK_HITS.with(|h| h.borrow().get(i as usize).copied()) else { return };
-            let chip = st.get_af_kind() == 1;
+            let chip = st.get_af_kind() == 1 || st.get_af_kind() == 2;
             st.set_af_blz(b.blz.into());
             st.set_af_url(if chip { b.host } else { b.url }.into());
             let current = st.get_af_name().trim().to_string();
@@ -454,6 +559,40 @@ fn main() {
             let weak = app.as_weak();
             st.set_busy(true);
             st.set_busy_text("Lese Bankdaten von der Chipkarte …".into());
+            if st.get_af_kind() == 2 {
+                std::thread::spawn(move || {
+                    let r = jobs::read_rdh_card(&ctx(), &reader, record);
+                    let _ = weak.upgrade_in_event_loop(move |app| {
+                        let st = app.global::<AppState>();
+                        st.set_busy(false);
+                        match r {
+                            Ok((c, number)) => {
+                                st.set_af_blz(c.blz.clone().into());
+                                st.set_af_user(c.user_id.clone().into());
+                                st.set_af_customer(if c.customer_id == c.user_id { String::new() } else { c.customer_id.clone() }.into());
+                                st.set_af_record(c.record.to_string().into());
+                                let host = if c.host.trim().is_empty() {
+                                    banks::by_blz(&c.blz).map(|x| x.host.to_string()).unwrap_or_default()
+                                } else {
+                                    c.host.clone()
+                                };
+                                st.set_af_url(host.into());
+                                if st.get_af_name().is_empty() {
+                                    let bank = if c.bank_name.is_empty() { format!("BLZ {}", c.blz) } else { c.bank_name.clone() };
+                                    st.set_af_name(format!("{bank} (RDH-Chipkarte)").into());
+                                }
+                                toast(
+                                    &app,
+                                    &format!("Karte {number} gelesen: RDH-{} · BLZ {} · Kennung {}", c.profile, c.blz, c.user_id),
+                                    false,
+                                );
+                            }
+                            Err(e) => toast(&app, &e, true),
+                        }
+                    });
+                });
+                return;
+            }
             std::thread::spawn(move || {
                 let r = jobs::read_card(&reader, record);
                 let _ = weak.upgrade_in_event_loop(move |app| {
@@ -484,7 +623,7 @@ fn main() {
             let blz: String = st.get_af_blz().chars().filter(|c| c.is_ascii_digit()).collect();
             let user = st.get_af_user().trim().to_string();
             let url = st.get_af_url().trim().to_string();
-            let chip = st.get_af_kind() == 1;
+            let chip = st.get_af_kind() == 1 || st.get_af_kind() == 2;
             if blz.len() != 8 {
                 toast(&app, "Die Bankleitzahl muss 8 Ziffern haben.", true);
                 return;
@@ -493,7 +632,7 @@ fn main() {
                 toast(&app, "Bitte die Benutzerkennung angeben.", true);
                 return;
             }
-            if !chip && !url.starts_with("https://") {
+            if !chip && fints::transport::validate_https_url(&url).is_err() {
                 toast(&app, "Bitte die FinTS-URL Ihrer Bank (https://…) angeben.", true);
                 return;
             }
@@ -502,7 +641,12 @@ fn main() {
                     toast(&app, "Kein Kartenleser ausgewählt.", true);
                     return;
                 };
-                AccessKind::ChipCard { reader, record: st.get_af_record().trim().parse().unwrap_or(1) }
+                let record = st.get_af_record().trim().parse().unwrap_or(1);
+                if st.get_af_kind() == 2 {
+                    AccessKind::RdhCard { reader, record }
+                } else {
+                    AccessKind::ChipCard { reader, record }
+                }
             } else {
                 AccessKind::PinTan
             };
@@ -618,7 +762,9 @@ fn main() {
         st.on_change_password(move || {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
-            let (old, new) = (st.get_old_password().to_string(), st.get_new_password().to_string());
+            let (old, new) = (Zeroizing::new(st.get_old_password().to_string()), Zeroizing::new(st.get_new_password().to_string()));
+            st.set_old_password(SharedString::default());
+            st.set_new_password(SharedString::default());
             if new.chars().count() < 8 {
                 toast(&app, "Das neue Passwort braucht mindestens 8 Zeichen.", true);
                 return;
@@ -628,7 +774,7 @@ fn main() {
                 let mut v = c.vault.lock().unwrap();
                 c.file.lock().unwrap().as_mut().map(|f| f.change_password(&old, &new, &mut v)).unwrap_or(Err("Tresor nicht geöffnet".into()))
             };
-            match r.and_then(|_| c.save()) {
+            match r {
                 Ok(()) => {
                     st.set_old_password(SharedString::default());
                     st.set_new_password(SharedString::default());
@@ -797,6 +943,7 @@ fn main() {
         let weak = app.as_weak();
         st.on_confirm_ok(move || {
             weak.unwrap().global::<AppState>().set_show_confirm(false);
+            CONFIRM_CANCEL.with(|c| *c.borrow_mut() = None);
             if let Some(f) = CONFIRM.with(|c| c.borrow_mut().take()) {
                 f();
             }
@@ -807,6 +954,9 @@ fn main() {
         st.on_confirm_cancel(move || {
             weak.unwrap().global::<AppState>().set_show_confirm(false);
             CONFIRM.with(|c| *c.borrow_mut() = None);
+            if let Some(f) = CONFIRM_CANCEL.with(|c| c.borrow_mut().take()) {
+                f();
+            }
         });
     }
     {
@@ -815,6 +965,7 @@ fn main() {
     }
 
     app.run().expect("event loop");
+    window_state.save();
 }
 
 /// Text from the system clipboard, trimmed (PINs/TANs are often copied with a trailing newline).

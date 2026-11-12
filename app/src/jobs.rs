@@ -10,12 +10,14 @@ use chrono::{Duration, Local};
 use fints::{Account, Client, Error, Medium, SepaTransfer, StandingOrder, TanChallenge, TanMethod};
 use slint::{ComponentHandle, SharedString};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone)]
 pub struct Ctx {
     pub vault: Arc<Mutex<Vault>>,
     pub file: Arc<Mutex<Option<VaultFile>>>,
     pub bridge: Bridge,
+    pub running: Arc<AtomicBool>,
 }
 
 pub type JobResult = Result<String, String>;
@@ -31,6 +33,10 @@ impl Ctx {
 
     /// Run `f` on a worker thread with the busy overlay, then save and refresh.
     pub fn run(&self, title: &str, f: impl FnOnce(&Ctx) -> JobResult + Send + 'static) {
+        // Reserve synchronously before the busy overlay is posted to the event loop.
+        if self.running.swap(true, Ordering::AcqRel) {
+            return;
+        }
         let ctx = self.clone();
         let title = SharedString::from(title);
         let _ = self.bridge.weak.upgrade_in_event_loop(move |app| {
@@ -43,6 +49,7 @@ impl Ctx {
             let result = f(&ctx);
             *ctx.bridge.pin_cache.lock().unwrap() = None;
             let save = ctx.save();
+            ctx.running.store(false, Ordering::Release);
             let _ = ctx.bridge.weak.upgrade_in_event_loop(move |app| {
                 let st = app.global::<AppState>();
                 st.set_busy(false);
@@ -50,7 +57,9 @@ impl Ctx {
                 crate::refresh_view(&app);
                 match (result, save) {
                     (Ok(msg), Ok(())) => crate::toast(&app, &msg, false),
-                    (Err(e), _) | (Ok(_), Err(e)) => crate::toast(&app, &e, true),
+                    (Ok(msg), Err(e)) => crate::toast(&app, &format!("{msg}\n\nLokales Speichern fehlgeschlagen: {e}"), true),
+                    (Err(e), Ok(())) => crate::toast(&app, &e, true),
+                    (Err(e), Err(save)) => crate::toast(&app, &format!("{e}\n\nLokales Speichern fehlgeschlagen: {save}"), true),
                 }
             });
         });
@@ -66,17 +75,16 @@ fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -
     let wrong_pin = matches!(&r, Err(Error::Bank { code, text })
         if ["9931", "9942", "9340", "9930"].iter().any(|c| code == c || text.contains(c)));
     let pin_note = handle_saved_pin(ctx, access_id, wrong_pin);
-    let r = r.map(|v| {
+    let r = r.inspect(|_| {
         if let Some(n) = &pin_note {
             log::info!("{n}");
         }
-        v
     });
     r.map_err(|e| {
         let mut msg = err_text(&e);
         if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
-            if let Some(p) = write_error_report(trace.as_deref(), &msg) {
-                msg.push_str(&format!("\n\nFehlerprotokoll (PIN/TAN geschwärzt): {}", p.display()));
+            if let Some(p) = write_error_report(trace.as_deref()) {
+                msg.push_str(&format!("\n\nFehlerprotokoll (ohne Nachrichteninhalte): {}", p.display()));
             }
         }
         msg
@@ -89,6 +97,7 @@ fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String
     let mut v = ctx.vault.lock().unwrap();
     let access = v.accesses.iter_mut().find(|a| a.id == access_id)?;
     if wrong_pin {
+        *bridge.pin_cache.lock().unwrap() = None;
         *bridge.pin_save_requested.lock().unwrap() = false;
         if access.saved_pin.take().is_some() {
             return Some("Die gespeicherte PIN wurde von der Bank abgelehnt und gelöscht.".into());
@@ -104,19 +113,18 @@ fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String
     None
 }
 
-fn write_error_report(trace: Option<&str>, msg: &str) -> Option<std::path::PathBuf> {
+fn write_error_report(trace: Option<&str>) -> Option<std::path::PathBuf> {
     let trace = trace?;
     let dir = crate::store::default_path().parent()?.to_path_buf();
     std::fs::create_dir_all(&dir).ok()?;
     let path = dir.join("fints-fehlerprotokoll.txt");
     let text = format!(
-        "Kontor {} – {}\n\nFehler:\n{}\n\nLetzter Nachrichtenaustausch:\n{}\n",
+        "BankingCraft {} – {}\n\nTechnische Segmentübersicht (Fehlerdetails werden nur in der App angezeigt):\n{}\n",
         env!("CARGO_PKG_VERSION"),
         Local::now().format("%d.%m.%Y %H:%M:%S"),
-        msg,
         trace.replace('\'', "'\n")
     );
-    std::fs::write(&path, text).ok()?;
+    crate::private_file::replace(&path, text.as_bytes()).ok()?;
     Some(path)
 }
 
@@ -144,8 +152,38 @@ fn medium_for(ctx: &Ctx, access: &BankAccess) -> Result<Medium, String> {
             }));
             Ok(Medium::Ddv(Box::new(card)))
         }
+        AccessKind::RdhCard { reader, record } => {
+            let card = open_rdh_card(ctx, reader)?;
+            Ok(Medium::Rdh(Box::new(card), *record))
+        }
         AccessKind::Demo => Err("Demo-Zugang".into()),
     }
+}
+
+fn open_rdh_card(ctx: &Ctx, reader: &str) -> Result<cardreader::RdhChipCard, String> {
+    let b = ctx.bridge.clone();
+    let soft: cardreader::SoftPinProvider = Box::new(move || b.ask_pin("PIN der RDH-Chipkarte (Leser ohne PIN-Pad)"));
+    ctx.bridge.status("Verbinde mit RDH-Chipkarte …");
+    let mut card = cardreader::RdhChipCard::open(Some(reader), Some(soft)).map_err(|e| e.to_string())?;
+    let b2 = ctx.bridge.clone();
+    card.pinpad_notify = Some(Box::new(move |on| {
+        b2.pinpad(on, "Bitte geben Sie die PIN Ihrer Chipkarte (z. B. VR-NetWorld-Card) am Kartenleser ein und bestätigen Sie mit OK.");
+    }));
+    Ok(card)
+}
+
+/// Read the bank access `record` (0 = first) from the notepad of an RDH card.
+pub fn read_rdh_card(ctx: &Ctx, reader: &str, record: u8) -> Result<(fints::rdh::RdhContext, String), String> {
+    use fints::rdh::RdhCard;
+    let mut card = open_rdh_card(ctx, reader)?;
+    let number = card.card_number();
+    let list = card.contexts().map_err(|e| err_text(&e))?;
+    let c = list
+        .iter()
+        .find(|c| record == 0 || c.record == record)
+        .cloned()
+        .ok_or("Auf der Chipkarte ist kein Bankzugang eingerichtet")?;
+    Ok((c, number))
 }
 
 fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result<Client<'a>, String> {
@@ -158,7 +196,6 @@ fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result
             .saved_pin
             .as_ref()
             .and_then(|sp| ctx.file.lock().unwrap().as_ref().and_then(|f| f.open_secret(sp)))
-            .map(|p| p.to_string())
     } else {
         None
     };
@@ -198,12 +235,15 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
         let accounts = client.accounts()?;
         let ids = ctx.vault.lock().unwrap().merge_accounts(access_id, accounts.clone());
         for (acc, id) in accounts.iter().zip(ids) {
+            let warnings_before = warnings.len();
+            let mut fetched = false;
             if (30..=39).contains(&acc.kind) {
                 continue; // securities accounts are out of scope
             }
-            if allowed(acc, &["HKSAL"]) {
+            if allowed(acc, &["HKSAL", "HKKKS", "DKKKS"]) {
                 match client.balance(acc) {
                     Ok(Some(b)) => {
+                        fetched = true;
                         let mut v = ctx.vault.lock().unwrap();
                         if let Some(s) = v.accounts.iter_mut().find(|s| s.id == id) {
                             s.balance = Some(b);
@@ -214,7 +254,7 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
                     Err(e) => warnings.push(format!("Saldo {}: {}", fints::client::display_account(acc), err_text(&e))),
                 }
             }
-            if allowed(acc, &["HKKAZ", "HKCAZ"]) {
+            if allowed(acc, &["HKKAZ", "HKCAZ", "HKKKU", "DKKKU"]) {
                 let from = ctx
                     .vault
                     .lock()
@@ -223,30 +263,44 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
                     .map(|d| d - Duration::days(10))
                     // PSD2: up to 90 days of history need no extra approval
                     .unwrap_or_else(|| Local::now().date_naive() - Duration::days(89));
-                match client.transactions(acc, from, None) {
-                    Ok(txs) => new_tx += ctx.vault.lock().unwrap().merge_transactions(id, txs),
+                match client.transaction_report(acc, from, None) {
+                    Ok(report) => {
+                        fetched = true;
+                        let mut v = ctx.vault.lock().unwrap();
+                        if let Some(balance) = report.balance {
+                            if let Some(stored) = v.accounts.iter_mut().find(|s| s.id == id) { stored.balance = Some(balance); }
+                        }
+                        new_tx += v.merge_transactions(id, report.transactions);
+                    }
+                    Err(Error::NotSupported(e)) if (50..=59).contains(&acc.kind) => warnings.push(format!("Kreditkartenumsätze: {e}")),
                     Err(Error::NotSupported(_)) => {}
                     Err(Error::Cancelled) => warnings.push(format!(
                         "Umsätze {}: Freigabe abgebrochen – Umsätze wurden nicht abgerufen.",
                         fints::client::display_account(acc)
                     )),
-                    Err(e) => warnings.push(format!("Umsätze {}: {}", fints::client::display_account(acc), err_text(&e))),
+                    Err(e) => {
+                        let message = format!("Umsätze {}: {}", fints::client::display_account(acc), err_text(&e));
+                        if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
+                            write_error_report(client.last_trace.as_deref());
+                        }
+                        warnings.push(message);
+                    },
                 }
             }
             let mut v = ctx.vault.lock().unwrap();
             if let Some(s) = v.accounts.iter_mut().find(|s| s.id == id) {
-                s.last_sync = Some(Local::now().naive_local());
+                if fetched && warnings.len() == warnings_before { s.last_sync = Some(Local::now().naive_local()); }
             }
         }
         Ok(accounts.len())
     })();
     let count = conclude(ctx, access_id, client, result)?;
-    let mut msg = format!("{}: {} Konten aktualisiert, {} neue Umsätze.", access.name, count, new_tx);
+    let mut msg = format!("{}: {} Konten geprüft, {} neue Umsätze.", access.name, count, new_tx);
     if !warnings.is_empty() {
         msg.push('\n');
         msg.push_str(&warnings.join("\n"));
     }
-    Ok(msg)
+    if warnings.is_empty() { Ok(msg) } else { Err(msg) }
 }
 
 pub fn sync_all(ctx: &Ctx) -> JobResult {
@@ -255,14 +309,15 @@ pub fn sync_all(ctx: &Ctx) -> JobResult {
         return Err("Noch kein Bankzugang eingerichtet.".into());
     }
     let mut msgs = Vec::new();
+    let mut failed = false;
     for id in ids {
         match sync_access(ctx, id) {
             Ok(m) => msgs.push(m),
             Err(e) if e.contains("abgebrochen") => return Err(e),
-            Err(e) => msgs.push(e),
+            Err(e) => { failed = true; msgs.push(e); },
         }
     }
-    Ok(msgs.join("\n"))
+    if failed { Err(msgs.join("\n")) } else { Ok(msgs.join("\n")) }
 }
 
 pub fn reset_tan(ctx: &Ctx, access_id: u32) -> JobResult {
@@ -373,17 +428,23 @@ pub fn fetch_standing(ctx: &Ctx) -> JobResult {
         return Ok("Nur Demo-Daueraufträge vorhanden.".into());
     }
     let mut total = 0;
+    let mut loaded_accounts = 0;
     let mut warnings = Vec::new();
     for (access, accs) in groups {
         if accs.is_empty() || !access.state.bpd.supports("HKCDB") && !access.state.bpd.versions.is_empty() {
             continue;
         }
         let bridge = ctx.bridge.clone();
-        let mut client = make_client(ctx, &access, &bridge)?;
+        let mut client = match make_client(ctx, &access, &bridge) {
+            Ok(client) => client,
+            Err(e) => { warnings.push(format!("{}: {e}", access.name)); continue; },
+        };
+        let mut wrong_pin = false;
         for (id, acc) in accs {
             match client.standing_orders(&acc) {
                 Ok(list) => {
                     total += list.len();
+                    loaded_accounts += 1;
                     let mut v = ctx.vault.lock().unwrap();
                     v.standing.retain(|s| s.account_id != id);
                     v.standing.extend(list.into_iter().map(|order| StoredStanding { account_id: id, order }));
@@ -393,18 +454,34 @@ pub fn fetch_standing(ctx: &Ctx) -> JobResult {
                     store_state(ctx, access.id, st);
                     return Err("Vorgang abgebrochen.".into());
                 }
-                Err(e) => warnings.push(err_text(&e)),
+                Err(e) => {
+                    wrong_pin = matches!(&e, Error::Bank { code, text }
+                        if ["9931", "9942", "9340", "9930"].iter().any(|c| code == c || text.contains(c)));
+                    let msg = format!("{} · {}: {}", access.name, acc.product, err_text(&e));
+                    if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
+                        write_error_report(client.last_trace.as_deref());
+                    }
+                    warnings.push(msg);
+                    if wrong_pin { break; }
+                },
             }
         }
         let st = client.finish();
         store_state(ctx, access.id, st);
+        handle_saved_pin(ctx, access.id, wrong_pin);
     }
-    let mut msg = format!("{total} Daueraufträge geladen.");
     if !warnings.is_empty() {
-        msg.push('\n');
-        msg.push_str(&warnings.join("\n"));
+        let status = if loaded_accounts == 0 {
+            "Daueraufträge konnten nicht abgerufen werden.".to_string()
+        } else {
+            format!("Abruf teilweise erfolgreich: {total} Daueraufträge aus {loaded_accounts} Konten geladen.")
+        };
+        return Err(format!("{status}\n{}\nVorhandene Daueraufträge der betroffenen Konten bleiben erhalten.", warnings.join("\n")));
     }
-    Ok(msg)
+    if loaded_accounts == 0 {
+        return Ok("Keines der eingerichteten Konten bietet den Dauerauftragsabruf an.".into());
+    }
+    Ok(format!("{total} Daueraufträge geladen."))
 }
 
 pub fn create_standing(ctx: &Ctx, account_id: u32, mut so: StandingOrder) -> JobResult {
@@ -423,8 +500,13 @@ pub fn create_standing(ctx: &Ctx, account_id: u32, mut so: StandingOrder) -> Job
     let bridge = ctx.bridge.clone();
     let mut client = make_client(ctx, &access, &bridge)?;
     let r = client.create_standing_order(&acc, &so);
-    let r2 = r.and_then(|s| client.standing_orders(&acc).map(|l| (s, l)));
+    // Failure to refresh the list must not make an accepted order look unsuccessful.
+    let r2 = r.map(|s| (s, client.standing_orders(&acc)));
     let (summary, list) = conclude(ctx, access.id, client, r2)?;
+    let list = match list {
+        Ok(list) => list,
+        Err(e) => return Ok(format!("Dauerauftrag angelegt.\n{summary}\n\nDie Liste konnte nicht aktualisiert werden: {}. Bitte die Liste erneut abrufen, den Auftrag nicht erneut anlegen.", err_text(&e))),
+    };
     let mut v = ctx.vault.lock().unwrap();
     v.standing.retain(|s| s.account_id != account_id);
     v.standing.extend(list.into_iter().map(|order| StoredStanding { account_id, order }));
@@ -451,4 +533,51 @@ pub fn read_card(reader: &str, record: u8) -> Result<fints::security::DdvBankDat
     use fints::security::DdvCard;
     let mut card = cardreader::DdvChipCard::open(Some(reader), None).map_err(|e| e.to_string())?;
     card.bank_data(record).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod business_tests {
+    use super::*;
+    fn context() -> Ctx {
+        Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)),
+            bridge: Bridge::new(slint::Weak::default()), running: Arc::new(AtomicBool::new(false)) }
+    }
+    #[test]
+    fn demo_setup_and_refresh_are_idempotent_and_never_contact_a_bank() {
+        let ctx = context(); demo::add_demo(&mut ctx.vault.lock().unwrap());
+        let before = serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap();
+        demo::add_demo(&mut ctx.vault.lock().unwrap()); assert!(sync_all(&ctx).unwrap().contains("Demo"));
+        assert!(fetch_standing(&ctx).unwrap().contains("Demo"));
+        assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
+        assert!(ctx.vault.lock().unwrap().accounts.iter().all(|a| fints::pain::iban_valid(&a.account.iban)));
+    }
+    #[test]
+    fn missing_access_account_or_order_fails_before_prompting_or_mutating() {
+        let ctx = context(); assert!(sync_all(&ctx).is_err()); assert!(sync_access(&ctx, 999).is_err());
+        assert!(reset_tan(&ctx, 999).is_err()); assert!(delete_standing(&ctx, 999).is_err());
+        let so = crate::business_tests::standing(); assert!(transfer(&ctx, 999, so.transfer.clone(), false).is_err());
+        assert!(create_standing(&ctx, 999, so).is_err()); assert!(ctx.vault.lock().unwrap().accounts.is_empty());
+    }
+    #[test]
+    fn account_lookup_uses_access_bank_code_without_mutating_stored_account() {
+        let ctx = context(); demo::add_demo(&mut ctx.vault.lock().unwrap());
+        let id = { let mut v = ctx.vault.lock().unwrap(); v.accounts[0].account.blz.clear(); v.accounts[0].id };
+        let (a, access) = account_and_access(&ctx, id).unwrap(); assert_eq!(a.blz, access.config.blz);
+        assert!(ctx.vault.lock().unwrap().account(id).unwrap().account.blz.is_empty());
+    }
+    #[test]
+    fn pin_storage_requires_explicit_choice_and_wrong_pin_removes_saved_secret() {
+        let ctx = context(); demo::add_demo(&mut ctx.vault.lock().unwrap()); let id = ctx.vault.lock().unwrap().accesses[0].id;
+        let path = std::env::temp_dir().join(format!("bankingcraft-pin-test-{:016x}", rand::random::<u64>()));
+        *ctx.file.lock().unwrap() = Some(VaultFile::create(path, "synthetic-test-password").unwrap());
+        *ctx.bridge.pin_cache.lock().unwrap() = Some(zeroize::Zeroizing::new("fixture-pin".into()));
+        assert!(handle_saved_pin(&ctx, id, false).is_none()); assert!(ctx.vault.lock().unwrap().access(id).unwrap().saved_pin.is_none());
+        *ctx.bridge.pin_save_requested.lock().unwrap() = true; assert!(handle_saved_pin(&ctx, id, false).is_some());
+        let sealed = ctx.vault.lock().unwrap().access(id).unwrap().saved_pin.clone().unwrap();
+        assert_eq!(&**ctx.file.lock().unwrap().as_ref().unwrap().open_secret(&sealed).as_ref().unwrap(), "fixture-pin");
+        assert!(!*ctx.bridge.pin_save_requested.lock().unwrap());
+        *ctx.bridge.pin_save_requested.lock().unwrap() = true; assert!(handle_saved_pin(&ctx, id, true).is_some());
+        assert!(ctx.vault.lock().unwrap().access(id).unwrap().saved_pin.is_none()); assert!(!*ctx.bridge.pin_save_requested.lock().unwrap());
+        assert!(ctx.bridge.pin_cache.lock().unwrap().is_none());
+    }
 }

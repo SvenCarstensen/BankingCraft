@@ -10,12 +10,15 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
+// Keep the existing vault format and secret derivation compatible after the BankingCraft rename.
 const MAGIC: &[u8; 8] = b"KONTOR1\0";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AccessKind {
     PinTan,
     ChipCard { reader: String, record: u8 },
+    /// RDH chip card (ZKA/SECCOS, e.g. VR-NetWorld-Card); `record` = notepad entry (1-based).
+    RdhCard { reader: String, record: u8 },
     Demo,
 }
 
@@ -67,6 +70,13 @@ pub struct Rule {
     pub category: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountGroup {
+    pub id: u32,
+    pub name: String,
+    pub account_ids: Vec<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Vault {
     pub next_id: u32,
@@ -78,6 +88,8 @@ pub struct Vault {
     pub product_id: String,
     pub product_version: String,
     pub chiptan_reader: String,
+    #[serde(default)]
+    pub groups: Vec<AccountGroup>,
 }
 
 impl Vault {
@@ -100,6 +112,9 @@ impl Vault {
         self.accounts.retain(|a| a.access_id != id);
         self.transactions.retain(|t| !account_ids.contains(&t.account_id));
         self.standing.retain(|s| !account_ids.contains(&s.account_id));
+        for group in &mut self.groups {
+            group.account_ids.retain(|id| !account_ids.contains(id));
+        }
     }
 
     /// Insert or update accounts of an access, returning their ids in the given order.
@@ -109,7 +124,8 @@ impl Vault {
             let existing = self.accounts.iter_mut().find(|s| {
                 s.access_id == access_id
                     && ((!acc.iban.is_empty() && s.account.iban == acc.iban)
-                        || (!acc.account_number.is_empty() && s.account.account_number == acc.account_number))
+                        || (!acc.account_number.is_empty() && s.account.account_number == acc.account_number
+                            && s.account.sub_account == acc.sub_account && s.account.blz == acc.blz))
             });
             match existing {
                 Some(s) => {
@@ -138,12 +154,14 @@ impl Vault {
         // identical bookings on the same day are legitimate: compare counts per batch
         let mut batch: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for tx in txs {
+            if tx.pending {
+                self.transactions.push(StoredTx { account_id, tx, category: None });
+                continue;
+            }
             let n = batch.entry(tx.fingerprint.clone()).or_default();
             *n += 1;
-            if tx.pending || seen.get(&tx.fingerprint).copied().unwrap_or(0) < *n {
-                if !tx.pending {
-                    added += 1;
-                }
+            if seen.get(&tx.fingerprint).copied().unwrap_or(0) < *n {
+                added += 1;
                 self.transactions.push(StoredTx { account_id, tx, category: None });
             }
         }
@@ -153,7 +171,7 @@ impl Vault {
     pub fn last_booking(&self, account_id: u32) -> Option<chrono::NaiveDate> {
         self.transactions
             .iter()
-            .filter(|t| t.account_id == account_id && !t.tx.pending)
+            .filter(|t| t.account_id == account_id && !t.tx.pending && !t.tx.date_unknown)
             .map(|t| t.tx.booking_date)
             .max()
     }
@@ -174,6 +192,7 @@ fn derive(password: &str, salt: &[u8; 16]) -> Result<Zeroizing<[u8; 32]>, String
 }
 
 pub fn default_path() -> PathBuf {
+    // Retain the established storage location so existing vaults remain discoverable.
     directories::ProjectDirs::from("de", "AppCreation", "Kontor")
         .map(|d| d.data_dir().to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."))
@@ -193,7 +212,14 @@ impl VaultFile {
     }
 
     pub fn open(path: PathBuf, password: &str) -> Result<(Self, Vault), String> {
-        let data = std::fs::read(&path).map_err(|e| format!("Tresor nicht lesbar: {e}"))?;
+        use std::io::Read;
+        const MAX_VAULT_SIZE: u64 = 256 * 1024 * 1024;
+        let file = std::fs::File::open(&path).map_err(|e| format!("Tresor nicht lesbar: {e}"))?;
+        let metadata = file.metadata().map_err(|e| e.to_string())?;
+        if !metadata.is_file() || metadata.len() > MAX_VAULT_SIZE { return Err("Tresordatei ist ungültig oder zu groß".into()); }
+        let mut data = Vec::new();
+        file.take(MAX_VAULT_SIZE + 1).read_to_end(&mut data).map_err(|e| e.to_string())?;
+        if data.len() as u64 > MAX_VAULT_SIZE { return Err("Tresordatei ist zu groß".into()); }
         if data.len() < 36 || &data[..8] != MAGIC {
             return Err("Unbekanntes Dateiformat".into());
         }
@@ -224,11 +250,27 @@ impl VaultFile {
         out.extend_from_slice(&self.salt);
         out.extend_from_slice(&nonce);
         out.extend_from_slice(&ct);
-        // write atomically
-        let tmp = self.path.with_extension("tmp");
-        std::fs::write(&tmp, &out).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())?;
-        Ok(())
+        // Use an exclusive, private temporary file and flush it before replacing the vault.
+        use std::io::Write;
+        let tmp = self.path.with_extension(format!("{:016x}.tmp", rand::random::<u64>()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&tmp).map_err(|e| e.to_string())?;
+        let result = (|| {
+            file.write_all(&out)?;
+            file.sync_all()?;
+            drop(file);
+            std::fs::rename(&tmp, &self.path)
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        result.map_err(|e| e.to_string())
     }
 
     /// Changes the vault password and re-encrypts saved PINs with the new key.
@@ -236,23 +278,20 @@ impl VaultFile {
         if derive(old, &self.salt)?.as_ref() != self.key.as_ref() {
             return Err("Aktuelles Passwort ist falsch".into());
         }
-        let pins: Vec<(u32, Option<Zeroizing<String>>)> = vault
-            .accesses
-            .iter()
-            .map(|a| (a.id, a.saved_pin.as_ref().and_then(|p| self.open_secret(p))))
-            .collect();
         let mut salt = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut salt);
-        self.key = derive(new, &salt)?;
-        self.salt = salt;
-        for (id, pin) in pins {
-            if let Some(a) = vault.accesses.iter_mut().find(|a| a.id == id) {
-                a.saved_pin = match pin {
-                    Some(p) => Some(self.seal_secret(&p)?),
-                    None => None,
-                };
+        let candidate = Self { path: self.path.clone(), salt, key: derive(new, &salt)? };
+        let mut updated = vault.clone();
+        for access in &mut updated.accesses {
+            if let Some(sealed) = &access.saved_pin {
+                let pin = self.open_secret(sealed).ok_or("Gespeicherte PIN beschädigt; Passwort wurde nicht geändert")?;
+                access.saved_pin = Some(candidate.seal_secret(&pin)?);
             }
         }
+        // Commit in-memory credentials only after the new encrypted vault is safely written.
+        candidate.save(&updated)?;
+        *self = candidate;
+        *vault = updated;
         Ok(())
     }
 
@@ -288,5 +327,56 @@ impl VaultFile {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn password_change_is_transactional_and_preserves_saved_pin() {
+        let dir=std::env::temp_dir().join(format!("bankingcraft-vault-test-{:016x}",rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path=dir.join("vault.kontor");
+        let mut file=VaultFile::create(path.clone(),"old-password").unwrap();
+        let mut vault=Vault::default();
+        vault.accesses.push(BankAccess {id:1,name:"Test".into(),kind:AccessKind::PinTan,config:Default::default(),state:Default::default(),saved_pin:Some(file.seal_secret("123456").unwrap())});
+        file.save(&vault).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        assert!(file.change_password("wrong-password","new-password",&mut vault).is_err());
+        assert_eq!(before,std::fs::read(&path).unwrap());
+        let blocker=dir.join("not-a-directory");
+        std::fs::write(&blocker,b"block").unwrap();
+        file.path=blocker.join("vault.kontor");
+        assert!(file.change_password("old-password","new-password",&mut vault).is_err());
+        assert_eq!(file.open_secret(vault.accesses[0].saved_pin.as_ref().unwrap()).unwrap().as_str(),"123456");
+        assert_eq!(before,std::fs::read(&path).unwrap());
+        file.path=path.clone();
+        file.change_password("old-password","new-password",&mut vault).unwrap();
+        assert!(VaultFile::open(path.clone(),"old-password").is_err());
+        let (reopened,loaded)=VaultFile::open(path.clone(),"new-password").unwrap();
+        assert_eq!(reopened.open_secret(loaded.accesses[0].saved_pin.as_ref().unwrap()).unwrap().as_str(),"123456");
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,0o600);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn corrupt_saved_pin_does_not_get_silently_erased_on_password_change() {
+        let dir=std::env::temp_dir().join(format!("bankingcraft-corrupt-test-{:016x}",rand::random::<u64>()));
+        let path=dir.join("vault.kontor");
+        let mut file=VaultFile::create(path.clone(),"old-password").unwrap();
+        let mut vault=Vault::default();
+        vault.accesses.push(BankAccess {id:1,name:"Test".into(),kind:AccessKind::PinTan,config:Default::default(),state:Default::default(),saved_pin:Some(SealedSecret {nonce:vec![],data:vec![1]})});
+        file.save(&vault).unwrap();
+        let before=std::fs::read(&path).unwrap();
+        assert!(file.change_password("old-password","new-password",&mut vault).is_err());
+        assert_eq!(before,std::fs::read(&path).unwrap());
+        assert!(vault.accesses[0].saved_pin.is_some());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

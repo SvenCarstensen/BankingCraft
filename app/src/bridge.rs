@@ -7,6 +7,7 @@ use slint::{ComponentHandle, ModelRc, SharedPixelBuffer, Rgba8Pixel, SharedStrin
 use std::cell::{Cell, RefCell};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use zeroize::Zeroizing;
 
 pub enum Answer {
     Text(String),
@@ -21,7 +22,7 @@ pub struct Bridge {
     /// HHDuc bytes for chipTAN USB while a TAN dialog is open.
     pub usb_payload: Arc<Mutex<Option<Vec<u8>>>>,
     /// PIN cached for the running job (cleared on wrong PIN).
-    pub pin_cache: Arc<Mutex<Option<String>>>,
+    pub pin_cache: Arc<Mutex<Option<Zeroizing<String>>>>,
     /// The user ticked "PIN speichern" for the PIN in `pin_cache`.
     pub pin_save_requested: Arc<Mutex<bool>>,
     /// Offer the "PIN speichern" option in the next PIN prompt.
@@ -163,11 +164,11 @@ impl Bridge {
 impl Interaction for Bridge {
     fn pin(&self, prompt: &str) -> Option<String> {
         if let Some(p) = self.pin_cache.lock().unwrap().clone() {
-            return Some(p);
+            return Some(p.to_string());
         }
         let offer = *self.pin_save_offer.lock().unwrap();
         let p = self.ask_input_ext("PIN-Eingabe", prompt, true, offer)?;
-        *self.pin_cache.lock().unwrap() = Some(p.clone());
+        *self.pin_cache.lock().unwrap() = Some(Zeroizing::new(p.clone()));
         Some(p)
     }
 
@@ -214,10 +215,7 @@ impl Interaction for Bridge {
         let usb = if kind == 1 { flicker.as_ref().map(|f| f.usb_payload()) } else { None };
         let usb_possible = usb.is_some() && self.has_reader();
         *self.usb_payload.lock().unwrap() = usb;
-        let pixels = matrix.and_then(|(_, img)| image::load_from_memory(&img).ok()).map(|img| {
-            let rgba = img.to_rgba8();
-            SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(rgba.as_raw(), rgba.width(), rgba.height())
-        });
+        let pixels = matrix.and_then(|(_, img)| decode_tan_image(&img));
         let title = SharedString::from(format!("Freigabe · {}", ch.method.name));
         let text = SharedString::from(text);
         let answer = self.ask(move |app| {
@@ -251,5 +249,38 @@ impl Interaction for Bridge {
 
     fn text(&self, title: &str, prompt: &str) -> Option<String> {
         self.ask_input(title, prompt, false)
+    }
+
+    fn confirm(&self, title: &str, text: &str) -> bool {
+        let (t, x, b) = (title.to_string(), text.to_string(), self.clone());
+        matches!(self.ask(move |app| crate::confirm_blocking(app, &t, &x, b)), Answer::Confirmed)
+    }
+}
+
+fn decode_tan_image(bytes: &[u8]) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
+    if bytes.len() > 1_048_576 { return None; }
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(2048);
+    limits.max_image_height = Some(2048);
+    limits.max_alloc = Some(16 * 1024 * 1024);
+    reader.limits(limits);
+    let rgba = reader.decode().ok()?.to_rgba8();
+    Some(SharedPixelBuffer::clone_from_slice(rgba.as_raw(), rgba.width(), rgba.height()))
+}
+
+#[cfg(test)]
+mod image_security_tests {
+    use super::*;
+    #[test]
+    fn tan_image_decodes_normal_image_but_rejects_excessive_dimensions_and_input() {
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2).write_to(&mut encoded, image::ImageFormat::Bmp).unwrap();
+        let bytes = encoded.into_inner();
+        let pixels = decode_tan_image(&bytes).unwrap(); assert_eq!((pixels.width(), pixels.height()), (2, 2));
+        let mut oversized = bytes.clone(); oversized[18..22].copy_from_slice(&100_000i32.to_le_bytes());
+        assert!(decode_tan_image(&oversized).is_none());
+        assert!(decode_tan_image(&vec![0; 1_048_577]).is_none());
+        assert!(decode_tan_image(&bytes[..20]).is_none());
     }
 }

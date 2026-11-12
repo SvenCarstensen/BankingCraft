@@ -1,3 +1,14 @@
 target/
 *.kontor
 *.tmp
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+*.app/
+*.dmg
+window-state.json
+vault.before-*
+fints-fehlerprotokoll.txt
+bankx-import.json

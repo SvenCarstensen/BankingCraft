@@ -182,15 +182,18 @@ export component GhostButton inherits Rectangle {
 export component Chip inherits Rectangle {
     in property <string> text;
     in property <color> tint: Theme.accent;
+    in property <length> label-size: Theme.font-small;
     in property <bool> selected;
     callback clicked;
     height: 24px;
     width: label.preferred-width + 20px;
-    border-radius: 12px;
+    border-radius: self.height / 2;
     background: selected ? tint : tint.with-alpha(0.12);
     label := Text {
         text: root.text;
-        font-size: Theme.font-small;
+        width: parent.width;
+        height: parent.height;
+        font-size: root.label-size;
         color: selected ? #ffffff : root.tint.darker(0.25);
         horizontal-alignment: center;
         vertical-alignment: center;

@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Kontor</string>
-  <key>CFBundleDisplayName</key><string>Kontor</string>
-  <key>CFBundleIdentifier</key><string>de.appcreation.kontor</string>
-  <key>CFBundleExecutable</key><string>Kontor</string>
-  <key>CFBundleIconFile</key><string>Kontor</string>
+  <key>CFBundleName</key><string>BankingCraft</string>
+  <key>CFBundleDisplayName</key><string>BankingCraft</string>
+  <key>CFBundleIdentifier</key><string>de.appcreation.bankingcraft</string>
+  <key>CFBundleExecutable</key><string>BankingCraft</string>
+  <key>CFBundleIconFile</key><string>BankingCraft</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>

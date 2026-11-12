@@ -1,12 +1,12 @@
 import { LineEdit, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
-import { AccountRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast } from "types.slint";
+import { AccountRow, AccountGroupRow, GroupBalanceRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast } from "types.slint";
 import { Icon, Icons, NavItem, PrimaryButton, GhostButton } from "widgets.slint";
 import { OverviewPage, AccountsPage, TransactionsPage, TransferPage, StandingPage, AnalysisPage, AccessesPage, ReaderPage, SettingsPage } from "pages.slint";
 import { PinDialog, PinpadOverlay, TanDialog, ChoiceDialog, ConfirmDialog, BusyOverlay } from "dialogs.slint";
 
-export { AppState, AccountRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast }
+export { AppState, AccountRow, AccountGroupRow, GroupBalanceRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast }
 
 component Logo inherits HorizontalLayout {
     spacing: 10px;
@@ -16,7 +16,7 @@ component Logo inherits HorizontalLayout {
         border-radius: 9px;
         background: @linear-gradient(135deg, #3d8bf2 0%, #1e6fd9 100%);
         Text {
-            text: "K";
+            text: "B";
             color: #ffffff;
             font-size: 20px;
             font-weight: 800;
@@ -26,7 +26,7 @@ component Logo inherits HorizontalLayout {
     }
     VerticalLayout {
         alignment: center;
-        Text { text: "Kontor"; color: #ffffff; font-size: 18px; font-weight: 700; }
+        Text { text: "BankingCraft"; color: #ffffff; font-size: 18px; font-weight: 700; }
         Text { text: "Online-Banking"; color: Theme.nav-text-muted; font-size: 11px; }
     }
 }
@@ -58,7 +58,7 @@ component UnlockScreen inherits Rectangle {
                 }
             }
             Text {
-                text: AppState.first-run ? "Willkommen bei Kontor" : "Kontor entsperren";
+                text: AppState.first-run ? "Willkommen bei BankingCraft" : "BankingCraft entsperren";
                 font-size: 22px;
                 font-weight: 700;
                 horizontal-alignment: center;
@@ -78,7 +78,7 @@ component UnlockScreen inherits Rectangle {
                 placeholder-text: "Tresor-Passwort";
                 text <=> root.pw1;
                 accepted => {
-                    if (!AppState.first-run) { AppState.unlock(root.pw1); }
+                    if (!AppState.first-run) { AppState.unlock(root.pw1); root.pw1 = ""; }
                 }
             }
             if AppState.first-run: LineEdit {
@@ -101,6 +101,8 @@ component UnlockScreen inherits Rectangle {
                     } else {
                         AppState.unlock(root.pw1);
                     }
+                    root.pw1 = "";
+                    root.pw2 = "";
                 }
             }
         }
@@ -109,7 +111,7 @@ component UnlockScreen inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "Kontor";
+    title: "BankingCraft";
     preferred-width: 1360px;
     preferred-height: 860px;
     min-width: 1100px;

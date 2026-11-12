@@ -14,21 +14,27 @@ fn target_dir() -> PathBuf {
 }
 
 fn csv_field(s: &str) -> String {
-    if s.contains([';', '"', '\n']) {
+    // Bank-supplied names and purposes are untrusted spreadsheet input. Quote
+    // fields and prefix dangerous text with a tab (OWASP Excel mitigation).
+    let first = s.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}').chars().next();
+    if matches!(first, Some('=' | '+' | '-' | '@' | '＝' | '＋' | '－' | '＠')) {
+        return format!("\"\t{}\"", s.replace('"', "\"\""));
+    }
+    if s.contains([';', '"', '\n', '\r']) {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
     }
 }
 
-pub fn csv(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
+pub(crate) fn csv_content(v: &Vault, idx: &[usize]) -> String {
     let mut out = String::from("\u{feff}Konto;Buchungstag;Valuta;Name;IBAN;BIC;Verwendungszweck;Buchungstext;Kategorie;Betrag;Währung;Status\r\n");
     for &i in idx {
         let Some(t) = v.transactions.get(i) else { continue };
         let row = [
             account_label(v, t.account_id),
-            t.tx.booking_date.format("%d.%m.%Y").to_string(),
-            t.tx.value_date.format("%d.%m.%Y").to_string(),
+            if t.tx.date_unknown { String::new() } else { t.tx.booking_date.format("%d.%m.%Y").to_string() },
+            if t.tx.date_unknown { String::new() } else { t.tx.value_date.format("%d.%m.%Y").to_string() },
             t.tx.counterparty_name.clone(),
             t.tx.counterparty_iban.clone(),
             t.tx.counterparty_bic.clone(),
@@ -39,11 +45,17 @@ pub fn csv(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
             t.tx.currency.clone(),
             if t.tx.pending { "vorgemerkt" } else { "gebucht" }.to_string(),
         ];
-        out.push_str(&row.iter().map(|f| csv_field(f)).collect::<Vec<_>>().join(";"));
+        // The amount is generated from Decimal, so negative numbers stay numeric.
+        out.push_str(&row.iter().enumerate().map(|(column, f)| if column == 9 { f.clone() } else { csv_field(f) }).collect::<Vec<_>>().join(";"));
         out.push_str("\r\n");
     }
-    let path = target_dir().join(format!("kontor-umsaetze-{}.csv", Local::now().format("%Y%m%d-%H%M%S")));
-    std::fs::write(&path, out).map_err(|e| e.to_string())?;
+    out
+}
+
+pub fn csv(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
+    let out = csv_content(v, idx);
+    let path = target_dir().join(format!("bankingcraft-umsaetze-{}-{:08x}.csv", Local::now().format("%Y%m%d-%H%M%S"), rand::random::<u32>()));
+    crate::private_file::write_new(&path, out.as_bytes()).map_err(|e| e.to_string())?;
     Ok(path)
 }
 
@@ -52,7 +64,7 @@ fn x(s: &str) -> String {
 }
 
 /// camt.052.001.08 account report, one report per account.
-pub fn camt052(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
+pub(crate) fn camt052_content(v: &Vault, idx: &[usize]) -> String {
     let mut by_account: std::collections::BTreeMap<u32, Vec<usize>> = std::collections::BTreeMap::new();
     for &i in idx {
         if let Some(t) = v.transactions.get(i) {
@@ -61,7 +73,7 @@ pub fn camt052(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
     }
     let now = Local::now();
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.052.001.08\">\n<BkToCstmrAcctRpt>\n");
-    xml.push_str(&format!("<GrpHdr><MsgId>KONTOR-{}</MsgId><CreDtTm>{}</CreDtTm></GrpHdr>\n", now.format("%Y%m%d%H%M%S"), now.format("%Y-%m-%dT%H:%M:%S")));
+    xml.push_str(&format!("<GrpHdr><MsgId>BANKINGCRAFT-{}</MsgId><CreDtTm>{}</CreDtTm></GrpHdr>\n", now.format("%Y%m%d%H%M%S"), now.format("%Y-%m-%dT%H:%M:%S")));
     for (acc_id, list) in by_account {
         let Some(acc) = v.account(acc_id) else { continue };
         xml.push_str(&format!(
@@ -86,14 +98,13 @@ pub fn camt052(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
             let credit = !t.amount.is_sign_negative();
             let (party, acct) = if credit { ("Dbtr", "DbtrAcct") } else { ("Cdtr", "CdtrAcct") };
             xml.push_str(&format!(
-                "<Ntry><Amt Ccy=\"{ccy}\">{amt:.2}</Amt><CdtDbtInd>{ind}</CdtDbtInd><Sts><Cd>{sts}</Cd></Sts><BookgDt><Dt>{bd}</Dt></BookgDt><ValDt><Dt>{vd}</Dt></ValDt><BkTxCd/>\
+                "<Ntry><Amt Ccy=\"{ccy}\">{amt:.2}</Amt><CdtDbtInd>{ind}</CdtDbtInd><Sts><Cd>{sts}</Cd></Sts>{dates}<BkTxCd/>\
 <NtryDtls><TxDtls><Refs><EndToEndId>{e2e}</EndToEndId>{mref}</Refs><RltdPties><{party}><Pty><Nm>{name}</Nm></Pty></{party}><{acct}><Id><IBAN>{iban}</IBAN></Id></{acct}></RltdPties><RmtInf><Ustrd>{purpose}</Ustrd></RmtInf><AddtlTxInf>{posting}</AddtlTxInf></TxDtls></NtryDtls></Ntry>\n",
                 ccy = x(&t.currency),
                 amt = t.amount.abs(),
                 ind = if credit { "CRDT" } else { "DBIT" },
                 sts = if t.pending { "PDNG" } else { "BOOK" },
-                bd = t.booking_date.format("%Y-%m-%d"),
-                vd = t.value_date.format("%Y-%m-%d"),
+                dates = if t.date_unknown { String::new() } else { format!("<BookgDt><Dt>{}</Dt></BookgDt><ValDt><Dt>{}</Dt></ValDt>", t.booking_date.format("%Y-%m-%d"), t.value_date.format("%Y-%m-%d")) },
                 e2e = if t.end_to_end_id.is_empty() { "NOTPROVIDED".into() } else { x(&t.end_to_end_id) },
                 mref = if t.mandate_id.is_empty() { String::new() } else { format!("<MndtId>{}</MndtId>", x(&t.mandate_id)) },
                 name = x(&t.counterparty_name),
@@ -105,7 +116,13 @@ pub fn camt052(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
         xml.push_str("</Rpt>\n");
     }
     xml.push_str("</BkToCstmrAcctRpt>\n</Document>\n");
-    let path = target_dir().join(format!("kontor-camt052-{}.xml", now.format("%Y%m%d-%H%M%S")));
-    std::fs::write(&path, xml).map_err(|e| e.to_string())?;
+    xml
+}
+
+pub fn camt052(v: &Vault, idx: &[usize]) -> Result<PathBuf, String> {
+    let xml = camt052_content(v, idx);
+    let now = Local::now();
+    let path = target_dir().join(format!("bankingcraft-camt052-{}-{:08x}.xml", now.format("%Y%m%d-%H%M%S"), rand::random::<u32>()));
+    crate::private_file::write_new(&path, xml.as_bytes()).map_err(|e| e.to_string())?;
     Ok(path)
 }

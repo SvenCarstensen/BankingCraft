@@ -1,6 +1,6 @@
 [package]
-name = "kontor"
-description = "Kontor – Online-Banking für Windows, Linux und macOS (FinTS/HBCI, chipTAN USB, HBCI-Chipkarte)"
+name = "bankingcraft"
+description = "BankingCraft – Online-Banking für Windows, Linux und macOS (FinTS/HBCI, chipTAN USB, HBCI-Chipkarte)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ build = "build.rs"
 [dependencies]
 fints = { path = "../crates/fints" }
 cardreader = { path = "../crates/cardreader" }
-slint = "1.18"
+slint = { version = "~1.18", features = ["unstable-winit-030"] }
 chrono.workspace = true
 serde.workspace = true
 rust_decimal.workspace = true
@@ -29,5 +29,5 @@ sha2 = "0.10"
 slint-build = "1.18"
 
 [package.metadata.bundle]
-name = "Kontor"
-identifier = "de.appcreation.kontor"
+name = "BankingCraft"
+identifier = "de.appcreation.bankingcraft"

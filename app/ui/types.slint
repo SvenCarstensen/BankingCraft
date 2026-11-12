@@ -10,7 +10,23 @@ export struct AccountRow {
     last-sync: string,
     kind: string,
     color: color,
+    group-index: int,
+    group-name: string,
 }
+
+export struct GroupBalanceRow {
+    amount: string,
+    negative: bool,
+}
+
+export struct AccountGroupRow {
+    id: int,
+    name: string,
+    accounts: [AccountRow],
+    balances: [GroupBalanceRow],
+    balance-note: string,
+}
+
 
 export struct TxRow {
     is-header: bool,

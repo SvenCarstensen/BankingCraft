@@ -11,6 +11,14 @@ const DE_SEP: u8 = b'+';
 const GE_SEP: u8 = b':';
 const ESCAPE: u8 = b'?';
 const BIN_MARK: u8 = b'@';
+const MAX_SEGMENTS: usize = 8192;
+const MAX_FIELDS: usize = 262_144;
+const MAX_FIELDS_PER_SEGMENT: usize = 65_536;
+
+fn check_message_size(data: &[u8]) -> Result<()> {
+    if data.len() > crate::transport::MAX_MESSAGE_SIZE { return Err(Error::Syntax("FinTS-Nachricht zu groß".into())); }
+    Ok(())
+}
 
 pub fn latin1_to_string(bytes: &[u8]) -> String {
     bytes.iter().map(|&b| b as char).collect()
@@ -72,7 +80,9 @@ impl Segment {
 
 /// Parse a raw FinTS message (or the plaintext contents of HNVSD) into segments.
 pub fn parse_segments(data: &[u8]) -> Result<Vec<Segment>> {
+    check_message_size(data)?;
     let mut segments = Vec::new();
+    let mut fields = 0;
     let mut pos = 0usize;
     while pos < data.len() {
         // skip stray whitespace/newlines between segments some banks emit
@@ -81,6 +91,8 @@ pub fn parse_segments(data: &[u8]) -> Result<Vec<Segment>> {
             continue;
         }
         let (des, next) = parse_one_segment(data, pos)?;
+        fields += des.iter().map(Vec::len).sum::<usize>();
+        if segments.len() >= MAX_SEGMENTS || fields > MAX_FIELDS { return Err(Error::Syntax("FinTS-Strukturgrenze überschritten".into())); }
         pos = next;
         if des.is_empty() || des[0].is_empty() {
             continue;
@@ -102,15 +114,48 @@ pub fn parse_segments(data: &[u8]) -> Result<Vec<Segment>> {
     Ok(segments)
 }
 
+/// Byte ranges `(start, end, code)` of the segments in `data` (end exclusive, including the
+/// terminator). Needed to verify signatures over the exact bytes the bank signed.
+pub fn segment_spans(data: &[u8]) -> Result<Vec<(usize, usize, String)>> {
+    check_message_size(data)?;
+    let mut out = Vec::new();
+    let mut fields = 0;
+    let mut pos = 0usize;
+    while pos < data.len() {
+        if matches!(data[pos], b'\r' | b'\n' | b' ') {
+            pos += 1;
+            continue;
+        }
+        let start = pos;
+        let (des, next) = parse_one_segment(data, pos)?;
+        fields += des.iter().map(Vec::len).sum::<usize>();
+        if out.len() >= MAX_SEGMENTS || fields > MAX_FIELDS { return Err(Error::Syntax("FinTS-Strukturgrenze überschritten".into())); }
+        pos = next;
+        let code = des
+            .first()
+            .and_then(|h| h.first())
+            .and_then(|f| f.as_ref())
+            .map(|b| latin1_to_string(b))
+            .unwrap_or_default();
+        if !code.is_empty() {
+            out.push((start, next, code));
+        }
+    }
+    Ok(out)
+}
+
 #[allow(unused_assignments)]
 fn parse_one_segment(data: &[u8], mut pos: usize) -> Result<(Vec<Vec<Field>>, usize)> {
     let mut des: Vec<Vec<Field>> = Vec::new();
     let mut group: Vec<Field> = Vec::new();
     let mut cur: Vec<u8> = Vec::new();
     let mut cur_set = false;
+    let mut field_count = 0usize;
 
     macro_rules! push_field {
         () => {{
+            field_count += 1;
+            if field_count > MAX_FIELDS_PER_SEGMENT { return Err(Error::Syntax("Zu viele Felder im FinTS-Segment".into())); }
             group.push(if cur_set || !cur.is_empty() { Some(std::mem::take(&mut cur)) } else { None });
             cur_set = false;
         }};
@@ -137,7 +182,7 @@ fn parse_one_segment(data: &[u8], mut pos: usize) -> Result<(Vec<Vec<Field>>, us
                     .parse()
                     .map_err(|_| Error::Syntax("invalid binary length".into()))?;
                 let start = pos + 1 + end + 1;
-                if start + len > data.len() {
+                if len > data.len().saturating_sub(start) {
                     return Err(Error::Syntax("binary data exceeds message".into()));
                 }
                 cur.extend_from_slice(&data[start..start + len]);

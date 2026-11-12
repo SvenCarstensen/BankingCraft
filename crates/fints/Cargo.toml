@@ -18,3 +18,10 @@ roxmltree = "0.20"
 des = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 ripemd = "0.1"
+rsa = { version = "0.10", features = ["pkcs1v15", "hazmat"] }
+sha2 = "0.10"
+zeroize = "1"
+url = "2"
+
+[dev-dependencies]
+rand_rsa = { package = "rand", version = "0.10" }

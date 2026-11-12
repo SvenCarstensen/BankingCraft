@@ -3,6 +3,7 @@
 //! computed by the card).
 
 use crate::error::{Error, Result};
+use crate::rdh::{BankKey, RdhCard, RdhSession};
 use crate::syntax::{parse_segments, Segment, SegmentBuilder, Val};
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use chrono::Local;
@@ -64,6 +65,14 @@ pub enum Auth<'a> {
         cid: &'a [u8],
         sig_key: DdvKey,
         enc_key: DdvKey,
+    },
+    /// RDH chip card (RDH-7/9/10) – see [`crate::rdh`].
+    Rdh {
+        card: &'a mut dyn RdhCard,
+        session: &'a RdhSession,
+        bank: &'a BankKey,
+        /// Messages before a system id exists (synchronisation) carry `1::0` as security details.
+        no_sysid: bool,
     },
 }
 
@@ -210,6 +219,15 @@ pub fn build_message(env: &Envelope, auth: Auth, mut segments: Vec<SegmentBuilde
             out.extend(hnvsd.encode());
             out
         }
+        Auth::Rdh { card, session, bank, no_sysid } => {
+            let signed = crate::rdh::sign(card, session, env.blz, env.user_id, env.system_id, no_sysid, &segments, last_num - 1)?;
+            let mut plain = signed.hnshk.encode();
+            for s in &segments {
+                plain.extend(s.encode());
+            }
+            plain.extend(signed.hnsha.encode());
+            crate::rdh::encrypt(session, bank, env.blz, env.user_id, env.system_id, no_sysid, plain)?
+        }
     };
 
     let mut hnhbs = SegmentBuilder::new("HNHBS", 1).de(env.message_number);
@@ -238,7 +256,7 @@ fn key_name(env: &Envelope, kind: &str, num: u32, version: u32) -> Vec<Val> {
     vec!["280".into(), env.blz.into(), env.user_id.into(), kind.into(), num.into(), version.into()]
 }
 
-fn pad(mut data: Vec<u8>) -> Vec<u8> {
+pub(crate) fn pad(mut data: Vec<u8>) -> Vec<u8> {
     let pad_len = 8 - (data.len() % 8);
     data.extend(std::iter::repeat_n(0u8, pad_len - 1));
     data.push(pad_len as u8);
@@ -252,42 +270,65 @@ fn long_key(k: &[u8; 16]) -> [u8; 24] {
     l
 }
 
-fn tdes_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
+pub(crate) fn tdes_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
     let enc = TdesEnc::new(&long_key(key).into(), &[0u8; 8].into());
     enc.encrypt_padded_vec_mut::<cbc::cipher::block_padding::NoPadding>(data)
 }
 
-fn tdes_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn tdes_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>> {
     let dec = TdesDec::new(&long_key(key).into(), &[0u8; 8].into());
     dec.decrypt_padded_vec_mut::<cbc::cipher::block_padding::NoPadding>(data)
         .map_err(|_| Error::Security("decryption failed".into()))
 }
 
+/// How to unwrap the HNVSD contents of a response.
+pub enum Opener<'a> {
+    /// PIN/TAN or anonymous: HNVSD carries plaintext.
+    Plain,
+    Ddv(&'a mut dyn DdvCard, u32),
+    /// RDH: decipher with the card, then require a valid bank signature with a verified key.
+    Rdh(&'a mut dyn RdhCard, Option<&'a BankKey>),
+}
+
 /// Unwrap a received message: returns all segments with the HNVSD contents inlined.
-pub fn open_message(raw: &[u8], card: Option<(&mut dyn DdvCard, u32)>) -> Result<Vec<Segment>> {
+pub fn open_message(raw: &[u8], opener: Opener) -> Result<Vec<Segment>> {
+    if let Opener::Rdh(card, key) = opener {
+        return open_rdh_message(raw, card, key);
+    }
     let outer = parse_segments(raw)?;
+    if matches!(opener, Opener::Ddv(..)) {
+        let heads: Vec<_> = outer.iter().filter(|s| s.code == "HNVSK").collect();
+        let bodies: Vec<_> = outer.iter().filter(|s| s.code == "HNVSD").collect();
+        if heads.len() != 1 || bodies.len() != 1
+            || outer.iter().any(|s| !matches!(s.code.as_str(), "HNHBK" | "HNVSK" | "HNVSD" | "HNHBS"))
+            || heads[0].text_or_empty(1, 0) != "DDV"
+            || heads[0].bin(6, 3).is_none_or(|k| k.len() != 16)
+            || bodies[0].bin(1, 0).is_none_or(|p| p.is_empty() || p.len() % 8 != 0) {
+            return Err(Error::Security("DDV-Antwort ist nicht vollständig verschlüsselt".into()));
+        }
+    }
     let mut result = Vec::with_capacity(outer.len() + 8);
     let mut enc_key: Option<Vec<u8>> = None;
-    let mut card = card;
+    let mut opener = opener;
     for seg in outer {
         match seg.code.as_str() {
             "HNVSK" => {
-                if seg.text(1, 0).as_deref() == Some("DDV") {
+                let profile = seg.text(1, 0).unwrap_or_default();
+                if profile == "DDV" || profile == "RDH" {
                     enc_key = seg.bin(6, 3).map(|b| b.to_vec());
                 }
             }
             "HNVSD" => {
                 let payload = seg.bin(1, 0).unwrap_or_default().to_vec();
-                let plain = match (&enc_key, card.as_mut()) {
-                    (Some(k), Some((c, num))) => {
+                let plain = match (&enc_key, &mut opener) {
+                    (Some(k), Opener::Ddv(c, num)) => {
                         let session = c.decrypt_key(*num, k)?;
                         let mut p = tdes_decrypt(&session, &payload)?;
-                        if let Some(&pl) = p.last() {
-                            let pl = pl as usize;
-                            if pl > 0 && pl <= 8 && pl <= p.len() {
-                                p.truncate(p.len() - pl);
-                            }
+                        let pl = *p.last().unwrap_or(&0) as usize;
+                        if pl == 0 || pl > 8 || pl > p.len() || p[p.len() - pl..p.len() - 1].iter().any(|b| *b != 0) {
+                            return Err(Error::Security("Ungültiges DDV-Padding".into()));
                         }
+                        p.truncate(p.len() - pl);
                         p
                     }
                     _ => payload,
@@ -295,6 +336,52 @@ pub fn open_message(raw: &[u8], card: Option<(&mut dyn DdvCard, u32)>) -> Result
                 result.extend(parse_segments(&plain)?);
             }
             _ => result.push(seg),
+        }
+    }
+    Ok(result)
+}
+
+/// Personal RDH responses must be encrypted and authenticated in their entirety.
+/// Anonymous key discovery uses `Opener::Plain` and validates retrieved keys separately.
+fn open_rdh_message(raw: &[u8], card: &mut dyn RdhCard, key: Option<&BankKey>) -> Result<Vec<Segment>> {
+    let outer = parse_segments(raw)?;
+    let heads: Vec<_> = outer.iter().filter(|s| s.code == "HNVSK").collect();
+    let bodies: Vec<_> = outer.iter().filter(|s| s.code == "HNVSD").collect();
+    if heads.len() != 1 || bodies.len() != 1
+        || outer.iter().any(|s| !matches!(s.code.as_str(), "HNHBK" | "HNVSK" | "HNVSD" | "HNHBS"))
+    {
+        return Err(Error::Security("RDH-Antwort ist nicht vollständig verschlüsselt – Antwort verworfen".into()));
+    }
+    let head = heads[0];
+    let profile = head.text_or_empty(1, 1);
+    let expected_mode = if profile == "10" { "2" } else { "18" };
+    if head.text_or_empty(1, 0) != "RDH" || !matches!(profile.as_str(), "7" | "9" | "10")
+        || head.text_or_empty(6, 0) != "2" || head.text_or_empty(6, 1) != expected_mode
+        || head.text_or_empty(6, 2) != "13"
+    {
+        return Err(Error::Security("Unerwartetes RDH-Verschlüsselungsverfahren".into()));
+    }
+    let encrypted_key = head.bin(6, 3).ok_or_else(|| Error::Security("RDH-Nachrichtenschlüssel fehlt".into()))?;
+    let payload = bodies[0].bin(1, 0).ok_or_else(|| Error::Security("RDH-Nachrichteninhalt fehlt".into()))?;
+    let plain = crate::rdh::decrypt(card, encrypted_key, payload)?;
+    match crate::rdh::verify(&plain, key)? {
+        crate::rdh::SignatureCheck::Valid => {},
+        crate::rdh::SignatureCheck::NotSigned => return Err(Error::Security("Die RDH-Antwort enthält keine Banksignatur – Antwort verworfen".into())),
+        crate::rdh::SignatureCheck::NoKey => return Err(Error::Security("Der geprüfte Signaturschlüssel der Bank fehlt – Antwort verworfen".into())),
+    }
+    let inner = parse_segments(&plain)?;
+    if inner.iter().any(|s| {
+        matches!(s.code.as_str(), "HNHBK" | "HNHBS" | "HNVSK" | "HNVSD")
+            || (s.code == "HNSHK" && s.text_or_empty(1, 1) != profile)
+    }) {
+        return Err(Error::Security("Widersprüchlicher RDH-Nachrichtenaufbau".into()));
+    }
+    let mut result = Vec::new();
+    for s in outer {
+        match s.code.as_str() {
+            "HNVSK" => {},
+            "HNVSD" => result.extend(inner.clone()),
+            _ => result.push(s),
         }
     }
     Ok(result)

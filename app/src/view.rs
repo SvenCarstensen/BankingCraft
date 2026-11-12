@@ -2,7 +2,7 @@
 
 use crate::categorize::{categorize, color_of, CATEGORIES};
 use crate::store::{AccessKind, StoredTx, Vault};
-use crate::{AccessRow, AccountRow, AppState, AppWindow, BarStat, MonthStat, StandingRow, TxDetail, TxRow};
+use crate::{AccessRow, AccountRow, AccountGroupRow, GroupBalanceRow, AppState, AppWindow, BarStat, MonthStat, StandingRow, TxDetail, TxRow};
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
 use fints::{Interval, StandingOrder};
 use rust_decimal::Decimal;
@@ -42,7 +42,7 @@ pub fn parse_date(s: &str) -> Option<NaiveDate> {
 pub fn parse_amount(s: &str) -> Option<Decimal> {
     let s = s.trim().replace(['€', ' '], "");
     let s = if s.contains(',') { s.replace('.', "").replace(',', ".") } else { s };
-    s.parse::<Decimal>().ok().map(|d| d.round_dp(2))
+    s.parse::<Decimal>().ok().filter(|d| d.normalize().scale() <= 2)
 }
 
 const MONTHS: [&str; 12] = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
@@ -98,9 +98,36 @@ pub struct ViewState {
     pub standing_index: Vec<usize>,
 }
 
+fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> AccountGroupRow {
+    let mut totals = BTreeMap::<String, Decimal>::new();
+    let mut known = 0;
+    for row in &rows {
+        if let Some(balance) = v.account(row.id as u32).and_then(|a| a.balance.as_ref()) {
+            let currency = if balance.currency.is_empty() { "EUR" } else { &balance.currency };
+            *totals.entry(currency.to_string()).or_default() += balance.booked;
+            known += 1;
+        }
+    }
+    let note = if rows.is_empty() {
+        "Keine Konten".to_string()
+    } else if known == 0 {
+        "Noch keine Salden abgerufen".to_string()
+    } else if known < rows.len() {
+        format!("Teilsaldo · {known} von {} Kontosalden verfügbar", rows.len())
+    } else {
+        format!("{} {}", rows.len(), if rows.len() == 1 { "Konto" } else { "Konten" })
+    };
+    let balances = totals.into_iter().map(|(currency, amount)| GroupBalanceRow {
+        amount: ss(fmt_money(amount, &currency)), negative: amount.is_sign_negative(),
+    }).collect();
+    AccountGroupRow { id: id as i32, name: ss(name), accounts: model(rows), balances: model(balances), balance_note: ss(note) }
+}
+
 pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     let st = app.global::<AppState>();
     let today = Local::now().date_naive();
+    let selected_tx = (st.get_tx_account() as usize).checked_sub(1).and_then(|i| vs.account_filter.get(i)).copied();
+    let selected_payment = vs.sepa_accounts.get(st.get_tf_account().max(0) as usize).copied();
 
     // accounts
     let mut rows = Vec::new();
@@ -109,8 +136,8 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     vs.account_filter.clear();
     vs.sepa_accounts.clear();
     let mut sepa_names = Vec::new();
-    for (i, a) in v.accounts.iter().enumerate() {
-        let c = ACCOUNT_COLORS[i % ACCOUNT_COLORS.len()];
+    for a in &v.accounts {
+        let c = ACCOUNT_COLORS[a.id as usize % ACCOUNT_COLORS.len()];
         let bank = v.access(a.access_id).map(|x| x.name.clone()).unwrap_or_default();
         let (balance, negative, available) = match &a.balance {
             Some(b) => {
@@ -131,6 +158,8 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
         let name = if a.account.product.is_empty() { kind.to_string() } else { a.account.product.clone() };
         rows.push(AccountRow {
             id: a.id as i32,
+            group_index: v.groups.iter().position(|g| g.account_ids.contains(&a.id)).map(|i| i as i32 + 1).unwrap_or(0),
+            group_name: ss(v.groups.iter().find(|g| g.account_ids.contains(&a.id)).map(|g| g.name.as_str()).unwrap_or("Ohne Gruppe")),
             name: ss(&name),
             bank: ss(&bank),
             iban: ss(if a.account.iban.is_empty() { a.account.account_number.clone() } else { short_iban(&a.account.iban) }),
@@ -149,9 +178,25 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             sepa_names.push(ss(format!("{name} · {}", short_iban(&a.account.iban))));
         }
     }
+    let mut grouped = Vec::new();
+    for (index, group) in v.groups.iter().enumerate() {
+        grouped.push(account_group(v, group.id, &group.name, rows.iter().filter(|r| r.group_index == index as i32 + 1).cloned().collect()));
+    }
+    let ungrouped: Vec<_> = rows.iter().filter(|r| r.group_index == 0).cloned().collect();
+    if !ungrouped.is_empty() || grouped.is_empty() {
+        grouped.push(account_group(v, 0, "Ohne Gruppe", ungrouped));
+    }
+    st.set_account_groups(model(grouped));
+    st.set_group_names(model(std::iter::once(ss("Ohne Gruppe")).chain(v.groups.iter().map(|g| ss(&g.name))).collect()));
     st.set_accounts(model(rows));
     st.set_account_names(model(names));
     st.set_sepa_accounts(model(sepa_names));
+    if let Some(id) = selected_tx {
+        st.set_tx_account(vs.account_filter.iter().position(|a| *a == id).map(|i| i as i32 + 1).unwrap_or(0));
+    }
+    if let Some(id) = selected_payment {
+        st.set_tf_account(vs.sepa_accounts.iter().position(|a| *a == id).unwrap_or(0) as i32);
+    }
     if st.get_tf_account() as usize >= vs.sepa_accounts.len() {
         st.set_tf_account(0);
     }
@@ -194,7 +239,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             iban: ss(short_iban(&s.order.transfer.creditor_iban)),
             amount: ss(fmt_eur(-s.order.transfer.amount)),
             purpose: ss(&s.order.transfer.purpose),
-            schedule: ss(schedule_text(&s.order)),
+            schedule: ss(format!("{}{}", schedule_text(&s.order), s.order.execution_time.map(|t| format!(" · {} Uhr", t.format("%H:%M"))).unwrap_or_default())),
             next: ss(next.map(|d| format!("nächste Ausführung {}", fmt_date(d))).unwrap_or_else(|| "beendet".into())),
             account: ss(account_label(v, s.account_id)),
         };
@@ -216,10 +261,12 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             let (kind, detail) = match &a.kind {
                 AccessKind::PinTan => ("PIN/TAN", format!("BLZ {} · {}", a.config.blz, a.config.user_id)),
                 AccessKind::ChipCard { reader, record } => ("HBCI-Chipkarte", format!("BLZ {} · Eintrag {record} · {reader}", a.config.blz)),
+                AccessKind::RdhCard { reader, record } => ("RDH-Chipkarte", format!("BLZ {} · {} · Eintrag {record} · {reader}", a.config.blz, a.config.user_id)),
                 AccessKind::Demo => ("Demo", "lokale Beispieldaten".to_string()),
             };
             let method = match &a.kind {
                 AccessKind::ChipCard { .. } => "Signatur mit Chipkarte".to_string(),
+                AccessKind::RdhCard { .. } => "RSA-Signatur mit Chipkarte (RDH)".to_string(),
                 AccessKind::Demo => "chipTAN (Demo)".to_string(),
                 AccessKind::PinTan => a
                     .state
@@ -252,7 +299,7 @@ fn month_stats(v: &Vault, month_start: NaiveDate) -> (Decimal, Decimal, BTreeMap
     let mut exp = Decimal::ZERO;
     let mut cats: BTreeMap<String, Decimal> = BTreeMap::new();
     for t in &v.transactions {
-        if t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
+        if t.tx.pending || t.tx.date_unknown || t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
             continue;
         }
         let cat = categorize(t, &v.rules);
@@ -316,7 +363,7 @@ pub fn refresh_analysis(app: &AppWindow, v: &Vault) {
     let end = start + Months::new(1);
     let mut inc: BTreeMap<String, Decimal> = BTreeMap::new();
     for t in &v.transactions {
-        if t.tx.booking_date >= start && t.tx.booking_date < end && !t.tx.amount.is_sign_negative() {
+        if !t.tx.pending && !t.tx.date_unknown && t.tx.booking_date >= start && t.tx.booking_date < end && !t.tx.amount.is_sign_negative() {
             let c = categorize(t, &v.rules);
             if c != "Umbuchung" {
                 *inc.entry(c).or_default() += t.tx.amount;
@@ -349,20 +396,8 @@ pub fn tx_row(v: &Vault, i: usize, with_account: bool) -> TxRow {
     }
 }
 
-pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
-    let st = app.global::<AppState>();
-    let today = Local::now().date_naive();
-    let acc_idx = st.get_tx_account();
-    let account: Option<u32> = if acc_idx <= 0 { None } else { vs.account_filter.get(acc_idx as usize - 1).copied() };
-    let since = match st.get_tx_period() {
-        0 => Some(today - Duration::days(30)),
-        1 => Some(today - Duration::days(90)),
-        2 => NaiveDate::from_ymd_opt(today.year(), 1, 1),
-        _ => None,
-    };
-    let search = st.get_tx_search().to_lowercase();
-    let cat_filter = st.get_tx_category().to_string();
-
+fn transaction_indices(v: &Vault, account: Option<u32>, since: Option<NaiveDate>, search: &str, cat_filter: &str) -> Vec<usize> {
+    let search = search.to_lowercase();
     let mut idx: Vec<usize> = (0..v.transactions.len())
         .filter(|&i| {
             let t: &StoredTx = &v.transactions[i];
@@ -372,7 +407,7 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
                 }
             }
             if let Some(s) = since {
-                if t.tx.booking_date < s {
+                if !t.tx.date_unknown && t.tx.booking_date < s {
                     return false;
                 }
             }
@@ -396,8 +431,27 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
     idx.sort_by(|&a, &b| {
         let ta = &v.transactions[a].tx;
         let tb = &v.transactions[b].tx;
-        tb.pending.cmp(&ta.pending).then(tb.booking_date.cmp(&ta.booking_date)).then(b.cmp(&a))
+        tb.pending.cmp(&ta.pending).then(tb.date_unknown.cmp(&ta.date_unknown)).then(tb.booking_date.cmp(&ta.booking_date)).then(b.cmp(&a))
     });
+
+    idx
+}
+
+pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
+    let st = app.global::<AppState>();
+    let today = Local::now().date_naive();
+    let acc_idx = st.get_tx_account();
+    let account: Option<u32> = if acc_idx <= 0 { None } else { vs.account_filter.get(acc_idx as usize - 1).copied() };
+    let since = match st.get_tx_period() {
+        0 => Some(today - Duration::days(30)),
+        1 => Some(today - Duration::days(90)),
+        2 => NaiveDate::from_ymd_opt(today.year(), 1, 1),
+        _ => None,
+    };
+    let search = st.get_tx_search().to_lowercase();
+    let cat_filter = st.get_tx_category().to_string();
+
+    let idx = transaction_indices(v, account, since, &search, &cat_filter);
 
     // running end-of-day balance (only meaningful for a single account with known balance)
     let mut running = account.and_then(|a| v.account(a)).and_then(|a| a.balance.as_ref()).map(|b| b.booked);
@@ -409,13 +463,15 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
         let first = &v.transactions[idx[i]].tx;
         let pending = first.pending;
         let date = first.booking_date;
+        let unknown = first.date_unknown;
+        if unknown && !pending { running = None; }
         let mut j = i;
         let mut day_sum = Decimal::ZERO;
-        while j < idx.len() && v.transactions[idx[j]].tx.pending == pending && (pending || v.transactions[idx[j]].tx.booking_date == date) {
+        while j < idx.len() && v.transactions[idx[j]].tx.pending == pending && (pending || (v.transactions[idx[j]].tx.date_unknown == unknown && (unknown || v.transactions[idx[j]].tx.booking_date == date))) {
             day_sum += v.transactions[idx[j]].tx.amount;
             j += 1;
         }
-        let label = if pending { "Vorgemerkte Umsätze".to_string() } else { day_label(date) };
+        let label = if pending { "Vorgemerkte Umsätze".to_string() } else if unknown { "Buchungsdatum nicht geliefert".to_string() } else { day_label(date) };
         let balance_text = if pending {
             String::new()
         } else if let Some(r) = running {
@@ -467,8 +523,8 @@ pub fn show_detail(app: &AppWindow, v: &Vault, i: usize) {
         bic: ss(&t.tx.counterparty_bic),
         amount: ss(fmt_money(t.tx.amount, &t.tx.currency)),
         negative: t.tx.amount.is_sign_negative(),
-        booking_date: ss(fmt_date(t.tx.booking_date)),
-        value_date: ss(fmt_date(t.tx.value_date)),
+        booking_date: ss(if t.tx.date_unknown { "nicht geliefert".into() } else { fmt_date(t.tx.booking_date) }),
+        value_date: ss(if t.tx.date_unknown { "nicht geliefert".into() } else { fmt_date(t.tx.value_date) }),
         purpose: ss(&t.tx.purpose),
         posting_text: ss(&t.tx.posting_text),
         eref: ss(&t.tx.end_to_end_id),
@@ -491,6 +547,8 @@ pub fn schedule_text(o: &StandingOrder) -> String {
         (Interval::Monthly, n) => format!("alle {n} Monate"),
     };
     let day = match (o.interval, o.day) {
+        (Interval::Monthly, 97) => " zwei Tage vor Ultimo".to_string(),
+        (Interval::Monthly, 98) => " einen Tag vor Ultimo".to_string(),
         (Interval::Monthly, 99) => " zum Ultimo".to_string(),
         (Interval::Monthly, d) => format!(" zum {d}."),
         (Interval::Weekly, d) if (1..=7).contains(&d) => format!(" am {}", WEEKDAYS[d as usize - 1]),
@@ -505,7 +563,7 @@ pub fn next_execution(o: &StandingOrder, today: NaiveDate) -> Option<NaiveDate> 
         let actual = match o.interval {
             Interval::Monthly => {
                 let last = (NaiveDate::from_ymd_opt(d.year(), d.month(), 1)? + Months::new(1) - Duration::days(1)).day();
-                let day = if o.day >= 97 { last } else { o.day.clamp(1, last) };
+                let day = if (97..=99).contains(&o.day) { last - (99 - o.day) } else { o.day.clamp(1, last) };
                 NaiveDate::from_ymd_opt(d.year(), d.month(), day)?
             }
             Interval::Weekly => d,
@@ -515,7 +573,7 @@ pub fn next_execution(o: &StandingOrder, today: NaiveDate) -> Option<NaiveDate> 
                 return None;
             }
         }
-        if actual >= today {
+        if actual >= today && actual >= o.first_date {
             return Some(actual);
         }
         d = match o.interval {
@@ -524,4 +582,93 @@ pub fn next_execution(o: &StandingOrder, today: NaiveDate) -> Option<NaiveDate> 
         };
     }
     None
+}
+
+
+#[cfg(test)]
+mod amount_tests {
+    use super::*;
+    use slint::Model;
+
+    #[test]
+    fn monthly_analysis_excludes_pending_unknown_transfers_and_outside_dates() {
+        use crate::business_tests::{tx, date};
+        let mut v = Vault::default();
+        v.merge_transactions(1, vec![tx(10000, "2026-11-01"), tx(-2500, "2026-11-30"), tx(-90000, "2026-10-31"), tx(80000, "2026-12-01")]);
+        let mut pending = tx(-70000, "2026-11-01"); pending.pending = true;
+        let mut unknown = tx(-60000, "2026-11-01"); unknown.date_unknown = true;
+        let mut transfer = tx(-50000, "2026-11-01"); transfer.purpose = "Umbuchung".into();
+        v.merge_transactions(1, vec![pending, unknown, transfer]);
+        let (income, expense, cats) = month_stats(&v, date("2026-11-01"));
+        assert_eq!(income, Decimal::from(100)); assert_eq!(expense, Decimal::from(-25)); assert_eq!(cats.values().copied().sum::<Decimal>(), Decimal::from(25));
+        let series = month_series(&v, date("2026-11-01"), 3); assert_eq!(series.len(), 3); assert_eq!(series[0].label, "Sep 26"); assert_eq!(series[2].income_text, "100,00 €");
+    }
+
+    #[test]
+    fn transaction_filters_combine_account_date_search_and_category_and_sort_pending_first() {
+        use crate::business_tests::{tx, date};
+        let mut v = Vault::default(); let mut pending = tx(-400, "2026-11-01"); pending.pending = true;
+        let mut unknown = tx(-500, "2025-01-01"); unknown.date_unknown = true;
+        let mut grocery = tx(-600, "2026-11-03"); grocery.counterparty_name = "REWE".into(); grocery.purpose = "Wocheneinkauf".into();
+        v.merge_transactions(1, vec![tx(-100, "2026-10-01"), tx(-200, "2026-11-01"), tx(-300, "2026-11-02"), pending, unknown, grocery]);
+        v.merge_transactions(2, vec![tx(-700, "2026-11-04")]);
+        assert_eq!(transaction_indices(&v, Some(1), Some(date("2026-11-01")), "", ""), vec![3, 4, 5, 2, 1]);
+        assert_eq!(transaction_indices(&v, Some(1), None, "rEwE 6,00", "Lebensmittel"), vec![5]);
+        assert!(transaction_indices(&v, Some(2), None, "REWE", "").is_empty());
+        assert!(transaction_indices(&v, None, None, "REWE", "Wohnen").is_empty());
+        assert_eq!(transaction_indices(&v, None, None, "REWE fehlend", ""), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn transaction_row_preserves_pending_currency_and_multiline_purpose() {
+        let mut v = Vault::default(); let mut t = crate::business_tests::tx(-100, "2026-11-01");
+        t.pending = true; t.currency = "USD".into(); t.counterparty_name.clear(); t.posting_text = "Kartenkauf".into(); t.purpose = "erste\nzweite".into();
+        v.merge_transactions(1, vec![t]); let row = tx_row(&v, 0, false);
+        assert_eq!(row.name, "Kartenkauf"); assert_eq!(row.purpose, "erste zweite"); assert_eq!(row.amount, "−1,00 USD"); assert!(row.pending && row.negative);
+    }
+
+    #[test]
+    fn group_balances_sum_booked_values_and_keep_currencies_separate() {
+        let mut vault = Vault::default();
+        let mut rows = Vec::new();
+        for (index, balance) in [Some(("100.10", "EUR")), Some(("-150.35", "EUR")), Some(("12.34", "USD")), None].into_iter().enumerate() {
+            let id = vault.merge_accounts(1, vec![fints::Account { account_number: index.to_string(), ..Default::default() }])[0];
+            vault.accounts.iter_mut().find(|a| a.id == id).unwrap().balance = balance.map(|(amount, currency)| fints::Balance {
+                booked: amount.parse().unwrap(), available: Some(Decimal::from(999)), currency: currency.into(),
+                date: NaiveDate::from_ymd_opt(2026, 11, 12).unwrap(),
+            });
+            rows.push(AccountRow { id: id as i32, ..Default::default() });
+        }
+        let group = account_group(&vault, 9, "Test", rows);
+        assert_eq!(group.balances.row_count(), 2);
+        let eur = group.balances.row_data(0).unwrap();
+        assert_eq!(eur.amount, "−50,25 €");
+        assert!(eur.negative);
+        assert_eq!(group.balances.row_data(1).unwrap().amount, "12,34 USD");
+        assert_eq!(group.balance_note, "Teilsaldo · 3 von 4 Kontosalden verfügbar");
+    }
+
+    #[test]
+    fn unavailable_group_balances_are_distinct_from_zero() {
+        let mut vault = Vault::default();
+        let id = vault.merge_accounts(1, vec![fints::Account::default()])[0];
+        let rows = vec![AccountRow { id: id as i32, ..Default::default() }];
+        let group = account_group(&vault, 9, "Test", rows.clone());
+        assert_eq!(group.balances.row_count(), 0);
+        assert_eq!(group.balance_note, "Noch keine Salden abgerufen");
+        vault.accounts[0].balance = Some(fints::Balance {
+            booked: Decimal::ZERO, available: None, currency: "EUR".into(),
+            date: NaiveDate::from_ymd_opt(2026, 11, 12).unwrap(),
+        });
+        let group = account_group(&vault, 9, "Test", rows);
+        assert_eq!(group.balances.row_data(0).unwrap().amount, "0,00 €");
+        assert_eq!(group.balance_note, "1 Konto");
+    }
+    #[test]
+    fn amount_entry_does_not_silently_round() {
+        assert_eq!(parse_amount("1.234,56 €").unwrap().to_string(),"1234.56");
+        assert_eq!(parse_amount("12.34").unwrap().to_string(),"12.34");
+        assert!(parse_amount("12,345").is_none());
+        assert!(parse_amount("0,001").is_none());
+    }
 }

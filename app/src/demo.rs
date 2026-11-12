@@ -156,6 +156,7 @@ pub fn add_demo(v: &mut Vault) {
             account_id: giro_id,
             order: StandingOrder {
                 order_id: format!("DEMO-{acc}"),
+                execution_time: None,
                 transfer: SepaTransfer {
                     debtor_name: giro.owner.clone(),
                     debtor_iban: giro.iban.clone(),

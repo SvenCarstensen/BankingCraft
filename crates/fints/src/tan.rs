@@ -193,8 +193,8 @@ impl FlickerCode {
 fn clean(code: &str) -> String {
     let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
     if let (Some(a), Some(b)) = (code.find("CHLGUC"), code.find("CHLGTEXT")) {
-        if b > a {
-            return format!("0{}", &code[a + 10..b]);
+        if let Some(payload) = code.get(a + 10..b) {
+            return format!("0{payload}");
         }
     }
     code

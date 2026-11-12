@@ -103,16 +103,16 @@ fn parse_yymmdd(s: &str) -> Option<NaiveDate> {
     if s.len() < 6 {
         return None;
     }
-    let yy: i32 = s[0..2].parse().ok()?;
+    let yy: i32 = s.get(0..2)?.parse().ok()?;
     let year = if yy > 79 { 1900 + yy } else { 2000 + yy };
-    NaiveDate::from_ymd_opt(year, s[2..4].parse().ok()?, s[4..6].parse().ok()?)
+    NaiveDate::from_ymd_opt(year, s.get(2..4)?.parse().ok()?, s.get(4..6)?.parse().ok()?)
 }
 
 fn parse_balance(v: &str) -> Option<(Decimal, NaiveDate, String)> {
     // C230115EUR1234,56
     let v = v.trim();
     let sign = if v.starts_with('D') { -1 } else { 1 };
-    let date = parse_yymmdd(&v[1..])?;
+    let date = parse_yymmdd(v.get(1..)?)?;
     let ccy = v.get(7..10)?.to_string();
     let amt = parse_amount(v.get(10..)?)? * Decimal::from(sign);
     Some((amt, date, ccy))
@@ -124,7 +124,7 @@ fn parse_61(v: &str) -> Option<Transaction> {
     let mut rest = &first[6..];
     // optional entry date MMDD
     let mut booking_date = value_date;
-    if rest.len() >= 4 && rest[..4].chars().all(|c| c.is_ascii_digit()) {
+    if rest.get(..4).map(|s| s.bytes().all(|c| c.is_ascii_digit())).unwrap_or(false) {
         let mm: u32 = rest[0..2].parse().ok()?;
         let dd: u32 = rest[2..4].parse().ok()?;
         let mut year = value_date.year();
@@ -165,14 +165,14 @@ fn apply_86(t: &mut Transaction, v: &str) {
         return;
     }
     let sep = v.chars().nth(3).unwrap_or('?');
-    if !v[..3].chars().all(|c| c.is_ascii_digit()) || sep.is_alphanumeric() {
+    if !v.get(..3).map(|s| s.bytes().all(|c| c.is_ascii_digit())).unwrap_or(false) || !sep.is_ascii() || sep.is_alphanumeric() {
         t.purpose = v;
         return;
     }
     let mut purpose_parts: Vec<String> = Vec::new();
     let mut names: Vec<String> = Vec::new();
     for part in v[4..].split(sep) {
-        if part.len() < 2 {
+        if !part.get(..2).map(|s| s.bytes().all(|c| c.is_ascii_digit())).unwrap_or(false) {
             continue;
         }
         let (code, val) = part.split_at(2);

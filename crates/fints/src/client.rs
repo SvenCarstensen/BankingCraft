@@ -5,12 +5,18 @@ use crate::bpd::{Bpd, Upd};
 use crate::error::{Error, Result};
 use crate::model::*;
 use crate::response::Response;
-use crate::security::{build_message, open_message, Auth, DdvCard, DdvKey, Envelope};
+use crate::rdh::{BankKeys, KeyCheck, RdhCard, RdhContext, RdhSession};
+use crate::security::{build_message, open_message, Auth, DdvCard, DdvKey, Envelope, Opener};
 use crate::syntax::{fints_date, latin1_to_string, parse_fints_date, SegmentBuilder, Val};
 use crate::transport::{HttpsTransport, TcpTransport, Transport};
 use crate::{camt, mt940, pain};
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
+
+#[cfg(test)]
+#[path = "business_flow_tests.rs"]
+mod business_flow_tests;
 
 /// Static access configuration of one bank login.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -35,11 +41,16 @@ pub struct State {
     pub tan_method: Option<String>,
     pub tan_medium: Option<String>,
     pub allowed_methods: Vec<String>,
+    /// Public keys of the bank (RDH only).
+    #[serde(default)]
+    pub bank_keys: Option<BankKeys>,
 }
 
 pub enum Medium {
     PinTan,
     Ddv(Box<dyn DdvCard>),
+    /// RDH chip card (RDH-7/9/10). The `u8` selects the notepad entry (1-based, 0 = match by BLZ/user).
+    Rdh(Box<dyn RdhCard>, u8),
 }
 
 /// Callbacks into the UI. Called from the worker thread and may block.
@@ -53,6 +64,15 @@ pub trait Interaction: Send + Sync {
     fn text(&self, _title: &str, _prompt: &str) -> Option<String> {
         None
     }
+    /// Yes/no question (e.g. confirming a bank key fingerprint). Default: no.
+    fn confirm(&self, _title: &str, _text: &str) -> bool {
+        false
+    }
+}
+
+struct RdhCtx {
+    session: RdhSession,
+    context: RdhContext,
 }
 
 struct DdvCtx {
@@ -66,9 +86,10 @@ pub struct Client<'a> {
     pub state: State,
     medium: Medium,
     ddv: Option<DdvCtx>,
+    rdh: Option<RdhCtx>,
     transport: Box<dyn Transport>,
     ui: &'a dyn Interaction,
-    pin: Option<String>,
+    pin: Option<Zeroizing<String>>,
     dialog_id: String,
     msg_num: u32,
     in_dialog: bool,
@@ -76,7 +97,7 @@ pub struct Client<'a> {
     dialog_authenticated: bool,
     /// (segment number, segment code) of the last request, to name segments in error messages.
     last_request: Vec<(u32, String)>,
-    /// Last request/response pair with PIN and TAN masked, for error reports.
+    /// Segment identifiers of the last request/response pair, without message contents.
     pub last_trace: Option<String>,
 }
 
@@ -86,6 +107,9 @@ const KAZ_VERSIONS: &[u32] = &[5, 6, 7];
 
 impl<'a> Client<'a> {
     pub fn new(cfg: Config, state: State, mut medium: Medium, ui: &'a dyn Interaction) -> Result<Self> {
+        if matches!(medium, Medium::PinTan) {
+            crate::transport::validate_https_url(&cfg.url)?;
+        }
         let mut cfg = cfg;
         let mut ddv = None;
         if let Medium::Ddv(card) = &mut medium {
@@ -101,6 +125,41 @@ impl<'a> Client<'a> {
             }
             let (sig_key, enc_key) = card.keys()?;
             ddv = Some(DdvCtx { cid: card.cid()?, sig_key, enc_key });
+        }
+        let mut rdh = None;
+        if let Medium::Rdh(card, record) = &mut medium {
+            card.verify_pin()?;
+            let contexts = card.contexts()?;
+            let wanted = *record;
+            let context = contexts.iter().find(|c| {
+                    (wanted == 0 || c.record == wanted)
+                        && (cfg.blz.is_empty() || c.blz == cfg.blz)
+                        && (cfg.user_id.is_empty() || c.user_id == cfg.user_id)
+                })
+                .cloned()
+                .ok_or_else(|| Error::Security("Der gewählte Bankzugang wurde auf der Chipkarte nicht gefunden".into()))?;
+            if cfg.blz.is_empty() {
+                cfg.blz = context.blz.clone();
+            }
+            if cfg.user_id.is_empty() {
+                cfg.user_id = context.user_id.clone();
+            }
+            if cfg.customer_id.is_empty() && !context.customer_id.is_empty() {
+                cfg.customer_id = context.customer_id.clone();
+            }
+            if cfg.url.is_empty() {
+                cfg.url = context.host.clone();
+            }
+            let session = RdhSession {
+                cid: card.cid()?,
+                profile: context.profile,
+                sign_key: card.sign_key()?,
+                decipher_key: card.decipher_key()?,
+            };
+            if !matches!(session.profile, 7 | 9 | 10) {
+                return Err(Error::NotSupported(format!("RDH-Profil {}", session.profile)));
+            }
+            rdh = Some(RdhCtx { session, context });
         }
         if cfg.customer_id.is_empty() {
             cfg.customer_id = cfg.user_id.clone();
@@ -118,6 +177,7 @@ impl<'a> Client<'a> {
             state,
             medium,
             ddv,
+            rdh,
             transport,
             ui,
             pin: None,
@@ -134,18 +194,37 @@ impl<'a> Client<'a> {
         matches!(self.medium, Medium::PinTan)
     }
 
+    /// Replace the transport (tests, simulators).
+    #[doc(hidden)]
+    pub fn set_transport(&mut self, t: Box<dyn Transport>) {
+        self.transport = t;
+    }
+
+    fn is_rdh(&self) -> bool {
+        matches!(self.medium, Medium::Rdh(..))
+    }
+
+    /// RDH profile and notepad data of the card (RDH only).
+    pub fn rdh_context(&self) -> Option<&RdhContext> {
+        self.rdh.as_ref().map(|r| &r.context)
+    }
+
+    pub fn rdh_profile(&self) -> Option<u32> {
+        self.rdh.as_ref().map(|r| r.session.profile)
+    }
+
     fn security_function(&self) -> String {
         self.state.tan_method.clone().unwrap_or_else(|| "999".into())
     }
 
-    fn ensure_pin(&mut self) -> Result<String> {
+    fn ensure_pin(&mut self) -> Result<Zeroizing<String>> {
         if let Some(p) = &self.pin {
             return Ok(p.clone());
         }
-        let p = self
+        let p = Zeroizing::new(self
             .ui
             .pin(&format!("PIN für {} ({})", self.cfg.user_id, self.state.bpd.bank_name))
-            .ok_or(Error::Cancelled)?;
+            .ok_or(Error::Cancelled)?);
         self.pin = Some(p.clone());
         Ok(p)
     }
@@ -164,24 +243,35 @@ impl<'a> Client<'a> {
                 user_id: &self.cfg.user_id,
                 system_id: if self.state.system_id.is_empty() { "0" } else { &self.state.system_id },
             };
-            let auth = match (&mut self.medium, &self.ddv) {
-                (Medium::PinTan, _) => Auth::PinTan { pin: pin.as_deref().unwrap_or(""), tan, security_function: &sf },
-                (Medium::Ddv(card), Some(ctx)) => Auth::Ddv {
+            let no_sysid = self.state.system_id.is_empty() || self.state.system_id == "0";
+            let bank_crypt = self.state.bank_keys.as_ref().and_then(|k| k.crypt.as_ref());
+            let auth = match (&mut self.medium, &self.ddv, &self.rdh) {
+                (Medium::PinTan, _, _) => Auth::PinTan { pin: pin.as_ref().map(|p| p.as_str()).unwrap_or(""), tan, security_function: &sf },
+                (Medium::Ddv(card), Some(ctx), _) => Auth::Ddv {
                     card: card.as_mut(),
                     cid: &ctx.cid,
                     sig_key: ctx.sig_key,
                     enc_key: ctx.enc_key,
                 },
+                (Medium::Rdh(card, _), _, Some(ctx)) => Auth::Rdh {
+                    card: card.as_mut(),
+                    session: &ctx.session,
+                    bank: bank_crypt.ok_or_else(|| Error::Security("Der öffentliche Schlüssel der Bank fehlt".into()))?,
+                    no_sysid,
+                },
                 _ => return Err(Error::Security("chip card not initialised".into())),
             };
-            build_message(&env, auth, segments)?
+            Zeroizing::new(build_message(&env, auth, segments)?)
         };
         self.msg_num += 1;
         let answer = self.transport.send(&raw)?;
-        self.last_trace = Some(format!(">> {}\n\n<< {}", mask_signature(&raw), truncate_trace(&answer)));
+        crate::response::validate_envelope(&answer, &self.dialog_id, self.msg_num - 1)?;
+        self.last_trace = Some(format!(">> {}\n\n<< {}", protocol_summary(&raw), protocol_summary(&answer)));
+        let bank_sign = self.state.bank_keys.as_ref().and_then(|k| k.sign.as_ref());
         let segs = match (&mut self.medium, &self.ddv) {
-            (Medium::Ddv(card), Some(ctx)) => open_message(&answer, Some((card.as_mut(), ctx.enc_key.num)))?,
-            _ => open_message(&answer, None)?,
+            (Medium::Ddv(card), Some(ctx)) => open_message(&answer, Opener::Ddv(card.as_mut(), ctx.enc_key.num))?,
+            (Medium::Rdh(card, _), _) => open_message(&answer, Opener::Rdh(card.as_mut(), bank_sign))?,
+            _ => open_message(&answer, Opener::Plain)?,
         };
         let resp = Response::new(segs);
         if let Some(id) = &resp.dialog_id {
@@ -196,7 +286,7 @@ impl<'a> Client<'a> {
             self.state.allowed_methods = allowed;
         }
         for c in &resp.codes {
-            log::info!("FinTS {} {}", c.code, c.text);
+            log::info!("FinTS Rückmeldung {}", diagnostic_code(&c.code));
         }
         if let Some(e) = resp.errors().first() {
             if e.code == "9931" || e.code == "9942" || e.code == "9340" {
@@ -248,8 +338,9 @@ impl<'a> Client<'a> {
         };
         self.msg_num += 1;
         let answer = self.transport.send(&raw)?;
-        self.last_trace = Some(format!(">> {}\n\n<< {}", crate::syntax::latin1_to_string(&raw), truncate_trace(&answer)));
-        let resp = Response::new(open_message(&answer, None)?);
+        crate::response::validate_envelope(&answer, &self.dialog_id, self.msg_num - 1)?;
+        self.last_trace = Some(format!(">> {}\n\n<< {}", protocol_summary(&raw), protocol_summary(&answer)));
+        let resp = Response::new(open_message(&answer, Opener::Plain)?);
         if let Some(id) = &resp.dialog_id {
             if self.dialog_id == "0" && id != "0" {
                 self.dialog_id = id.clone();
@@ -257,7 +348,7 @@ impl<'a> Client<'a> {
         }
         self.state.bpd.update_from(&resp);
         for c in &resp.codes {
-            log::info!("FinTS (anonym) {} {}", c.code, c.text);
+            log::info!("FinTS (anonym) Rückmeldung {}", diagnostic_code(&c.code));
         }
         if let Some(e) = resp.errors().first() {
             let text = resp.errors().iter().map(|c| format!("{} {}", c.code, c.text)).collect::<Vec<_>>().join("\n");
@@ -295,7 +386,7 @@ impl<'a> Client<'a> {
     }
 
     fn product_id(&self) -> String {
-        if self.cfg.product_id.is_empty() { "KONTOR".to_string() } else { self.cfg.product_id.clone() }
+        if self.cfg.product_id.is_empty() { "BANKINGCRAFT".to_string() } else { self.cfg.product_id.clone() }
     }
 
     fn hktan_version(&self) -> u32 {
@@ -386,9 +477,11 @@ impl<'a> Client<'a> {
             segments.push(self.hktan_process4(reference));
         }
         let resp = self.exchange(segments, None)?;
-        if !sca || resp.code("0030").is_none() {
+        let approval_pending = resp.code("0030").is_some() || resp.code("3955").is_some();
+        if !approval_pending {
             return Ok(resp);
         }
+        if !sca { return Err(Error::Security("Die Bank fordert eine Freigabe, die nicht abgeschlossen wurde".into())); }
         let hitan = resp.first("HITAN").ok_or_else(|| Error::Other("TAN required but no HITAN".into()))?;
         let method = self.current_method().unwrap_or(TanMethod {
             security_function: self.security_function(),
@@ -404,6 +497,7 @@ impl<'a> Client<'a> {
             decoupled_poll_wait_next: 2,
         });
         let task_reference = hitan.text_or_empty(3, 0);
+        if task_reference.trim().is_empty() { return Err(Error::Security("TAN-Auftragsreferenz fehlt".into())); }
         let mut challenge = TanChallenge {
             text: hitan.text_or_empty(4, 0),
             hhduc: hitan.bin(5, 0).map(|b| b.to_vec()).filter(|b| !b.is_empty()),
@@ -416,8 +510,10 @@ impl<'a> Client<'a> {
             match self.ui.tan(&challenge) {
                 TanAnswer::Cancel => return Err(Error::Cancelled),
                 TanAnswer::Tan(tan) => {
+                    let tan = Zeroizing::new(tan);
                     let seg = self.hktan_followup("2", &task_reference);
                     let r = self.exchange(vec![seg], Some(&tan))?;
+                    completed_approval(&r)?;
                     return Ok(merge(resp, r));
                 }
                 TanAnswer::Confirmed => {
@@ -431,6 +527,7 @@ impl<'a> Client<'a> {
                         );
                         continue;
                     }
+                    completed_approval(&r)?;
                     return Ok(merge(resp, r));
                 }
             }
@@ -440,7 +537,8 @@ impl<'a> Client<'a> {
     // ------------------------------------------------------------------ dialogs
 
     fn init_segments(&self, with_sync: bool) -> Vec<SegmentBuilder> {
-        let pintan = self.is_pintan();
+        // PIN/TAN and RDH work with a system id (Kundensystem-Status 1), DDV without
+        let pintan = self.is_pintan() || self.is_rdh();
         let sys_id = if pintan {
             if self.state.system_id.is_empty() { "0".to_string() } else { self.state.system_id.clone() }
         } else {
@@ -469,6 +567,9 @@ impl<'a> Client<'a> {
     /// (security function 999, profile PIN:1, no HKTAN) – the same as AqBanking's JobSync.
     /// Also delivers the UPD and the TAN methods the user may use (code 3920).
     pub fn synchronize(&mut self) -> Result<()> {
+        if self.is_rdh() {
+            return self.synchronize_rdh();
+        }
         if !self.is_pintan() {
             return Ok(());
         }
@@ -493,6 +594,139 @@ impl<'a> Client<'a> {
         r.map(|_| ())
     }
 
+    /// RDH: system id via a signed and encrypted dialog without system id (AqBanking JobSync,
+    /// security details `1::0`).
+    fn synchronize_rdh(&mut self) -> Result<()> {
+        self.ui.progress("Synchronisiere Bankzugang (Chipkarte) …");
+        self.state.system_id.clear();
+        self.reset_dialog();
+        let mut segs = self.init_segments(true);
+        segs[0] = SegmentBuilder::new("HKIDN", 2)
+            .deg(vec!["280".into(), (&self.cfg.blz).into()])
+            .de(&self.cfg.customer_id)
+            .de("0")
+            .de("1");
+        let r = self.exchange(segs, None);
+        let mut sid = None;
+        if let Ok(resp) = &r {
+            sid = resp.first("HISYN").and_then(|s| s.text(1, 0));
+        }
+        self.end_dialog().ok();
+        if let Some(sid) = sid {
+            self.state.system_id = sid;
+        }
+        r.map(|_| ())
+    }
+
+    /// RDH: fetch the bank's public keys in an anonymous dialog (HKISA) and check them
+    /// against the hash on the card – or let the user compare the fingerprint with the INI letter.
+    pub fn fetch_bank_keys(&mut self) -> Result<()> {
+        let Some(ctx) = self.rdh.as_ref() else { return Ok(()) };
+        let profile = ctx.session.profile;
+        let card_hash = ctx.context.bank_key_hash.clone();
+        self.ui.progress("Lade öffentliche Schlüssel der Bank …");
+        self.reset_dialog();
+        let segs = vec![
+            SegmentBuilder::new("HKIDN", 2)
+                .deg(vec!["280".into(), (&self.cfg.blz).into()])
+                .de(ANONYMOUS_CUSTOMER)
+                .de("0")
+                .de("0"),
+            SegmentBuilder::new("HKVVB", 3)
+                .de(self.state.bpd.version)
+                .de("0")
+                .de("1")
+                .de(self.product_id())
+                .de(&self.cfg.product_version),
+            crate::rdh::hkisa(profile, &self.cfg.blz, "V"),
+            crate::rdh::hkisa(profile, &self.cfg.blz, "S"),
+        ];
+        let r = self.exchange_anonymous(segs);
+        if self.dialog_id != "0" {
+            let end = SegmentBuilder::new("HKEND", 1).de(self.dialog_id.clone());
+            let _ = self.exchange_anonymous(vec![end]);
+        }
+        self.reset_dialog();
+        let resp = r?;
+        let mut keys = BankKeys::default();
+        for seg in resp.find("HIISA") {
+            if let Some(k) = crate::rdh::parse_hiisa(seg) {
+                match k.kind.as_str() {
+                    "V" => keys.crypt = Some(k),
+                    "S" => keys.sign = Some(k),
+                    _ => {}
+                }
+            }
+        }
+        let Some(crypt) = keys.crypt.clone() else {
+            return Err(Error::Security("Die Bank hat keinen Verschlüsselungsschlüssel geliefert".into()));
+        };
+        if keys.sign.is_none() {
+            return Err(Error::Security("Die Bank hat keinen Signaturschlüssel geliefert; RDH ohne geprüfte Banksignatur wird nicht unterstützt".into()));
+        }
+        // The hash on the card belongs to one key (number/version). Banks often use the same
+        // number/version for both keys, so a non-matching key only counts as a mismatch when no
+        // key matches the hash at all.
+        let checked: Vec<(crate::rdh::BankKey, KeyCheck)> = [Some(&crypt), keys.sign.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(|k| (k.clone(), crate::rdh::check_bank_key(k, card_hash.as_ref())))
+            .collect();
+        let any_verified = checked.iter().any(|(_, c)| *c == KeyCheck::Verified);
+        let mut unknown = Vec::new();
+        let mut mismatch = Vec::new();
+        for (k, c) in checked {
+            match c {
+                KeyCheck::Verified => log::info!("RDH: Bankschlüssel {} mit dem Hashwert der Chipkarte geprüft", k.kind),
+                KeyCheck::Mismatch if !any_verified => mismatch.push(k),
+                _ => unknown.push(k),
+            }
+        }
+        let describe = |k: &crate::rdh::BankKey| {
+            format!(
+                "\n{} (Nr. {}, Version {}, {} Bit), SHA-256:\n{}\n",
+                if k.kind == "V" { "Verschlüsselungsschlüssel" } else { "Signaturschlüssel" },
+                k.num,
+                k.version,
+                k.size() * 8,
+                k.fingerprint()
+            )
+        };
+        if !mismatch.is_empty() {
+            // as AqBanking: strong warning, the user may only continue after comparing with the INI letter
+            let mut text = String::from(
+                "ACHTUNG: Der von der Bank übermittelte Schlüssel stimmt NICHT mit dem Hashwert auf Ihrer Chipkarte überein. \
+                 Fahren Sie nur fort, wenn der Hashwert exakt mit Ihrem INI-Brief übereinstimmt – andernfalls brechen Sie ab und \
+                 wenden Sie sich an Ihre Bank.\n",
+            );
+            if let Some(h) = &card_hash {
+                text.push_str(&format!("\nHashwert auf der Chipkarte:\n{}\n", crate::rdh::hex_blocks(&h.hash)));
+            }
+            for k in &mismatch {
+                text.push_str(&describe(k));
+            }
+            if !self.ui.confirm("Bankschlüssel stimmt nicht überein", &text) {
+                return Err(Error::Security(
+                    "Der Schlüssel der Bank stimmt nicht mit dem Hashwert auf der Chipkarte überein und wurde nicht übernommen.".into(),
+                ));
+            }
+        }
+        if !unknown.is_empty() {
+            let mut text = String::from(
+                "Bitte vergleichen Sie die Hashwerte mit dem INI-Brief Ihrer Bank. Nur bei exakter Übereinstimmung bestätigen.\n",
+            );
+            for k in &unknown {
+                text.push_str(&describe(k));
+            }
+            if !self.ui.confirm("Bankschlüssel prüfen", &text) {
+                return Err(Error::Cancelled);
+            }
+        }
+        keys.verified = true;
+        self.state.bank_keys = Some(keys);
+        Ok(())
+    }
+
     fn reset_dialog(&mut self) {
         self.dialog_id = "0".into();
         self.msg_num = 1;
@@ -507,10 +741,8 @@ impl<'a> Client<'a> {
         }
         if self.is_pintan() {
             // 1. bank parameter data (anonymous; the single-step sync below delivers it as well)
-            if self.state.bpd.tan_methods.is_empty() {
-                if let Err(e) = self.fetch_bpd_anonymous() {
-                    log::warn!("anonymous BPD request failed: {e}");
-                }
+            if self.state.bpd.tan_methods.is_empty() && self.fetch_bpd_anonymous().is_err() {
+                log::warn!("Anonymous BPD request failed");
             }
             // 2. system id via single-step synchronisation (no SCA, as AqBanking)
             if self.state.system_id.is_empty() {
@@ -521,6 +753,14 @@ impl<'a> Client<'a> {
             // 4. TAN medium, if the method needs one
             if self.needs_medium() && self.state.tan_medium.is_none() {
                 self.state.tan_medium = self.determine_tan_medium()?;
+            }
+        }
+        if self.is_rdh() {
+            if !self.state.bank_keys.as_ref().map(|k| k.verified && k.crypt.is_some() && k.sign.is_some()).unwrap_or(false) {
+                self.fetch_bank_keys()?;
+            }
+            if self.state.system_id.is_empty() {
+                self.synchronize_rdh()?;
             }
         }
         self.ui.progress("Dialog wird eröffnet …");
@@ -572,7 +812,7 @@ impl<'a> Client<'a> {
                 .and_then(|_| self.exchange(vec![SegmentBuilder::new("HKTAB", v).de("0").de("A")], None));
             match r {
                 Ok(resp) => media = parse_hitab(&resp),
-                Err(e) => log::warn!("TAN media lookup failed: {e}"),
+                Err(_) => log::warn!("TAN media lookup failed"),
             }
             self.end_dialog().ok();
             self.state.tan_method = saved;
@@ -651,6 +891,13 @@ impl<'a> Client<'a> {
 
     /// Accounts from the UPD, enriched with BIC/IBAN via HKSPA.
     pub fn accounts(&mut self) -> Result<Vec<Account>> {
+        // Older vaults discarded DK... permissions. Ask for fresh parameters when a
+        // stored credit card has no usable read permission instead of trusting that cache.
+        if !self.in_dialog && self.state.upd.accounts.iter().any(|a| (50..=59).contains(&a.kind)
+            && !a.allowed.iter().any(|c| matches!(c.as_str(), "HKKKU" | "DKKKU" | "HKKAZ" | "HKCAZ"))) {
+            self.state.upd.version = 0;
+            self.state.bpd.version = 0;
+        }
         self.open()?;
         if let Some(v) = self.state.bpd.version_for("HKSPA", &[1, 2, 3]) {
             self.ui.progress("Lade SEPA-Kontoverbindungen …");
@@ -667,6 +914,18 @@ impl<'a> Client<'a> {
 
     pub fn balance(&mut self, a: &Account) -> Result<Option<Balance>> {
         self.open()?;
+        if let Some((code, version)) = self.card_job(a, "HKKKS", 1, "DKKKS", 3)? {
+            self.ui.progress(&format!("Kreditkartensaldo {} …", display_account(a)));
+            let mut seg = SegmentBuilder::new(code, version)
+                .deg(if code == "HKKKS" { Self::kti(a) } else { Self::ktv(a) }).de(&a.account_number);
+            if code == "HKKKS" { seg = seg.de(&a.sub_account); }
+            let response = self.exchange_sca(vec![seg], code, false)?;
+            let answer = if code == "HKKKS" { "HIKKS" } else { "DIKKS" };
+            let s = response.first(answer).ok_or_else(|| Error::Syntax("Kreditkartensaldo fehlt in der Bankantwort".into()))?;
+            if s.version != version { return Err(Error::NotSupported("Version der Kreditkartensaldenantwort".into())); }
+            return crate::credit_card::balance(s);
+        }
+        if !a.allows("HKSAL") { return Err(Error::NotSupported("Saldo für dieses Konto".into())); }
         let Some(v) = self.state.bpd.version_for("HKSAL", SAL_VERSIONS) else {
             return Err(Error::NotSupported("Saldenabfrage (HKSAL)".into()));
         };
@@ -693,12 +952,21 @@ impl<'a> Client<'a> {
     }
 
     pub fn transactions(&mut self, a: &Account, from: NaiveDate, to: Option<NaiveDate>) -> Result<Vec<Transaction>> {
+        self.transaction_report(a, from, to).map(|r| r.transactions)
+    }
+
+    pub fn transaction_report(&mut self, a: &Account, from: NaiveDate, to: Option<NaiveDate>) -> Result<TransactionReport> {
         self.open()?;
+        if let Some((code, version)) = self.card_job(a, "HKKKU", 1, "DKKKU", 2)? {
+            return self.credit_card_report(a, code, version, from, to);
+        }
         let camt_fmt = self.state.bpd.preferred_camt();
-        let use_camt = camt_fmt.is_some() && self.state.bpd.version_for("HKCAZ", &[1]).is_some() && a.is_sepa();
+        let use_camt = a.allows("HKCAZ") && camt_fmt.is_some() && self.state.bpd.version_for("HKCAZ", &[1]).is_some() && a.is_sepa();
+        if !use_camt && !a.allows("HKKAZ") { return Err(Error::NotSupported("Umsätze für dieses Konto".into())); }
         self.ui.progress(&format!("Umsätze {} …", display_account(a)));
         let mut out = Vec::new();
         let mut touchdown: Option<String> = None;
+        let mut seen_pages = std::collections::HashSet::new();
         for _page in 0..50 {
             let seg = if use_camt {
                 SegmentBuilder::new("HKCAZ", 1)
@@ -723,19 +991,19 @@ impl<'a> Client<'a> {
             };
             let code = if use_camt { "HKCAZ" } else { "HKKAZ" };
             let resp = self.exchange_sca(vec![seg], code, false)?;
+            if resp.first(if use_camt { "HICAZ" } else { "HIKAZ" }).is_none() && resp.code("3010").is_none() {
+                return Err(Error::Syntax("Umsatzdaten fehlen in der Bankantwort".into()));
+            }
             if use_camt {
                 for s in resp.find("HICAZ") {
                     for f in s.de(3).iter().flatten() {
-                        if let Ok(r) = camt::parse(f) {
-                            out.extend(r.transactions);
-                        }
+                        let r = camt::parse(f).map_err(Error::Syntax)?;
+                        out.extend(r.transactions);
                     }
                     if let Some(p) = s.bin(4, 0) {
-                        if let Ok(r) = camt::parse(p) {
-                            out.extend(r.transactions.into_iter().map(|mut t| {
-                                t.pending = true;
-                                t
-                            }));
+                        if !p.is_empty() {
+                            let r = camt::parse_pending(p).map_err(Error::Syntax)?;
+                            out.extend(r.transactions);
                         }
                     }
                 }
@@ -753,21 +1021,79 @@ impl<'a> Client<'a> {
                     }
                 }
             }
-            touchdown = resp.codes.iter().find(|c| c.code == "3040").and_then(|c| c.params.first().cloned());
+            touchdown = next_page(&resp, &mut seen_pages)?;
             if touchdown.is_none() {
                 break;
             }
         }
-        Ok(out)
+        if touchdown.is_some() {
+            return Err(Error::Other("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt".into()));
+        }
+        Ok(TransactionReport { transactions: out, balance: None })
+    }
+
+    fn card_job(&self, a: &Account, standard: &'static str, standard_version: u32, legacy: &'static str, legacy_version: u32) -> Result<Option<(&'static str, u32)>> {
+        for (code, version) in [(standard, standard_version), (legacy, legacy_version)] {
+            let explicit = a.allowed.iter().any(|c| c == code);
+            let offered = a.allowed.is_empty() && (50..=59).contains(&a.kind) && self.state.bpd.supports(code);
+            if explicit || offered {
+                // Some banks advertise proprietary card jobs only in the UPD (as AqBanking).
+                if self.state.bpd.supports(code) && self.state.bpd.version_for(code, &[version]).is_none() {
+                    return Err(Error::NotSupported(format!("Keine gemeinsame Version für {code}")));
+                }
+                return Ok(Some((code, version)));
+            }
+        }
+        Ok(None)
+    }
+
+    fn credit_card_report(&mut self, a: &Account, code: &str, version: u32, from: NaiveDate, to: Option<NaiveDate>) -> Result<TransactionReport> {
+        self.ui.progress(&format!("Kreditkartenumsätze {} …", display_account(a)));
+        let mut report = TransactionReport::default();
+        let mut touchdown: Option<String> = None;
+        let mut seen_pages = std::collections::HashSet::new();
+        for _ in 0..50 {
+            let seg = SegmentBuilder::new(code, version)
+                .deg(if code == "HKKKU" { Self::kti(a) } else { Self::ktv(a) })
+                .de(&a.account_number).de(&a.sub_account)
+                .de(fints_date(from)).de(to.map(fints_date).unwrap_or(Val::Empty))
+                .de(Val::Empty).de(touchdown.clone());
+            let resp = self.exchange_sca(vec![seg], code, false)?;
+            let answer = if code == "HKKKU" { "HIKKU" } else { "DIKKU" };
+            let mut found = false;
+            for s in resp.find(answer) {
+                found = true;
+                let page = crate::credit_card::statement(s)?;
+                report.transactions.extend(page.transactions);
+                if page.balance.is_some() { report.balance = page.balance; }
+            }
+            // An explicit empty-result code is valid; a missing/unknown payload otherwise
+            // must not turn an unsuccessful response into an empty local statement.
+            if !found && resp.code("3010").is_none() {
+                return Err(Error::Syntax("Kreditkartenumsätze fehlen in der Bankantwort".into()));
+            }
+            touchdown = match resp.code("3040") {
+                Some(code) => Some(code.params.first().filter(|p| !p.is_empty()).cloned()
+                    .ok_or_else(|| Error::Syntax("Aufsetzpunkt des Kreditkartenabrufs fehlt".into()))?),
+                None => None,
+            };
+            let Some(next) = &touchdown else { return Ok(report); };
+            if next.is_empty() || !seen_pages.insert(next.clone()) { break; }
+        }
+        Err(Error::Other("Kreditkartenabruf unvollständig; lokale Umsätze wurden nicht ersetzt".into()))
     }
 
     fn send_order(&mut self, code: &str, seg: SegmentBuilder) -> Result<Response> {
         self.open()?;
         // orders always require SCA under PSD2, even if HIPINS is incomplete
-        self.exchange_sca(vec![seg], code, true)
+        let response = self.exchange_sca(vec![seg], code, true)?;
+        completed_approval(&response)?;
+        Ok(response)
     }
 
     pub fn transfer(&mut self, a: &Account, t: &SepaTransfer) -> Result<String> {
+        pain::validate_transfer(t)?;
+        validate_debtor(a, t)?;
         self.open()?;
         let descriptor = self.state.bpd.preferred_pain001();
         let (code, desc) = if t.instant {
@@ -785,6 +1111,11 @@ impl<'a> Client<'a> {
     }
 
     pub fn scheduled_transfer(&mut self, a: &Account, t: &SepaTransfer) -> Result<String> {
+        pain::validate_transfer(t)?;
+        validate_debtor(a, t)?;
+        if !t.execution_date.map(|d| d > chrono::Local::now().date_naive()).unwrap_or(false) {
+            return Err(Error::Other("Terminüberweisung benötigt ein zukünftiges Ausführungsdatum".into()));
+        }
         self.open()?;
         if !self.state.bpd.supports("HKCSE") {
             return Err(Error::NotSupported("Terminüberweisung (HKCSE)".into()));
@@ -808,6 +1139,9 @@ impl<'a> Client<'a> {
     }
 
     pub fn create_standing_order(&mut self, a: &Account, so: &StandingOrder) -> Result<String> {
+        pain::validate_transfer(&so.transfer)?;
+        validate_debtor(a, &so.transfer)?;
+        pain::validate_standing_schedule(so)?;
         self.open()?;
         if !self.state.bpd.supports("HKCDE") {
             return Err(Error::NotSupported("Dauerauftrag anlegen (HKCDE)".into()));
@@ -828,24 +1162,39 @@ impl<'a> Client<'a> {
 
     pub fn standing_orders(&mut self, a: &Account) -> Result<Vec<StandingOrder>> {
         self.open()?;
-        if !self.state.bpd.supports("HKCDB") {
-            return Err(Error::NotSupported("Daueraufträge abrufen (HKCDB)".into()));
-        }
+        let version = self.state.bpd.version_for("HKCDB", &[1, 2])
+            .ok_or_else(|| Error::NotSupported("Daueraufträge abrufen: keine gemeinsame HKCDB-Version".into()))?;
+        let formats = if self.state.bpd.standing_pain001_formats.is_empty() {
+            &self.state.bpd.pain001_formats
+        } else { &self.state.bpd.standing_pain001_formats };
+        let format = ["pain.001.001.09", "pain.001.001.03", "pain.001.003.03"].iter()
+            .find_map(|known| formats.iter().find(|f| f.ends_with(known))).cloned();
+        let format = if let Some(format) = format { format } else {
+            if !self.state.bpd.standing_pain001_formats.is_empty() {
+                return Err(Error::NotSupported("Kein unterstütztes Zahlungsformat für Daueraufträge".into()));
+            }
+            self.state.bpd.preferred_pain001()
+        };
         self.ui.progress("Lade Daueraufträge …");
         let mut out = Vec::new();
         let mut touchdown: Option<String> = None;
+        let mut seen_pages = std::collections::HashSet::new();
         for _ in 0..20 {
-            let seg = SegmentBuilder::new("HKCDB", 1)
+            let seg = SegmentBuilder::new("HKCDB", version)
                 .deg(Self::sepa_account(a))
-                .deg(self.state.bpd.pain001_formats.iter().map(|f| Val::from(f.as_str())).collect())
+                .de(&format)
                 .de(Val::Empty) // Auftragsidentifikation (all orders)
                 .de(Val::Empty) // max. Anzahl Einträge
                 .de(touchdown.clone());
             let resp = self.exchange_sca(vec![seg], "HKCDB", false)?;
             for s in resp.find("HICDB") {
+                if !matches!(s.version, 1 | 2) {
+                    return Err(Error::NotSupported("Unbekannte Version der Dauerauftragsantwort".into()));
+                }
                 let raw = s.bin(3, 0).unwrap_or_default().to_vec();
-                let Some(transfer) = pain::read_pain001(&raw) else { continue };
-                let first = parse_fints_date(&s.text_or_empty(5, 0)).unwrap_or_else(|| chrono::Local::now().date_naive());
+                let transfer = pain::read_pain001(&raw).ok_or_else(|| Error::Syntax("Dauerauftrag enthält ungültige Zahlungsdaten".into()))?;
+                let first = parse_fints_date(&s.text_or_empty(5, 0))
+                    .ok_or_else(|| Error::Syntax("Ungültiges erstes Ausführungsdatum im Dauerauftrag".into()))?;
                 out.push(StandingOrder {
                     order_id: s.text_or_empty(4, 0),
                     transfer,
@@ -853,15 +1202,25 @@ impl<'a> Client<'a> {
                     interval: if s.text_or_empty(5, 1) == "W" { Interval::Weekly } else { Interval::Monthly },
                     every: s.text_or_empty(5, 2).parse().unwrap_or(1),
                     day: s.text_or_empty(5, 3).parse().unwrap_or(first.day()),
-                    last_date: parse_fints_date(&s.text_or_empty(5, 4)),
+                    last_date: parse_fints_date(&s.text_or_empty(5, if s.version >= 2 { 5 } else { 4 })),
+                    execution_time: if s.version >= 2 {
+                        let value = s.text_or_empty(5, 4);
+                        if value.is_empty() { None } else {
+                            Some(chrono::NaiveTime::parse_from_str(&value, "%H%M%S")
+                                .map_err(|_| Error::Syntax("Ungültige Ausführungszeit im Dauerauftrag".into()))?)
+                        }
+                    } else { None },
                     raw_pain: raw,
                     descriptor: s.text_or_empty(2, 0),
                 });
             }
-            touchdown = resp.codes.iter().find(|c| c.code == "3040").and_then(|c| c.params.first().cloned());
+            touchdown = next_page(&resp, &mut seen_pages)?;
             if touchdown.is_none() {
                 break;
             }
+        }
+        if touchdown.is_some() {
+            return Err(Error::Other("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt".into()));
         }
         Ok(out)
     }
@@ -897,10 +1256,41 @@ impl<'a> Client<'a> {
     }
 }
 
+fn next_page(resp: &Response, seen: &mut std::collections::HashSet<String>) -> Result<Option<String>> {
+    let Some(more) = resp.code("3040") else { return Ok(None) };
+    let cursor = more.params.first().filter(|p| !p.trim().is_empty())
+        .ok_or_else(|| Error::Syntax("Weitere Daten angekündigt, aber Aufsetzpunkt fehlt".into()))?;
+    if !seen.insert(cursor.clone()) {
+        return Err(Error::Syntax("Wiederholter Aufsetzpunkt; Abruf ist unvollständig".into()));
+    }
+    Ok(Some(cursor.clone()))
+}
+
 fn merge(mut a: Response, b: Response) -> Response {
     a.segments.extend(b.segments);
+    a.codes.retain(|c| !matches!(c.code.as_str(), "0030" | "3955" | "3956"));
     a.codes.extend(b.codes);
     a
+}
+
+fn completed_approval(response: &Response) -> Result<()> {
+    if response.codes.iter().any(|c| matches!(c.code.as_str(), "0030" | "3955" | "3956"))
+        || !response.codes.iter().any(|c| c.code.len() == 4 && c.code.starts_with('0') && c.code != "0030" && c.code.bytes().all(|b| b.is_ascii_digit())) {
+        return Err(Error::Security("Keine abschließende Auftragsbestätigung der Bank; Status bitte bei der Bank prüfen und Auftrag nicht erneut senden".into()));
+    }
+    Ok(())
+}
+
+fn validate_debtor(account: &Account, transfer: &SepaTransfer) -> Result<()> {
+    let normalize = |value: &str| value.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_uppercase();
+    if account.iban.is_empty() || normalize(&account.iban) != normalize(&transfer.debtor_iban) {
+        return Err(Error::Security("Auftraggeber-IBAN stimmt nicht mit dem ausgewählten Konto überein".into()));
+    }
+    Ok(())
+}
+
+fn diagnostic_code(code: &str) -> &str {
+    if code.len() == 4 && code.bytes().all(|b| b.is_ascii_digit()) { code } else { "[ungültig]" }
 }
 
 pub fn display_account(a: &Account) -> String {
@@ -962,42 +1352,215 @@ fn parse_hitab(resp: &Response) -> Vec<String> {
     names
 }
 
-/// Replace the user signature (PIN/TAN) in a raw message for logging.
-fn mask_signature(raw: &[u8]) -> String {
-    let text = latin1_to_string(raw);
-    let Some(start) = text.find("HNSHA:") else { return text };
-    // end of segment = first unescaped apostrophe
-    let bytes: Vec<char> = text[start..].chars().collect();
-    let mut end = bytes.len();
-    let mut k = 0;
-    while k < bytes.len() {
-        match bytes[k] {
-            '?' => k += 2,
-            '\'' => {
-                end = k;
-                break;
+/// Keep diagnostic segment identifiers without storing credentials, account data or binary payloads.
+fn protocol_summary(raw: &[u8]) -> String {
+    match crate::syntax::parse_segments(raw) {
+        Ok(segs) => segs.iter().take(256).map(|s| {
+            // Do not echo an arbitrary malformed "segment code" into a persistent log.
+            if s.code.len() == 5 && s.code.bytes().all(|c| c.is_ascii_uppercase()) {
+                format!("{}:{}:{}", s.code, s.number, s.version)
+            } else {
+                "[ungültiger Segmentkopf]".into()
             }
-            _ => k += 1,
-        }
-    }
-    let seg: String = bytes[..end].iter().collect();
-    let masked = match seg.rfind('+') {
-        Some(p) => format!("{}+*****", &seg[..p]),
-        None => seg.clone(),
-    };
-    format!("{}{}{}", &text[..start], masked, bytes[end..].iter().collect::<String>())
-}
-
-fn truncate_trace(raw: &[u8]) -> String {
-    let t = latin1_to_string(raw);
-    if t.chars().count() > 20_000 {
-        format!("{} … [gekürzt]", t.chars().take(20_000).collect::<String>())
-    } else {
-        t
+        }).collect::<Vec<_>>().join(" "),
+        Err(_) => format!("[nicht lesbare Nachricht: {} Bytes]", raw.len()),
     }
 }
 
 /// Business transactions that only read account information (no orders).
 fn is_account_information(code: &str) -> bool {
-    matches!(code, "HKSPA" | "HKSAL" | "HKKAZ" | "HKCAZ" | "HKCDB" | "HKTAB" | "HKKAU" | "HKWPD" | "HKEKA" | "HKECA")
+    matches!(code, "HKSPA" | "HKSAL" | "HKKAZ" | "HKCAZ" | "HKCDB" | "HKTAB" | "HKKAU" | "HKWPD" | "HKEKA" | "HKECA" | "HKKKU" | "DKKKU" | "HKKKS" | "DKKKS")
+}
+
+
+#[cfg(test)]
+mod security_regressions {
+    use super::*;
+    struct Ui;
+    impl Interaction for Ui {
+        fn pin(&self, _: &str) -> Option<String> { None }
+        fn choose_tan_method(&self, _: &[TanMethod]) -> Option<String> { None }
+        fn choose_tan_medium(&self, _: &[String]) -> Option<String> { None }
+        fn tan(&self, _: &TanChallenge) -> TanAnswer { TanAnswer::Cancel }
+        fn progress(&self, _: &str) {}
+    }
+    #[test]
+    fn pintan_requires_https_before_prompting_for_credentials() {
+        for url in ["http://localhost:3000", "localhost:3000", ""] {
+            assert!(Client::new(Config {url:url.into(),..Default::default()},State::default(),Medium::PinTan,&Ui).is_err());
+        }
+        assert!(Client::new(Config {url:"https://bank.example".into(),..Default::default()},State::default(),Medium::PinTan,&Ui).is_ok());
+    }
+    #[test]
+    fn trace_never_contains_pin_tan_or_malformed_data() {
+        let env=Envelope { dialog_id:"0",message_number:1,blz:"12345678",user_id:"user",system_id:"0" };
+        let raw=build_message(&env,Auth::PinTan {pin:"secret+PIN",tan:Some("secret'TAN"),security_function:"999"},vec![]).unwrap();
+        let trace=protocol_summary(&raw);
+        assert!(!trace.contains("secret") && !trace.contains("user"));
+        assert!(!protocol_summary(b"secretPIN").contains("secretPIN"));
+    }
+}
+
+#[cfg(test)]
+mod standing_regressions {
+    use super::*;
+    use crate::syntax::parse_segments;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+    const FORMAT: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
+    struct Ui;
+    impl Interaction for Ui {
+        fn pin(&self, _: &str) -> Option<String> { panic!("no credentials needed for offline fixture") }
+        fn choose_tan_method(&self, _: &[TanMethod]) -> Option<String> { None }
+        fn choose_tan_medium(&self, _: &[String]) -> Option<String> { None }
+        fn tan(&self, _: &TanChallenge) -> TanAnswer { panic!("read-only fixture must not ask for a TAN") }
+        fn progress(&self, _: &str) {}
+    }
+    struct Bank { version: u32, calls: Arc<AtomicUsize> }
+    impl Transport for Bank {
+        fn send(&mut self, message: &[u8]) -> Result<Vec<u8>> {
+            let page = self.calls.fetch_add(1, Ordering::SeqCst);
+            let request = open_message(message, Opener::Plain)?;
+            let request = request.iter().find(|s| s.code == "HKCDB").unwrap();
+            assert_eq!(request.version, self.version);
+            assert_eq!(request.text_or_empty(2, 0), FORMAT);
+            assert_eq!(request.de(2).len(), 1);
+            assert_eq!(request.text_or_empty(5, 0), if page == 0 { "" } else { "NEXT" });
+            let pain = br#"<Document><CstmrCdtTrfInitn><PmtInf><PmtTpInf><LclInstrm><Cd>INST</Cd></LclInstrm></PmtTpInf><Dbtr><Nm>Sender</Nm></Dbtr><CdtTrfTxInf><Amt><InstdAmt Ccy="EUR">12.34</InstdAmt></Amt><Cdtr><Nm>Receiver</Nm></Cdtr></CdtTrfTxInf></PmtInf></CstmrCdtTrfInitn></Document>"#;
+            let mut details: Vec<Val> = vec!["20270101".into(), "M".into(), "1".into(), "1".into()];
+            if self.version == 2 { details.push("083000".into()); }
+            details.push("20271231".into());
+            let order = SegmentBuilder::new("HICDB", self.version)
+                .de(Val::Empty).de(FORMAT).bin(pain.to_vec()).de(format!("order-{page}")).deg(details);
+            let status = SegmentBuilder::new("HIRMS", 2).deg(if page == 0 {
+                vec!["3040".into(), Val::Empty, "More entries".into(), "NEXT".into()]
+            } else {
+                vec!["0010".into(), Val::Empty, "OK".into()]
+            });
+            let env = Envelope { dialog_id: "TEST", message_number: page as u32 + 1, blz: "12345678", user_id: "fixture", system_id: "TEST" };
+            build_message(&env, Auth::None, vec![order, status])
+        }
+    }
+    fn client(versions: &[u32], calls: Arc<AtomicUsize>, expected: u32) -> Client<'static> {
+        let mut state = State::default();
+        state.bpd.versions.insert("HKCDB".into(), versions.to_vec());
+        state.bpd.pain001_formats = vec!["urn:iso:std:iso:20022:tech:xsd:pain.001.001.03".into()];
+        let bpd = SegmentBuilder::new("HICDBS", 2).de("1").de("1").de("1")
+            .deg(vec!["J".into(), Val::Empty, FORMAT.into()]);
+        let parsed = Response::new(parse_segments(&bpd.encode()).unwrap());
+        if versions.contains(&2) { state.bpd.update_from(&parsed); }
+        else { state.bpd.pain001_formats = vec![FORMAT.into()]; }
+        let mut client = Client::new(Config { url: "https://bank.invalid".into(), ..Default::default() }, state, Medium::PinTan, &Ui).unwrap();
+        client.in_dialog = true;
+        client.dialog_id = "TEST".into();
+        client.pin = Some(zeroize::Zeroizing::new("offline-fixture".into()));
+        client.set_transport(Box::new(Bank { version: expected, calls }));
+        client
+    }
+    #[test]
+    fn standing_v1_and_v2_negotiate_and_parse_all_pages() {
+        for versions in [vec![1], vec![2], vec![2, 1]] {
+            let expected = *versions.iter().max().unwrap();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mut client = client(&versions, calls.clone(), expected);
+            let orders = client.standing_orders(&Account::default()).unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+            assert_eq!(orders.len(), 2);
+            for (i, order) in orders.iter().enumerate() {
+                assert_eq!(order.order_id, format!("order-{i}"));
+                assert_eq!(order.first_date.to_string(), "2027-01-01");
+                assert_eq!(order.last_date.unwrap().to_string(), "2027-12-31");
+                assert_eq!(order.execution_time.map(|t| t.to_string()), (expected == 2).then(|| "08:30:00".to_string()));
+                assert_eq!(order.transfer.amount.to_string(), "12.34");
+                assert!(order.transfer.instant);
+            }
+        }
+    }
+    #[test]
+    fn unsupported_standing_version_or_format_sends_no_request() {
+        for unsupported_format in [false, true] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mut client = client(if unsupported_format { &[2] } else { &[3] }, calls.clone(), 0);
+            if unsupported_format { client.state.bpd.standing_pain001_formats = vec!["unknown".into()]; }
+            assert!(matches!(client.standing_orders(&Account::default()), Err(Error::NotSupported(_))));
+            assert_eq!(calls.load(Ordering::SeqCst), 0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod credit_card_regressions {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    struct Ui;
+    impl Interaction for Ui {
+        fn pin(&self, _: &str) -> Option<String> { panic!("offline fixture") }
+        fn choose_tan_method(&self, _: &[TanMethod]) -> Option<String> { None }
+        fn choose_tan_medium(&self, _: &[String]) -> Option<String> { None }
+        fn tan(&self, _: &TanChallenge) -> TanAnswer { panic!("unexpected TAN") }
+        fn progress(&self, _: &str) {}
+    }
+    struct Bank { standard: bool, mode: u8, calls: Arc<AtomicUsize> }
+    impl Transport for Bank {
+        fn send(&mut self, raw: &[u8]) -> Result<Vec<u8>> {
+            let page = self.calls.fetch_add(1, Ordering::SeqCst);
+            let segments = open_message(raw, Opener::Plain)?;
+            assert!(!segments.iter().any(|s| s.code == "HKTAN"), "read is covered by dialog SCA");
+            let code = if self.standard { "HKKKU" } else { "DKKKU" };
+            let s = segments.iter().find(|s| s.code == code).unwrap();
+            assert_eq!(s.version, if self.standard { 1 } else { 2 });
+            assert_eq!(s.text_or_empty(1, if self.standard { 2 } else { 0 }), "test-card");
+            assert_eq!(s.text_or_empty(2, 0), "test-card");
+            assert_eq!(s.text_or_empty(3, 0), "sub");
+            assert_eq!(s.text_or_empty(4, 0), "20261101");
+            assert_eq!(s.text_or_empty(7, 0), if page == 0 { "" } else { "NEXT" });
+            let entry = crate::credit_card::tests::fixture(self.standard, "D", "12,34", "J");
+            let mut status = vec!["0010".into(), Val::Empty, "OK".into()];
+            if page == 0 || self.mode == 1 {
+                status = vec!["3040".into(), Val::Empty, "more".into()];
+                if self.mode != 2 { status.push("NEXT".into()); }
+            }
+            let mut reply = vec![SegmentBuilder::new("HIRMS", 2).deg(status)];
+            if self.mode != 3 { reply.push(entry); }
+            let env = Envelope { dialog_id: "TEST", message_number: page as u32 + 1, blz: "12345678", user_id: "fixture", system_id: "TEST" };
+            build_message(&env, Auth::None, reply)
+        }
+    }
+    fn client(standard: bool, mode: u8, calls: Arc<AtomicUsize>) -> (Client<'static>, Account) {
+        let code = if standard { "HKKKU" } else { "DKKKU" };
+        let mut state = State { tan_method: Some("900".into()), ..Default::default() };
+        state.bpd.hktan_version = 6;
+        state.bpd.tan_required.insert(code.into(), true);
+        let mut client = Client::new(Config { url: "https://bank.invalid".into(), ..Default::default() }, state, Medium::PinTan, &Ui).unwrap();
+        client.in_dialog = true; client.dialog_authenticated = true;
+        client.dialog_id = "TEST".into(); client.pin = Some(zeroize::Zeroizing::new("offline-fixture".into()));
+        client.set_transport(Box::new(Bank { standard, mode, calls }));
+        let account = Account { account_number: "test-card".into(), sub_account: "sub".into(), kind: 50, allowed: vec![code.into()], ..Default::default() };
+        (client, account)
+    }
+    #[test]
+    fn card_dispatch_and_paging_work_without_iban_or_proprietary_bpd() {
+        for standard in [false, true] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let (mut client, account) = client(standard, 0, calls.clone());
+            let report = client.transaction_report(&account, NaiveDate::from_ymd_opt(2026,11,1).unwrap(), None).unwrap();
+            assert_eq!(report.transactions.len(), 2);
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+            assert_eq!(report.balance.unwrap().booked.to_string(), "-100.50");
+        }
+    }
+    #[test]
+    fn incomplete_card_responses_never_return_partial_or_empty_success() {
+        for mode in [1, 2, 3] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let (mut client, account) = client(true, mode, calls.clone());
+            assert!(client.transaction_report(&account, NaiveDate::from_ymd_opt(2026,11,1).unwrap(), None).is_err());
+            assert!(calls.load(Ordering::SeqCst) <= 2);
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (mut client, account) = client(true, 0, calls.clone());
+        client.state.bpd.versions.insert("HKKKU".into(), vec![99]);
+        assert!(matches!(client.transaction_report(&account, NaiveDate::from_ymd_opt(2026,11,1).unwrap(), None), Err(Error::NotSupported(_))));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
 }

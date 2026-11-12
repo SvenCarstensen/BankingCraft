@@ -1,12 +1,16 @@
-//! PC/SC access for Kontor.
+//! PC/SC access for BankingCraft.
 //!
 //! * HBCI chip card (DDV-0 / DDV-1, SECCOS) implementing [`fints::security::DdvCard`]
+//! * RDH chip card (ZKA/SECCOS, RDH-7/9 – e.g. VR-NetWorld-Card) implementing [`fints::rdh::RdhCard`]
 //! * chipTAN USB (HHDuc via `FEATURE_MCT_READER_DIRECT` or the `FF 91` pseudo APDU)
 //! * Secure PIN entry on the reader's pin pad (`FEATURE_VERIFY_PIN_DIRECT`, class 2/3)
 //!
 //! REINER SCT cyberJack readers (incl. the secoder models) are detected by name and
 //! preferred automatically. The APDU sequences mirror hbci4java's smartcardio services.
 
+pub mod rdh;
+
+pub use rdh::RdhChipCard;
 use fints::security::{DdvBankData, DdvCard, DdvKey};
 use pcsc::{Card, Context, Protocol, Protocols, ReaderState, Scope, ShareMode, State};
 use std::collections::BTreeMap;
@@ -232,10 +236,7 @@ impl Session {
     pub fn transmit(&self, apdu: &[u8]) -> Result<(Vec<u8>, u16)> {
         let (mut data, mut sw) = self.transmit_raw(apdu)?;
         if sw >> 8 == 0x6C {
-            let mut a = apdu.to_vec();
-            if let Some(last) = a.last_mut() {
-                *last = (sw & 0xFF) as u8;
-            }
+            let a = corrected_le(apdu, sw as u8).ok_or_else(|| err("Ungültige APDU für Le-Korrektur"))?;
             let r = self.transmit_raw(&a)?;
             data = r.0;
             sw = r.1;
@@ -291,6 +292,30 @@ pub fn status_text(sw: u16) -> &'static str {
     }
 }
 
+/// Correct Le without overwriting command data, for short and extended ISO 7816 cases.
+fn corrected_le(command: &[u8], sw2: u8) -> Option<Vec<u8>> {
+    let mut out = command.to_vec();
+    let len = out.len();
+    if len < 4 { return None; }
+    if len == 4 { out.push(sw2); return Some(out); }
+    if len == 5 { out[4] = sw2; return Some(out); }
+    if out[4] != 0 {
+        let data_end = 5 + out[4] as usize;
+        if len == data_end { out.push(sw2); }
+        else if len == data_end + 1 { out[len - 1] = sw2; }
+        else { return None; }
+    } else {
+        if len < 7 { return None; }
+        let le = if sw2 == 0 { 256u16 } else { sw2 as u16 }.to_be_bytes();
+        let data_end = 7 + u16::from_be_bytes([out[5], out[6]]) as usize;
+        if len == 7 { out[5..7].copy_from_slice(&le); }
+        else if len == data_end { out.extend_from_slice(&le); }
+        else if len == data_end + 2 { out[len - 2..].copy_from_slice(&le); }
+        else { return None; }
+    }
+    Some(out)
+}
+
 /// Build a short APDU (ISO 7816-4 case 1-4).
 fn apdu(cla: u8, ins: u8, p1: u8, p2: u8, data: &[u8], le: Option<u16>) -> Vec<u8> {
     let mut a = vec![cla, ins, p1, p2];
@@ -300,6 +325,24 @@ fn apdu(cla: u8, ins: u8, p1: u8, p2: u8, data: &[u8], le: Option<u16>) -> Vec<u
     }
     if let Some(le) = le {
         a.push(if le >= 256 { 0 } else { le as u8 });
+    }
+    a
+}
+
+/// Build an APDU, switching to extended length (ISO 7816-4) when the data exceeds 255 bytes
+/// (needed for PSO DECIPHER with 2048 bit keys).
+fn apdu_ext(cla: u8, ins: u8, p1: u8, p2: u8, data: &[u8], le: Option<u16>) -> Vec<u8> {
+    if data.len() <= 255 && le.is_none_or(|n| n <= 256) {
+        return apdu(cla, ins, p1, p2, data, le);
+    }
+    let mut a = vec![cla, ins, p1, p2, 0x00];
+    if !data.is_empty() {
+        a.extend_from_slice(&(data.len() as u16).to_be_bytes());
+        a.extend_from_slice(data);
+    }
+    if let Some(le) = le {
+        // Extended Le=0000 means 65536, while Le=0100 means 256 bytes.
+        a.extend_from_slice(&le.to_be_bytes());
     }
     a
 }
@@ -598,6 +641,9 @@ fn parse_bcd_tan(data: &[u8]) -> Option<String> {
     for (i, b) in bytes.iter().enumerate() {
         let hi = b >> 4;
         let lo = b & 0x0F;
+        if hi > 9 || (lo > 9 && !(i + 1 == bytes.len() && lo == 0x0F)) {
+            return None;
+        }
         tan.push(char::from_digit(hi as u32, 16)?);
         if i + 1 == bytes.len() && lo == 0x0F {
             break;
@@ -671,7 +717,10 @@ pub fn diagnose(reader: Option<&str>) -> Vec<String> {
                         out.push(format!("Signatur-Zähler: {id}"));
                     }
                 }
-                Err(_) => out.push("Keine HBCI-Chipkarte (DDV) – für chipTAN USB genügt die girocard".into()),
+                Err(_) => match RdhChipCard::open(Some(&target), None) {
+                    Ok(c) => out.extend(c.describe()),
+                    Err(_) => out.push("Keine HBCI-Chipkarte (DDV/RDH) – für chipTAN USB genügt die girocard".into()),
+                },
             }
         }
     }
@@ -680,4 +729,21 @@ pub fn diagnose(reader: Option<&str>) -> Vec<String> {
 
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{:02X}", x)).collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod business_tests {
+    use super::*;
+    #[test]
+    fn usb_tan_decodes_even_and_odd_decimal_digits_and_rejects_malformed_data() {
+        assert_eq!(parse_bcd_tan(&[3, 0x12, 0x34, 0x56]).as_deref(), Some("123456"));
+        assert_eq!(parse_bcd_tan(&[3, 0x12, 0x34, 0x5f]).as_deref(), Some("12345"));
+        for bytes in [&[][..], &[0], &[3, 0x12], &[1, 0xa1], &[2, 0x1f, 0x23], &[1, 0xff]] { assert!(parse_bcd_tan(bytes).is_none()); }
+    }
+    #[test]
+    fn card_status_distinguishes_success_wrong_pin_blocked_and_cancelled() {
+        assert!(check(0x9000, &[0x90]).is_ok());
+        for sw in [0x63c2, 0x6983, 0x6401, 0x6a82] { assert!(check(sw, &[0x90]).is_err()); assert!(!status_text(sw).is_empty()); }
+        assert_ne!(status_text(0x63c2), status_text(0x6983));
+    }
 }

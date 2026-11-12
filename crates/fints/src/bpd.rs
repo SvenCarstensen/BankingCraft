@@ -17,6 +17,8 @@ pub struct Bpd {
     pub tan_methods: Vec<TanMethod>,
     pub hktan_version: u32,
     pub pain001_formats: Vec<String>,
+    #[serde(default)]
+    pub standing_pain001_formats: Vec<String>,
     pub camt_formats: Vec<String>,
 }
 
@@ -48,15 +50,20 @@ impl Bpd {
                     self.camt_formats = collect_urns(s, "camt.052");
                     self.add_version(s);
                 }
-                code if code.starts_with("HI") && code.ends_with('S') && code.len() == 6 => self.add_version(s),
+                "HICDBS" => {
+                    let formats = collect_urns(s, "pain.001");
+                    if !formats.is_empty() { self.standing_pain001_formats = formats; }
+                    self.add_version(s);
+                }
+                code if (code.starts_with("HI") || code.starts_with("DI")) && code.ends_with('S') && code.len() == 6 => self.add_version(s),
                 _ => {}
             }
         }
     }
 
     fn add_version(&mut self, s: &Segment) {
-        // HIxxxS -> HKxxx
-        let job = format!("HK{}", &s.code[2..5]);
+        // HIxxxS -> HKxxx; proprietary credit-card parameters DIxxxS -> DKxxx.
+        let job = format!("{}K{}", &s.code[..1], &s.code[2..5]);
         let v = self.versions.entry(job).or_default();
         if !v.contains(&s.version) {
             v.push(s.version);
@@ -121,9 +128,9 @@ impl Bpd {
         self.versions
             .get(job)?
             .iter()
-            .rev()
-            .find(|v| supported.contains(v))
             .copied()
+            .filter(|v| supported.contains(v))
+            .max()
     }
 
     pub fn supports(&self, job: &str) -> bool {
@@ -182,7 +189,7 @@ impl Upd {
                         a.product = s.text_or_empty(8, 0);
                         for i in 10..=s.de_count() {
                             if let Some(c) = s.text(i, 0) {
-                                if c.starts_with("HK") {
+                                if c.len() == 5 && (c.starts_with("HK") || c.starts_with("DK")) && c.bytes().all(|b| b.is_ascii_uppercase()) {
                                     a.allowed.push(c);
                                 }
                             }
@@ -229,5 +236,21 @@ impl Upd {
             }
             self.accounts = found;
         }
+    }
+}
+
+#[cfg(test)]
+mod credit_card_parameters {
+    use super::*;
+    #[test]
+    fn retains_standard_and_proprietary_card_permissions_and_versions() {
+        let response = Response::new(crate::syntax::parse_segments(b"HIKKUS:1:1+1+1+1+90:J:J'DIKKUS:2:2+1+1+1+90:J:J'DIKKSS:3:3+1+1+1'HIUPD:4:6+test-card::280:12345678++customer+50+EUR+Owner++Card++DKKKU:1+DKKKS:1+HKKKU:1'").unwrap());
+        let mut bpd = Bpd::default(); bpd.update_from(&response);
+        assert_eq!(bpd.version_for("HKKKU", &[1]), Some(1));
+        assert_eq!(bpd.version_for("DKKKU", &[2]), Some(2));
+        assert_eq!(bpd.version_for("DKKKS", &[3]), Some(3));
+        assert!(!bpd.supports("HKKSS"));
+        let mut upd = Upd::default(); upd.update_from(&response);
+        assert_eq!(upd.accounts[0].allowed, vec!["DKKKU", "DKKKS", "HKKKU"]);
     }
 }

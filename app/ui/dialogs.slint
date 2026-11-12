@@ -254,7 +254,7 @@ export component ConfirmDialog inherits Modal {
         alignment: end;
         spacing: 10px;
         GhostButton { text: "Abbrechen"; clicked => { AppState.confirm-cancel(); } }
-        PrimaryButton { text: AppState.confirm-danger ? "Löschen" : "Ausführen"; danger: AppState.confirm-danger; clicked => { AppState.confirm-ok(); } }
+        PrimaryButton { text: AppState.confirm-ok-text != "" ? AppState.confirm-ok-text : AppState.confirm-danger ? "Löschen" : "Ausführen"; danger: AppState.confirm-danger; clicked => { AppState.confirm-ok(); } }
     }
 }
 

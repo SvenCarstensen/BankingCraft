@@ -102,3 +102,28 @@ impl Response {
             .join("\n")
     }
 }
+
+
+/// Validate a complete response before accepting bank data or successful order status.
+pub fn validate_envelope(raw: &[u8], dialog_id: &str, message_number: u32) -> crate::Result<()> {
+    use crate::error::Error;
+    let segs=crate::syntax::parse_segments(raw)?;
+    let invalid=||Error::Syntax("Unvollständige oder widersprüchliche FinTS-Nachrichtenhülle".into());
+    let head=segs.first().filter(|s|s.code=="HNHBK").ok_or_else(invalid)?;
+    let tail=segs.last().filter(|s|s.code=="HNHBS").ok_or_else(invalid)?;
+    if !raw.ends_with(b"'") || segs.iter().filter(|s|s.code=="HNHBK").count()!=1
+        || segs.iter().filter(|s|s.code=="HNHBS").count()!=1
+        || head.text_or_empty(1,0).parse::<usize>().ok()!=Some(raw.len())
+        || head.text_or_empty(2,0)!="300"
+        || head.text_or_empty(4,0).parse::<u32>().ok()!=Some(message_number)
+        || tail.text_or_empty(1,0).parse::<u32>().ok()!=Some(message_number)
+        || head.text(3,0).is_none()
+        || (dialog_id!="0" && head.text_or_empty(3,0)!=dialog_id)
+    {
+        return Err(invalid());
+    }
+    if let Some(reference)=head.text(5,1) {
+        if reference.parse::<u32>().ok()!=Some(message_number) { return Err(invalid()); }
+    }
+    Ok(())
+}
