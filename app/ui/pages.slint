@@ -562,14 +562,15 @@ export component AccountsPage inherits ScrollView {
                     background: Theme.header-bg;
                     border-radius: Theme.radius;
                     HorizontalLayout {
-                        padding-left: 22px;
+                        padding-left: 10px;
                         padding-right: 18px;
                         spacing: 12px;
-                        Text { text: "Konto"; horizontal-stretch: 3; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
-                        Text { text: "IBAN"; horizontal-stretch: 3; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
-                        Text { text: "Inhaber"; horizontal-stretch: 2; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
-                        Text { text: "Verfügbar"; width: 120px; horizontal-alignment: right; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
-                        Text { text: "Saldo"; width: 130px; horizontal-alignment: right; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Rectangle { width: 4px; }
+                        Text { text: "Konto"; horizontal-stretch: 1; min-width: 220px; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "IBAN"; width: 240px; horizontal-alignment: center; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "Inhaber"; width: 190px; horizontal-alignment: center; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "Verfügbar"; width: 140px; horizontal-alignment: center; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
+                        Text { text: "Saldo"; width: 140px; horizontal-alignment: center; font-size: 12px; color: Theme.text-muted; font-weight: 600; vertical-alignment: center; }
                     }
                 }
                 for a in AppState.accounts: Rectangle {
@@ -587,15 +588,16 @@ export component AccountsPage inherits ScrollView {
                             background: a.color;
                         }
                         VerticalLayout {
-                            horizontal-stretch: 3;
+                            horizontal-stretch: 1;
+                            min-width: 220px;
                             alignment: center;
                             Text { text: a.name; font-weight: 600; color: Theme.text; overflow: elide; }
                             Text { text: a.bank + "  ·  " + a.kind + "  ·  " + a.last-sync; font-size: 12px; color: Theme.text-muted; overflow: elide; }
                         }
-                        Text { text: a.iban; horizontal-stretch: 3; vertical-alignment: center; color: Theme.text; font-size: 13px; }
-                        Text { text: a.owner; horizontal-stretch: 2; vertical-alignment: center; color: Theme.text-muted; font-size: 13px; overflow: elide; }
-                        Text { text: a.available; width: 120px; horizontal-alignment: right; vertical-alignment: center; color: Theme.text-muted; }
-                        Text { text: a.balance; width: 130px; horizontal-alignment: right; vertical-alignment: center; font-weight: 700; color: a.negative ? Theme.negative : Theme.text; }
+                        Text { text: a.iban; width: 240px; horizontal-alignment: center; vertical-alignment: center; color: Theme.text; font-size: 13px; overflow: elide; }
+                        Text { text: a.owner; width: 190px; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-muted; font-size: 13px; overflow: elide; }
+                        Text { text: a.available == "" ? "–" : a.available; width: 140px; horizontal-alignment: center; vertical-alignment: center; color: Theme.text-muted; }
+                        Text { text: a.balance; width: 140px; horizontal-alignment: center; vertical-alignment: center; font-weight: 700; color: a.negative ? Theme.negative : Theme.text; }
                     }
                     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.card-border; }
                     ta := TouchArea {
