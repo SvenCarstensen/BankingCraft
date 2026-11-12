@@ -4,6 +4,9 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$(cd "$DIR/.." && pwd)/Kontor.app"
 LOG="$(cd "$DIR/.." && pwd)/kontor-build.log"
 cd "$DIR" || exit 1
+LOCK="${TMPDIR:-/tmp}/kontor-build.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then echo "Build läuft bereits."; exit 0; fi
+trap 'rmdir "$LOCK"' EXIT
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
