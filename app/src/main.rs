@@ -642,8 +642,38 @@ fn main() {
             let st = app.global::<AppState>();
             let pin = st.get_pin_value().to_string();
             st.set_pin_value(SharedString::default());
+            st.set_paste_note(SharedString::default());
             st.set_show_pin(false);
             b.answer(Answer::Text(pin));
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_pin_paste(move || {
+            let app = weak.unwrap();
+            let st = app.global::<AppState>();
+            match clipboard_text() {
+                Ok(text) => {
+                    st.set_pin_value(text.as_str().into());
+                    // do not leave the PIN lying around in the clipboard
+                    let cleared = clear_clipboard_if(&text);
+                    st.set_paste_note(
+                        if cleared { "PIN eingefügt – die Zwischenablage wurde aus Sicherheitsgründen geleert." } else { "PIN eingefügt." }.into(),
+                    );
+                }
+                Err(e) => st.set_paste_note(e.into()),
+            }
+        });
+    }
+    {
+        let weak = app.as_weak();
+        st.on_tan_paste(move || {
+            let app = weak.unwrap();
+            let st = app.global::<AppState>();
+            match clipboard_text() {
+                Ok(text) => st.set_tan_value(text.into()),
+                Err(e) => toast(&app, &e, true),
+            }
         });
     }
     {
@@ -653,6 +683,7 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             st.set_pin_value(SharedString::default());
+            st.set_paste_note(SharedString::default());
             st.set_show_pin(false);
             b.answer(Answer::Cancel);
         });
@@ -761,6 +792,29 @@ fn main() {
     }
 
     app.run().expect("event loop");
+}
+
+/// Text from the system clipboard, trimmed (PINs/TANs are often copied with a trailing newline).
+fn clipboard_text() -> Result<String, String> {
+    let mut cb = arboard::Clipboard::new().map_err(|e| format!("Zwischenablage nicht verfügbar: {e}"))?;
+    let text = cb.get_text().map_err(|_| "Die Zwischenablage enthält keinen Text.".to_string())?;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Die Zwischenablage ist leer.".into());
+    }
+    if text.chars().count() > 64 || text.contains('\n') {
+        return Err("Der Inhalt der Zwischenablage sieht nicht nach einer PIN/TAN aus.".into());
+    }
+    Ok(text)
+}
+
+/// Clear the clipboard if it still holds `expected` (avoids wiping something copied in between).
+fn clear_clipboard_if(expected: &str) -> bool {
+    let Ok(mut cb) = arboard::Clipboard::new() else { return false };
+    match cb.get_text() {
+        Ok(t) if t.trim() == expected => cb.clear().is_ok(),
+        _ => false,
+    }
 }
 
 fn close_tan(st: &AppState) {

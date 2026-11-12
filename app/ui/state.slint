@@ -92,6 +92,7 @@ export global AppState {
     in-out property <bool> show-pin;
     in-out property <string> pin-title;
     in-out property <string> pin-value;
+    in-out property <string> paste-note;
     in-out property <bool> show-pinpad;
     in-out property <string> pinpad-text;
 
@@ -151,6 +152,8 @@ export global AppState {
     callback change-password();
     callback analysis-shift(int);
     callback pin-ok();
+    callback pin-paste();
+    callback tan-paste();
     callback pin-cancel();
     callback tan-ok();
     callback tan-cancel();

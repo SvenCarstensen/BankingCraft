@@ -30,14 +30,26 @@ export component PinDialog inherits Modal {
         Text { text: "PIN-Eingabe"; font-size: 18px; font-weight: 700; color: Theme.text; }
         Text { text: AppState.pin-title; color: Theme.text-muted; wrap: word-wrap; }
     }
-    pin := LineEdit {
-        input-type: password;
-        placeholder-text: "PIN";
-        text <=> AppState.pin-value;
-        accepted => { AppState.pin-ok(); }
+    HorizontalLayout {
+        spacing: 8px;
+        pin := LineEdit {
+            input-type: password;
+            placeholder-text: "PIN";
+            text <=> AppState.pin-value;
+            accepted => { AppState.pin-ok(); }
+        }
+        GhostButton {
+            text: "Einfügen";
+            icon: Icons.paste;
+            y: (parent.height - self.height) / 2;
+            clicked => {
+                AppState.pin-paste();
+                pin.focus();
+            }
+        }
     }
     Text {
-        text: "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten.";
+        text: AppState.paste-note != "" ? AppState.paste-note : "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten.";
         font-size: 11px;
         color: Theme.text-faint;
     }
@@ -180,10 +192,22 @@ export component TanDialog inherits Modal {
             color: Theme.text;
         }
     }
-    if AppState.tan-kind != 3: tan := LineEdit {
-        placeholder-text: "TAN";
-        text <=> AppState.tan-value;
-        accepted => { AppState.tan-ok(); }
+    if AppState.tan-kind != 3: HorizontalLayout {
+        spacing: 8px;
+        tan := LineEdit {
+            placeholder-text: "TAN";
+            text <=> AppState.tan-value;
+            accepted => { AppState.tan-ok(); }
+        }
+        GhostButton {
+            text: "Einfügen";
+            icon: Icons.paste;
+            y: (parent.height - self.height) / 2;
+            clicked => {
+                AppState.tan-paste();
+                tan.focus();
+            }
+        }
     }
     HorizontalLayout {
         alignment: end;
