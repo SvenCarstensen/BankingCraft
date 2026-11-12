@@ -102,8 +102,10 @@ pub fn build_message(env: &Envelope, auth: Auth, mut segments: Vec<SegmentBuilde
         Auth::None => segments.iter().flat_map(|s| s.encode()).collect(),
         Auth::PinTan { pin, tan, security_function } => {
             let r = sec_ref();
+            // security profile version: 1 = one-step (999), 2 = two-step (as AqBanking)
+            let profile_version = if security_function == "999" { "1" } else { "2" };
             let mut hnshk = SegmentBuilder::new("HNSHK", 4)
-                .deg(vec!["PIN".into(), "2".into()])
+                .deg(vec!["PIN".into(), profile_version.into()])
                 .de(security_function)
                 .de(r.as_str())
                 .de("1")
@@ -129,7 +131,7 @@ pub fn build_message(env: &Envelope, auth: Auth, mut segments: Vec<SegmentBuilde
             inner.extend(hnsha.encode());
 
             let mut hnvsk = SegmentBuilder::new("HNVSK", 3)
-                .deg(vec!["PIN".into(), "2".into()])
+                .deg(vec!["PIN".into(), profile_version.into()])
                 .de("998")
                 .de("1")
                 .deg(vec!["1".into(), Val::Empty, env.system_id.into()])

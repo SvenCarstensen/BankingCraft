@@ -278,7 +278,7 @@ impl<'a> Client<'a> {
             SegmentBuilder::new("HKVVB", 3)
                 .de(self.state.bpd.version)
                 .de("0")
-                .de("0")
+                .de("1")
                 .de(self.product_id())
                 .de(&self.cfg.product_version),
         ];
@@ -316,12 +316,13 @@ impl<'a> Client<'a> {
         self.current_method().map(|m| m.needs_medium).unwrap_or(false)
     }
 
+    /// TAN medium for HKTAN field 11: always sent when known (as AqBanking does).
+    fn medium_val(&self) -> Val {
+        Val::from(self.state.tan_medium.clone())
+    }
+
     fn hktan_process4(&self, reference: &str) -> SegmentBuilder {
-        let medium = if self.needs_medium() {
-            Val::from(self.state.tan_medium.clone())
-        } else {
-            Val::Empty
-        };
+        let medium = self.medium_val();
         SegmentBuilder::new("HKTAN", self.hktan_version())
             .de("4")
             .de(reference)
@@ -336,14 +337,21 @@ impl<'a> Client<'a> {
             .de(medium)
     }
 
+    /// HKTAN process 2 (TAN) or S (decoupled status): reference, "weitere TAN folgt" = N and –
+    /// like AqBanking – the TAN medium in field 11.
     fn hktan_followup(&self, process: &str, task_ref: &str) -> SegmentBuilder {
         SegmentBuilder::new("HKTAN", self.hktan_version())
             .de(process)
-            .de(Val::Empty)
-            .de(Val::Empty)
-            .de(Val::Empty)
+            .de(Val::Empty) // segment id
+            .de(Val::Empty) // account
+            .de(Val::Empty) // order hash
             .de(task_ref)
-            .de("N")
+            .de("N") // further TAN follows
+            .de(Val::Empty) // cancel order
+            .de(Val::Empty) // SMS account
+            .de(Val::Empty) // challenge class
+            .de(Val::Empty) // challenge parameters
+            .de(self.medium_val())
     }
 
     /// Send business segments, performing SCA if the bank requires it.
@@ -374,7 +382,8 @@ impl<'a> Client<'a> {
         let mut challenge = TanChallenge {
             text: hitan.text_or_empty(4, 0),
             hhduc: hitan.bin(5, 0).map(|b| b.to_vec()).filter(|b| !b.is_empty()),
-            decoupled: method.decoupled,
+            // 3955 = "Sicherheitsfreigabe erfolgt über anderen Kanal" (decoupled), as AqBanking
+            decoupled: method.decoupled || resp.code("3955").is_some(),
             method,
             task_reference: task_reference.clone(),
         };
@@ -421,7 +430,7 @@ impl<'a> Client<'a> {
             SegmentBuilder::new("HKVVB", 3)
                 .de(self.state.bpd.version)
                 .de(self.state.upd.version)
-                .de("0")
+                .de("1")
                 .de(self.product_id())
                 .de(&self.cfg.product_version),
         ];
@@ -431,31 +440,32 @@ impl<'a> Client<'a> {
         segs
     }
 
-    /// Fetch a system id (PIN/TAN only). Also loads BPD/UPD and allowed TAN methods.
+    /// Fetch a system id (PIN/TAN only): HKIDN + HKVVB + HKSYN in a single-step dialog
+    /// (security function 999, profile PIN:1, no HKTAN) – the same as AqBanking's JobSync.
+    /// Also delivers the UPD and the TAN methods the user may use (code 3920).
     pub fn synchronize(&mut self) -> Result<()> {
         if !self.is_pintan() {
             return Ok(());
         }
         self.ui.progress("Synchronisiere Bankzugang …");
+        let saved = self.state.tan_method.replace("999".into());
         self.reset_dialog();
-        let segs = self.init_segments(true);
-        let resp = self.exchange_sca(segs, "HKIDN", false)?;
-        if let Some(sid) = resp.first("HISYN").and_then(|s| s.text(1, 0)) {
-            self.state.system_id = sid;
-        }
-        // the dialog is authenticated now: fetch TAN media here instead of in an extra dialog
-        if self.uses_sca() && self.state.tan_medium.is_none() && self.current_method().map(|m| m.needs_medium).unwrap_or(false) {
-            self.in_dialog = true;
-            let media = self.tan_media_raw().unwrap_or_default();
-            self.in_dialog = false;
-            self.state.tan_medium = match media.len() {
-                0 => None,
-                1 => Some(media[0].clone()),
-                _ => self.ui.choose_tan_medium(&media),
-            };
+        let mut segs = self.init_segments(true);
+        // the synchronisation is always done with system id 0
+        segs[0] = SegmentBuilder::new("HKIDN", 2)
+            .deg(vec!["280".into(), (&self.cfg.blz).into()])
+            .de(&self.cfg.customer_id)
+            .de("0")
+            .de("1");
+        let r = self.exchange(segs, None);
+        if let Ok(resp) = &r {
+            if let Some(sid) = resp.first("HISYN").and_then(|s| s.text(1, 0)) {
+                self.state.system_id = sid;
+            }
         }
         self.end_dialog().ok();
-        Ok(())
+        self.state.tan_method = saved;
+        r.map(|_| ())
     }
 
     fn reset_dialog(&mut self) {
@@ -470,41 +480,21 @@ impl<'a> Client<'a> {
             return Ok(());
         }
         if self.is_pintan() {
+            // 1. bank parameter data (anonymous; the single-step sync below delivers it as well)
             if self.state.bpd.tan_methods.is_empty() {
                 if let Err(e) = self.fetch_bpd_anonymous() {
                     log::warn!("anonymous BPD request failed: {e}");
                 }
             }
-            if self.state.bpd.tan_methods.is_empty() {
-                // bank offers no anonymous access: legacy one-step synchronisation
-                let saved = self.state.tan_method.take();
-                let r = self.synchronize();
-                self.state.tan_method = saved;
-                if self.state.bpd.tan_methods.is_empty() {
-                    r?;
-                }
-            }
-            self.select_tan_method()?;
-            if self.state.system_id.is_empty() && self.needs_medium() && self.state.tan_medium.is_none() {
-                // the HKTAN of the synchronisation must already name the TAN medium
-                self.state.tan_medium = self.tan_medium_before_sync()?;
-            }
+            // 2. system id via single-step synchronisation (no SCA, as AqBanking)
             if self.state.system_id.is_empty() {
-                // synchronise with the chosen two-step method (strong customer authentication)
-                match self.synchronize() {
-                    Ok(()) => {}
-                    Err(Error::Bank { .. })
-                        if !self.state.allowed_methods.is_empty()
-                            && !self.state.allowed_methods.contains(&self.security_function()) =>
-                    {
-                        // the bank told us which methods this user may use: choose again
-                        self.state.tan_method = None;
-                        self.state.tan_medium = None;
-                        self.select_tan_method()?;
-                        self.synchronize()?;
-                    }
-                    Err(e) => return Err(e),
-                }
+                self.synchronize()?;
+            }
+            // 3. TAN method (restricted to the methods reported with 3920)
+            self.select_tan_method()?;
+            // 4. TAN medium, if the method needs one
+            if self.needs_medium() && self.state.tan_medium.is_none() {
+                self.state.tan_medium = self.determine_tan_medium()?;
             }
         }
         self.ui.progress("Dialog wird eröffnet …");
@@ -538,36 +528,27 @@ impl<'a> Client<'a> {
                 _ => Some(self.ui.choose_tan_method(&allowed).ok_or(Error::Cancelled)?),
             };
         }
-        if let Some(m) = self.current_method() {
-            if m.needs_medium && self.state.tan_medium.is_none() && !self.state.system_id.is_empty() {
-                let media = self.tan_media_raw().unwrap_or_default();
-                let chosen = if media.len() == 1 {
-                    Some(media[0].clone())
-                } else {
-                    self.ui.choose_tan_medium(&media)
-                };
-                self.state.tan_medium = chosen;
-            }
-        }
         Ok(())
     }
 
-    /// Determine the TAN medium for a user without system id: dialog whose HKTAN refers to
-    /// HKTAB (TAN-free business transaction), falling back to asking the user.
-    fn tan_medium_before_sync(&mut self) -> Result<Option<String>> {
+    /// Determine the TAN medium: HKTAB in a single-step dialog (HKTAB needs no SCA),
+    /// otherwise ask the user – AqBanking always takes it from the user settings.
+    fn determine_tan_medium(&mut self) -> Result<Option<String>> {
         let mut media: Vec<String> = Vec::new();
         if let Some(v) = self.state.bpd.version_for("HKTAB", &[4, 5]) {
             self.ui.progress("Lade TAN-Medien …");
+            let saved = self.state.tan_method.replace("999".into());
             self.reset_dialog();
-            let mut segs = self.init_segments(false);
-            segs.push(SegmentBuilder::new("HKTAB", v).de("0").de("A"));
-            segs.push(self.hktan_process4("HKTAB"));
-            match self.exchange(segs, None) {
+            let segs = self.init_segments(false);
+            let r = self
+                .exchange(segs, None)
+                .and_then(|_| self.exchange(vec![SegmentBuilder::new("HKTAB", v).de("0").de("A")], None));
+            match r {
                 Ok(resp) => media = parse_hitab(&resp),
                 Err(e) => log::warn!("TAN media lookup failed: {e}"),
             }
             self.end_dialog().ok();
-            self.reset_dialog();
+            self.state.tan_method = saved;
         }
         let chosen = match media.len() {
             0 => None,
@@ -636,8 +617,9 @@ impl<'a> Client<'a> {
         ]
     }
 
+    /// Kontoverbindung international for SEPA orders – full KTI as AqBanking sends it.
     fn sepa_account(a: &Account) -> Vec<Val> {
-        vec![(&a.iban).into(), (&a.bic).into()]
+        Self::kti(a)
     }
 
     /// Accounts from the UPD, enriched with BIC/IBAN via HKSPA.
@@ -829,7 +811,8 @@ impl<'a> Client<'a> {
             let seg = SegmentBuilder::new("HKCDB", 1)
                 .deg(Self::sepa_account(a))
                 .deg(self.state.bpd.pain001_formats.iter().map(|f| Val::from(f.as_str())).collect())
-                .de(Val::Empty)
+                .de(Val::Empty) // Auftragsidentifikation (all orders)
+                .de(Val::Empty) // max. Anzahl Einträge
                 .de(touchdown.clone());
             let resp = self.exchange_sca(vec![seg], "HKCDB", false)?;
             for s in resp.find("HICDB") {
@@ -867,6 +850,7 @@ impl<'a> Client<'a> {
             .deg(Self::sepa_account(a))
             .de(desc)
             .bin(pain)
+            .de(Val::Empty) // Datum der nächsten Ausführung (unchanged)
             .de(&so.order_id)
             .deg(Self::standing_details(so));
         let r = self.send_order("HKCDL", seg)?;

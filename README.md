@@ -80,6 +80,17 @@ app                Slint-Oberfläche, Tresor, Kategorisierung, Hintergrund-Jobs
 `fints1.atruvia.de`, `hbci11.fiducia.de` → `fints2.atruvia.de`, ehemalige Dresdner-Bank-Adressen →
 Commerzbank. Maßgeblich bleibt die Angabe der jeweiligen Bank; die URL ist im Formular editierbar.
 
+## Kompatibilität (Abgleich mit AqBanking/GnuCash)
+
+Nachrichtenaufbau und Dialogablauf folgen AqBanking, der FinTS-Bibliothek von GnuCash
+(Verhalten nachgebaut, kein Code übernommen):
+
+- System-ID per Einschritt-Dialog (Verfahren 999, Sicherheitsprofil `PIN:1`, ohne HKTAN),
+  Zwei-Schritt-Dialoge mit `PIN:2` und HKTAN Prozess 4 → 2/S
+- TAN-Medium (z. B. BestSign-Gerät) in HKTAN Feld 11 in allen Prozessschritten
+- HKVVB Dialogsprache 1, SEPA-Aufträge mit vollständiger KTI, HKCDB/HKCDL-Feldfolge wie AqBanking
+- Decoupled-Freigaben (BestSign, pushTAN-App) per HKTAN Prozess S, erkannt über HITANS oder Code 3955
+
 ## Stand der Verifikation
 
 - Flickercode-Erzeugung gegen die sechs Referenzvektoren der hbci4java-Testsuite geprüft (identisch).
