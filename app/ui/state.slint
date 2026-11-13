@@ -1,9 +1,16 @@
-import { AccountRow, AccountGroupRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast } from "types.slint";
+import { AccountDropTarget, AccountRow, AccountGroupRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast, PaymentOrderRow } from "types.slint";
 
 export global AppState {
     // ---- vault / shell
     in-out property <bool> unlocked;
     in-out property <bool> first-run;
+    in-out property <bool> show-vault-manager;
+    in-out property <[string]> recent-vaults;
+    in-out property <int> selected-vault: -1;
+    in-out property <string> selected-vault-name;
+    in-out property <string> selected-vault-path;
+    in-out property <string> active-vault-name;
+    in-out property <int> vault-selection-revision;
     in-out property <string> unlock-error;
     in-out property <int> page;
     in-out property <bool> busy;
@@ -27,6 +34,13 @@ export global AppState {
     in-out property <[MonthStat]> months;
     in-out property <[StandingRow]> upcoming;
 
+    // ---- local account display names
+    in-out property <bool> show-account-name;
+    in-out property <int> editing-account-id;
+    in-out property <string> account-name-draft;
+    in-out property <string> account-bank-name;
+    in-out property <string> account-name-context;
+
     // ---- transactions
     in-out property <[TxRow]> tx-rows;
     in-out property <int> tx-account;
@@ -42,6 +56,11 @@ export global AppState {
     // ---- payments
     in-out property <[string]> sepa-accounts;
     in-out property <int> tf-account;
+    in-out property <[PaymentOrderRow]> payment-orders;
+    in-out property <int> queued-order-count;
+    in-out property <[string]> recipient-names;
+    in-out property <int> tf-recipient;
+    in-out property <bool> tf-save-recipient;
     in-out property <string> tf-name;
     in-out property <string> tf-iban;
     in-out property <string> tf-bic;
@@ -131,12 +150,33 @@ export global AppState {
     in-out property <bool> confirm-danger;
     in-out property <string> confirm-ok-text;
 
+    in-out property <bool> show-vop;
+    in-out property <int> vop-status;
+    in-out property <string> vop-name;
+    in-out property <string> vop-iban;
+    in-out property <string> vop-suggested-name;
+    in-out property <string> vop-reason;
+    in-out property <string> vop-notice;
+    in-out property <bool> vop-executed;
+    callback vop-accept();
+    callback vop-cancel();
+    callback vop-copy-name();
+
     // ---- callbacks
     callback unlock(string);
     callback create-vault(string, string);
+    callback manage-vaults();
+    callback cancel-vault-selection();
+    callback choose-vault(int);
+    callback open-vault-file();
+    callback new-vault-file();
     callback navigate(int);
     callback refresh-all();
     callback open-account(int);
+    callback edit-account-name(int);
+    callback save-account-name();
+    callback account-row-layout(int, length, length);
+    callback account-drop-target(length) -> AccountDropTarget;
     callback create-group(string);
     callback rename-group(int, string);
     callback delete-group(int);
@@ -149,6 +189,11 @@ export global AppState {
     callback export-camt();
     callback check-iban(string);
     callback send-transfer();
+    callback save-transfer();
+    callback delete-payment-order(int);
+    callback payment-account-changed();
+    callback select-recipient(int);
+    callback delete-recipient();
     callback send-standing();
     callback fetch-standing();
     callback delete-standing(int);

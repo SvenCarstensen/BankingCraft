@@ -1,31 +1,24 @@
-import { LineEdit, Palette } from "std-widgets.slint";
+import { LineEdit, ComboBox, ScrollView, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
-import { AccountRow, AccountGroupRow, GroupBalanceRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast } from "types.slint";
+import { AccountDropTarget, AccountRow, AccountGroupRow, GroupBalanceRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast, PaymentOrderRow } from "types.slint";
 import { Icon, Icons, NavItem, PrimaryButton, GhostButton } from "widgets.slint";
-import { OverviewPage, AccountsPage, TransactionsPage, TransferPage, StandingPage, AnalysisPage, AccessesPage, ReaderPage, SettingsPage } from "pages.slint";
-import { PinDialog, PinpadOverlay, TanDialog, ChoiceDialog, ConfirmDialog, BusyOverlay } from "dialogs.slint";
+import { OverviewPage, AccountsPage, TransactionsPage, TransferPage, OrdersPage, StandingPage, AnalysisPage, AccessesPage, ReaderPage, SettingsPage } from "pages.slint";
+import { AccountNameDialog, PayeeDialog, PinDialog, PinpadOverlay, TanDialog, ChoiceDialog, ConfirmDialog, BusyOverlay } from "dialogs.slint";
 
-export { AppState, Palette, AccountRow, AccountGroupRow, GroupBalanceRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast }
+export { AccountDropTarget, AppState, Palette, AccountRow, AccountGroupRow, GroupBalanceRow, TxRow, TxDetail, BarStat, MonthStat, StandingRow, AccessRow, ChoiceRow, BankRow, Toast, PaymentOrderRow }
 
 component Logo inherits HorizontalLayout {
     spacing: 10px;
-    Rectangle {
-        width: 34px;
-        height: 34px;
-        border-radius: 9px;
-        background: @linear-gradient(135deg, #3d8bf2 0%, #1e6fd9 100%);
-        Text {
-            text: "B";
-            color: #ffffff;
-            font-size: 20px;
-            font-weight: 800;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
+    Image {
+        width: 38px;
+        height: 38px;
+        source: @image-url("../../macos/bankingcraft-icon.png");
+        image-fit: contain;
     }
     VerticalLayout {
         alignment: center;
+        spacing: 4px;
         Text { text: "BankingCraft"; color: #ffffff; font-size: 18px; font-weight: 700; }
         Text { text: @tr("Online-Banking"); color: Theme.nav-text-muted; font-size: 11px; }
     }
@@ -34,75 +27,98 @@ component Logo inherits HorizontalLayout {
 component UnlockScreen inherits Rectangle {
     property <string> pw1;
     property <string> pw2;
+    property <int> selection-revision: AppState.vault-selection-revision;
+    changed selection-revision => { root.pw1 = ""; root.pw2 = ""; p1.focus(); }
     background: @linear-gradient(140deg, #13233a 0%, #1e3f6b 60%, #1e6fd9 100%);
+    TouchArea { }
     Rectangle {
-        width: 420px;
-        height: box.preferred-height;
+        width: 560px;
+        height: min(root.height - 48px, box.preferred-height);
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         background: Theme.card-bg;
         border-radius: 16px;
         drop-shadow-blur: 40px;
         drop-shadow-color: #00000055;
-        box := VerticalLayout {
-            padding: 32px;
-            spacing: 14px;
-            HorizontalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 56px;
-                    height: 56px;
-                    border-radius: 14px;
-                    background: @linear-gradient(135deg, #3d8bf2 0%, #1e6fd9 100%);
-                    Icon { name: Icons.lock; color: #ffffff; width: 28px; height: 28px; }
+        ScrollView {
+            box := VerticalLayout {
+                padding: 28px;
+                spacing: 12px;
+                Text {
+                    text: AppState.first-run ? @tr("Neuen Tresor anlegen") : @tr("BankingCraft entsperren");
+                    font-size: 22px;
+                    font-weight: 700;
+                    color: Theme.text;
+                    wrap: word-wrap;
                 }
-            }
-            Text {
-                text: AppState.first-run ? @tr("Willkommen bei BankingCraft") : @tr("BankingCraft entsperren");
-                font-size: 22px;
-                font-weight: 700;
-                horizontal-alignment: center;
-                color: Theme.text;
-            }
-            Text {
-                text: AppState.first-run
-                    ? @tr("Legen Sie ein Tresor-Passwort fest. Damit werden Konten, Umsätze und Zugangsdaten lokal verschlüsselt.")
-                    : @tr("Geben Sie Ihr Tresor-Passwort ein.");
-                wrap: word-wrap;
-                horizontal-alignment: center;
-                color: Theme.text-muted;
-                font-size: 13px;
-            }
-            p1 := LineEdit {
-                input-type: password;
-                placeholder-text: @tr("Tresor-Passwort");
-                text <=> root.pw1;
-                accepted => {
-                    if (!AppState.first-run) { AppState.unlock(root.pw1); root.pw1 = ""; }
-                }
-            }
-            if AppState.first-run: LineEdit {
-                input-type: password;
-                placeholder-text: @tr("Passwort wiederholen");
-                text <=> root.pw2;
-            }
-            if AppState.unlock-error != "": Text {
-                text: AppState.unlock-error;
-                color: Theme.negative;
-                font-size: 13px;
-                horizontal-alignment: center;
-                wrap: word-wrap;
-            }
-            PrimaryButton {
-                text: AppState.first-run ? @tr("Tresor anlegen") : @tr("Entsperren");
-                clicked => {
-                    if (AppState.first-run) {
-                        AppState.create-vault(root.pw1, root.pw2);
-                    } else {
-                        AppState.unlock(root.pw1);
+                if AppState.recent-vaults.length > 1: VerticalLayout {
+                    spacing: 6px;
+                    Text { text: @tr("Zuletzt geöffnete Tresore"); color: Theme.text-muted; font-size: 12px; }
+                    ComboBox {
+                        model: AppState.recent-vaults;
+                        current-index <=> AppState.selected-vault;
+                        selected(_) => { AppState.choose-vault(self.current-index); }
                     }
-                    root.pw1 = "";
-                    root.pw2 = "";
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    GhostButton { text: @tr("Tresor öffnen …"); clicked => { AppState.open-vault-file(); } }
+                    GhostButton { text: @tr("Neuen Tresor anlegen …"); clicked => { AppState.new-vault-file(); } }
+                }
+                Text { text: AppState.selected-vault-name; color: Theme.text; font-size: 17px; font-weight: 650; wrap: word-wrap; }
+                Text { text: AppState.selected-vault-path; color: Theme.text-muted; font-size: 11px; wrap: word-wrap; }
+                Text {
+                    text: AppState.first-run
+                        ? @tr("Legen Sie ein Tresor-Passwort fest. Damit werden Konten, Umsätze und Zugangsdaten lokal verschlüsselt.")
+                        : @tr("Geben Sie das Passwort für den ausgewählten Tresor ein.");
+                    wrap: word-wrap;
+                    color: Theme.text-muted;
+                    font-size: 13px;
+                }
+                p1 := LineEdit {
+                    input-type: password;
+                    placeholder-text: @tr("Tresor-Passwort");
+                    text <=> root.pw1;
+                    accepted => {
+                        if !AppState.first-run { AppState.unlock(root.pw1); root.pw1 = ""; }
+                    }
+                }
+                if AppState.first-run: LineEdit {
+                    input-type: password;
+                    placeholder-text: @tr("Passwort wiederholen");
+                    text <=> root.pw2;
+                    accepted => { AppState.create-vault(root.pw1, root.pw2); root.pw1 = ""; root.pw2 = ""; }
+                }
+                if AppState.unlock-error != "": Text {
+                    text: AppState.unlock-error;
+                    color: Theme.negative;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                }
+                if AppState.unlocked: Text {
+                    text: @tr("Beim Öffnen eines anderen Tresors werden ungespeicherte Formulare verworfen.");
+                    color: Theme.text-muted;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    if AppState.unlocked: GhostButton {
+                        y: (parent.height - self.height) / 2;
+                        text: @tr("Abbrechen");
+                        clicked => { AppState.cancel-vault-selection(); }
+                    }
+                    PrimaryButton {
+                        text: AppState.first-run ? @tr("Tresor anlegen") : @tr("Entsperren");
+                        clicked => {
+                            if AppState.first-run { AppState.create-vault(root.pw1, root.pw2); }
+                            else { AppState.unlock(root.pw1); }
+                            root.pw1 = "";
+                            root.pw2 = "";
+                        }
+                    }
                 }
             }
         }
@@ -111,7 +127,8 @@ component UnlockScreen inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "BankingCraft";
+    icon: @image-url("../../macos/bankingcraft-icon.png");
+    title: AppState.unlocked && AppState.active-vault-name != "" ? "BankingCraft · " + AppState.active-vault-name : "BankingCraft";
     preferred-width: 1360px;
     preferred-height: 860px;
     min-width: 1100px;
@@ -145,6 +162,7 @@ export component AppWindow inherits Window {
                     x: 12px;
                 }
                 NavItem { label: @tr("Überweisung"); icon: Icons.transfer; active: AppState.page == 3; clicked => { AppState.navigate(3); } }
+                NavItem { label: @tr("Auftragsliste") + (AppState.queued-order-count > 0 ? " (" + AppState.queued-order-count + ")" : ""); icon: Icons.list; active: AppState.page == 9; clicked => { AppState.navigate(9); } }
                 NavItem { label: @tr("Daueraufträge"); icon: Icons.repeat; active: AppState.page == 4; clicked => { AppState.navigate(4); } }
                 Text {
                     text: @tr("FINANZEN");
@@ -174,16 +192,20 @@ export component AppWindow inherits Window {
             if AppState.page == 6: AccessesPage { }
             if AppState.page == 7: ReaderPage { }
             if AppState.page == 8: SettingsPage { }
+            if AppState.page == 9: OrdersPage { }
         }
     }
 
     // ---------------------------------------------------- overlays
+    if AppState.unlocked && AppState.show-vault-manager: UnlockScreen { }
     if AppState.busy && !AppState.show-pin && !AppState.show-tan && !AppState.show-choice && !AppState.show-pinpad: BusyOverlay { }
     if AppState.show-pin: PinDialog { }
     if AppState.show-tan: TanDialog { }
     if AppState.show-pinpad: PinpadOverlay { }
     if AppState.show-choice: ChoiceDialog { }
     if AppState.show-confirm: ConfirmDialog { }
+    if AppState.show-account-name: AccountNameDialog { }
+    if AppState.show-vop: PayeeDialog { }
 
     if AppState.toast.visible: Rectangle {
         x: (parent.width - self.width) / 2 + 118px;

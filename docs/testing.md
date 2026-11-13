@@ -19,6 +19,9 @@ Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnu
 | Kreditkarten-Umsätze | HKKKU/DKKKU, Feldpositionen, Buchungs-/Valutadatum, Vorzeichen, Referenzen, vorgemerkt, Saldo im Bericht, mehrere Seiten, beschädigte/unvollständige Antworten | `credit_card::tests`, `client::credit_card_regressions` |
 | Lokales Zusammenführen | Wiederholte und überlappende Abrufe, legitime gleiche Buchungen, vorgemerkt zu gebucht, kontenbezogenes Ersetzen, manuelle Kategorien erhalten | `business_tests` |
 | Überweisung | Betrags-, IBAN- und Textvalidierung, normale und Echtzeitüberweisung, kein Rückfall auf normale Überweisung, keine automatische Wiederholung bei Bankfehler/Antwortverlust | `client::business_flow_tests`, `business_data_tests`, `regression_tests` |
+| Auftragsliste | Verschlüsselte Persistenz und Neustart, Versand nur für den synchronisierten Zugang, einzelner Sofortversand, persistente Markierung vor Versand, keine Doppelüberweisung bei Antwortverlust/Absturz/Schreibfehler, Abbruch und abgelaufene Termine | `jobs::outgoing_order_tests`, `payments::tests` |
+| Empfängeradressbuch | Ausschließlich per Checkbox speichern/aktualisieren, gleiche IBAN je Konto getrennt, Namens-/IBAN-Prüfung, unabhängige Auftragssnapshots, Auswahl und Kontowechsel, Rücksetzen der Checkbox, alte Tresore und Entfernen eines Zugangs | `payments::tests`, `payments_ui::tests` |
+| Standardaktion | Eingabetaste im Überweisungsformular speichert ohne Bankaufruf, Empfängerauswahl füllt Name/IBAN/BIC, verschlüsselter Rundlauf von Aufträgen und Adressbuch | `payments_ui::tests` |
 | Terminüberweisung | Fehlendes/heutiges Datum abweisen, zukünftiges Datum im Zahlungsdokument, Auftrags-ID auswerten, nicht unterstützte Bankfunktion | `client::business_flow_tests` |
 | Dauerauftrag anlegen | Monatlich/wöchentlich, Rhythmus, Enddatum, Ultimo, Grenzen, Platzhalterdatum im Zahlungsdokument, TAN | `client::business_flow_tests`, `business_data_tests` |
 | Dauerauftrag abrufen | HKCDB 1/2, Formataushandlung, mehrere Seiten, Ausführungszeit und letztes Datum, ungültige Versionen/Formate, unvollständige Seiten | `client::standing_regressions`, `client::business_flow_tests` |
@@ -27,6 +30,8 @@ Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnu
 | TAN und Freigabe | Zulässige Verfahrensauswahl, TAN-Folgeauftrag ohne Zahlungswiederholung, Abbruch, App-Freigabe mit Statusabfrage, fehlerhafte Challenge, SCA bei lesenden Aufträgen, PIN-Verwerfung | `client::business_flow_tests` |
 | TAN-Darstellung und Kartenprotokoll | Matrix-Nutzdaten und Längen, fehlerhafte Flickercodes, USB-BCD-TAN, Kartenstatus, APDU/TLV, DDV-Verschlüsselung und Signaturzähler | `business_data_tests`, `regression_tests`, `cardreader` |
 | RDH | Simulierter kompletter RDH-7-Dialog, Bankschlüssel, Hashvergleich, Signatur/Ver- und Entschlüsselung, manipulierte/unsignierte Antworten | `rdh_flow_test`, `rdh::tests`, `regression_tests` |
+| Empfängerprüfung (VoP) | Match/Close-Match/No-Match/nicht möglich, vollständige Bankhinweise, XML-Bericht und native Antwort, Bindung an Zahlung/IBAN, Abbruch vor TAN, identische zweite Einreichung, Polling ohne Zahlungswiederholung, Chipkartenablauf, fehlende Bankunterstützung und ungültige Antworten | `vop::tests`, `client::business_flow_tests`, `payee_ui::tests` |
+| Mehrere Tresore | Anlegen ohne Überschreiben (auch bei Symlinks), getrennte Passwörter und Konten, bestehender Standardtresor, letzte Auswahl, fehlerhafte Auswahldatei, Abbrechen und falsches Passwort, Sperre bei laufendem Vorgang, Formular-/PIN-Cache zurücksetzen, Speicherfehler beim Wechsel | `vaults::tests` |
 | Tresor | Verschlüsseltes Speichern/Öffnen, frische Nonces, Dateirechte, falsches Passwort, Manipulation/Abschneiden, fehlgeschlagener Dateitausch | `business_tests` |
 | Passwort und gespeicherte PIN | Passwortwechsel mit PIN-Neuverschlüsselung, Rollback bei Fehlern, beschädigte PIN, Tresorbindung, Speicherung nur nach Auswahl, Entfernen nach Bankablehnung | `store::tests`, `business_tests`, `jobs::business_tests` |
 | Gruppen und Kontensortierung | Erstellen/Umbenennen/Löschen/Zuweisen, Dubletten und ungültige Namen, wiederholte Zuweisung, Vor-/Zurückverschieben, ungültige Ziele, Persistenz | `groups::tests`, `business_tests` |
@@ -54,7 +59,45 @@ Ein Slint-Test lädt alle vier eingebetteten Übersetzungen und aktualisiert die
 Dabei bleiben Kategorien-IDs, Filter, Kontonamen, Gruppen, Buchungstexte und Formularentwürfe
 unverändert. Die Tests verwenden synthetische Daten und ändern keine produktiven Einstellungen.
 
+## Kontonamen
+
+`accounts_ui::tests` prüft lokale Anzeigenamen, unveränderte Bankstammdaten,
+Kontenabruf und alte Tresorformate, verschlüsseltes Speichern und erneutes Öffnen,
+Abbrechen und Zurücksetzen sowie Rollback bei fehlgeschlagener Speicherung.
+Die Ansichtsmodelle übernehmen den Namen bei erhaltener Kontoauswahl.
+Drag-and-drop wird mit tatsächlich umgebrochenen Zeilen, nach Umordnung und
+Fenstergrößenänderung in beide Richtungen geprüft.
+
+Für die Offline-Sichtprüfung von Übersicht, Konten und Umbenennungsdialog:
+
+```sh
+cargo test -p bankingcraft --locked render_account_names -- --ignored
+```
+
+Der Export verwendet synthetische Konten mit langen Namen und schreibt deutsche
+und französische Ansichten bei 1100 und 1360 Pixel Breite nach
+`bankingcraft-account-name-review` im temporären Systemverzeichnis.
+Die Sichtprüfung am 13.11.2026 bestätigte vollständig sichtbare Namen,
+passende Zeilenhöhen und lesbare Aktionen sowie den Umbenennungsdialog.
+Der Export umfasst außerdem die DDV- und RDH-Bankzugangsformulare. Die Controls
+für Kartenleser, Karteneintrag und Kartenabruf sind bei beiden Fensterbreiten
+vertikal zentriert und überlappen sich nicht; Hinweistexte haben eine eigene Zeile.
+
 ## Grenzen und Sichtprüfung
+
+Für eine reproduzierbare Offline-Sichtprüfung von Überweisungsformular und Auftragsliste:
+
+```sh
+cargo test -p bankingcraft --locked render_payment_pages -- --ignored
+```
+
+Der Test umfasst auch den VoP-Ergebnisdialog mit langen Bankhinweisen und schmalem Fenster.
+Der Test rendert ausschließlich synthetische Demo-Daten als PNG-Dateien nach
+`bankingcraft-payment-review` im temporären Systemverzeichnis. Geprüft werden Deutsch
+und Französisch bei 1100 und 1360 Pixel Breite. Die reguläre Testsuite überspringt
+diesen reinen Export; die separate Ausführung und Sichtprüfung am 13.11.2026 war erfolgreich.
+Checkbox, beide Überweisungsbuttons, kontobezogenes Adressbuch und alle Auftragsstatus
+waren im dunklen Design lesbar und ohne abgeschnittene Beschriftungen.
 
 Die Tests prüfen fachliches Verhalten und Protokollabläufe, nicht jede Codezeile. Eine erfolgreiche Bankantwort im Simulator ersetzt weder Bankzertifizierung noch einen Hardwaretest. Reale Zahlungen werden für diese Tests nicht ausgelöst. Der Test mit einem echten Kartenleser bleibt auf Benutzerwunsch ausgesetzt.
 

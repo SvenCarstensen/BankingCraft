@@ -3,15 +3,21 @@
 
 slint::include_modules!();
 
+mod accounts_ui;
+mod vaults;
+mod payee_ui;
 mod banks;
 mod appearance;
 mod localization;
+mod product_id;
 mod bankx_import;
 mod bridge;
 mod categorize;
 mod demo;
 mod export;
 mod jobs;
+mod payments;
+mod payments_ui;
 mod groups;
 mod private_file;
 mod store;
@@ -116,7 +122,7 @@ fn selected_reader(app: &AppWindow, idx: i32) -> Option<String> {
 }
 
 fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
-    let import_result = bankx_import::pending(&mut vault, &file);
+    let import_result = if file.path() == store::default_path() { bankx_import::pending(&mut vault, &file) } else { Ok(None) };
     let st = app.global::<AppState>();
     st.set_data_path(file.path().display().to_string().into());
     st.set_product_id(vault.product_id.clone().into());
@@ -127,6 +133,7 @@ fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
     st.set_unlocked(true);
     st.set_unlock_error(SharedString::default());
     refresh_view(app);
+    #[cfg(not(test))]
     refresh_readers(app);
     match import_result {
         Ok(Some(message)) => toast(app, &message, false),
@@ -135,18 +142,10 @@ fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
     }
 }
 
-fn edit_groups(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<(), String>) -> bool {
+fn edit_vault(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<(), String>) -> bool {
     let c = ctx();
     if c.running.load(std::sync::atomic::Ordering::Acquire) { return false; }
-    let result = (|| {
-        let mut vault = c.vault.lock().unwrap();
-        let mut candidate = vault.clone();
-        edit(&mut candidate)?;
-        let file = c.file.lock().unwrap();
-        file.as_ref().ok_or(i18n::tr("Tresor ist gesperrt"))?.save(&candidate)?;
-        *vault = candidate;
-        Ok::<_, String>(())
-    })();
+    let result = c.edit_vault(edit);
     match result {
         Ok(()) => { refresh_view(app); true },
         Err(e) => { toast(app, &e, true); false },
@@ -162,9 +161,8 @@ fn main() {
     window_state.install(&app);
     appearance::install(&app);
     localization::install(&app);
+    accounts_ui::install(&app);
     let st = app.global::<AppState>();
-    let path = store::default_path();
-    st.set_first_run(!VaultFile::exists(&path));
     st.set_tx_period(1);
     st.set_so_first(Local::now().date_naive().format("%d.%m.%Y").to_string().into());
 
@@ -173,46 +171,8 @@ fn main() {
         *c.borrow_mut() = Some(Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)), bridge: bridge.clone(), running: Arc::new(std::sync::atomic::AtomicBool::new(false)) })
     });
 
-    // ---------------------------------------------------------------- vault
-    {
-        let weak = app.as_weak();
-        let path = path.clone();
-        st.on_unlock(move |pw| {
-            let app = weak.unwrap();
-            match VaultFile::open(path.clone(), &pw) {
-                Ok((file, vault)) => after_unlock(&app, vault, file),
-                Err(e) => app.global::<AppState>().set_unlock_error(e.into()),
-            }
-        });
-    }
-    {
-        let weak = app.as_weak();
-        let path = path.clone();
-        st.on_create_vault(move |p1, p2| {
-            let app = weak.unwrap();
-            let st = app.global::<AppState>();
-            if p1.chars().count() < 8 {
-                st.set_unlock_error(i18n::tr("Bitte mindestens 8 Zeichen verwenden.").into());
-                return;
-            }
-            if p1 != p2 {
-                st.set_unlock_error(i18n::tr("Die Passwörter stimmen nicht überein.").into());
-                return;
-            }
-            match VaultFile::create(path.clone(), &p1) {
-                Ok(file) => {
-                    let vault = Vault { product_version: env!("CARGO_PKG_VERSION").into(), ..Default::default() };
-                    if let Err(e) = file.save(&vault) {
-                        st.set_unlock_error(e.into());
-                        return;
-                    }
-                    st.set_first_run(false);
-                    after_unlock(&app, vault, file);
-                }
-                Err(e) => st.set_unlock_error(e.into()),
-            }
-        });
-    }
+    vaults::install(&app);
+    payee_ui::install(&app, &bridge);
 
     // ---------------------------------------------------------------- navigation
     {
@@ -229,26 +189,26 @@ fn main() {
     {
         let weak = app.as_weak();
         st.on_move_account(move |source, target, after| {
-            edit_groups(&weak.unwrap(), |v| v.move_account(source as u32, target as u32, after))
+            edit_vault(&weak.unwrap(), |v| v.move_account(source as u32, target as u32, after))
         });
     }
     {
         let weak = app.as_weak();
         st.on_create_group(move |name| {
             let app = weak.unwrap();
-            if edit_groups(&app, |v| v.create_group(&name).map(|_| ())) {
+            if edit_vault(&app, |v| v.create_group(&name).map(|_| ())) {
                 app.global::<AppState>().set_new_group_name(SharedString::default());
             }
         });
     }
     {
         let weak = app.as_weak();
-        st.on_rename_group(move |id, name| { edit_groups(&weak.unwrap(), |v| v.rename_group(id as u32, &name)); });
+        st.on_rename_group(move |id, name| { edit_vault(&weak.unwrap(), |v| v.rename_group(id as u32, &name)); });
     }
     {
         let weak = app.as_weak();
         st.on_assign_group(move |account, index| {
-            edit_groups(&weak.unwrap(), |v| {
+            edit_vault(&weak.unwrap(), |v| {
                 let id = if index == 0 { None } else { Some(v.groups.get((index - 1) as usize).ok_or(i18n::tr("Gruppe nicht gefunden"))?.id) };
                 v.assign_group(account as u32, id)
             });
@@ -260,7 +220,7 @@ fn main() {
             let app = weak.unwrap();
             let weak = app.as_weak();
             confirm(&app, i18n::tr("Gruppe entfernen"), i18n::tr("Die Konten bleiben erhalten und werden unter „Ohne Gruppe“ angezeigt."), true, move || {
-                edit_groups(&weak.unwrap(), |v| v.delete_group(id as u32));
+                edit_vault(&weak.unwrap(), |v| v.delete_group(id as u32));
             });
         });
     }
@@ -345,6 +305,8 @@ fn main() {
         });
     }
 
+    payments_ui::install(&app);
+
     // ---------------------------------------------------------------- payments
     {
         let weak = app.as_weak();
@@ -388,10 +350,11 @@ fn main() {
                 t.purpose,
                 t.execution_date.map(|d| i18n::tr_format!("\nAusführung am {}", view::fmt_date(d))).unwrap_or_default()
             );
+            let save_recipient = st.get_tf_save_recipient();
             let weak2 = app.as_weak();
             confirm(&app, i18n::tr("Überweisung senden?"), &text, false, move || {
                 ctx().run(i18n::tr("Überweisung wird übermittelt …"), move |c| {
-                    let r = jobs::transfer(c, account_id, t, scheduled);
+                    let r = jobs::transfer(c, account_id, t, scheduled, save_recipient);
                     if r.is_ok() {
                         let _ = weak2.upgrade_in_event_loop(|app| clear_transfer_form(&app));
                     }
@@ -1055,6 +1018,9 @@ fn transfer_from_form(app: &AppWindow) -> Result<(SepaTransfer, bool), String> {
 
 fn clear_transfer_form(app: &AppWindow) {
     let st = app.global::<AppState>();
+    st.set_tf_recipient(0);
+    st.set_tf_save_recipient(false);
+    st.set_tf_iban_error(false);
     st.set_tf_name(SharedString::default());
     st.set_tf_iban(SharedString::default());
     st.set_tf_bic(SharedString::default());

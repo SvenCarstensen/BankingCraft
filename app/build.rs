@@ -16,6 +16,7 @@ fn main() {
         std::fs::write(folder.join("bankingcraft.po"), po).unwrap();
     }
     let config = slint_build::CompilerConfiguration::new()
+        .with_debug_info(std::env::var("PROFILE").as_deref() == Ok("debug"))
         .with_style("fluent".into())
         .with_bundled_translations(translations)
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);

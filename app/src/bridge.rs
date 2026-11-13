@@ -254,6 +254,11 @@ impl Interaction for Bridge {
         self.ask_input(title, prompt, false)
     }
 
+    fn verify_payee(&self, result: &fints::vop::PayeeVerification, already_executed: bool) -> bool {
+        let result = result.clone();
+        matches!(self.ask(move |app| crate::payee_ui::show(app, &result, already_executed)), Answer::Confirmed)
+    }
+
     fn confirm(&self, title: &str, text: &str) -> bool {
         let (t, x, b) = (title.to_string(), text.to_string(), self.clone());
         matches!(self.ask(move |app| crate::confirm_blocking(app, &t, &x, b)), Answer::Confirmed)

@@ -1,3 +1,8 @@
+export struct AccountDropTarget {
+    id: int,
+    after: bool,
+}
+
 export struct AccountRow {
     id: int,
     name: string,
@@ -121,4 +126,18 @@ export struct Toast {
     visible: bool,
     text: string,
     error: bool,
+}
+
+export struct PaymentOrderRow {
+    id: int,
+    name: string,
+    iban: string,
+    amount: string,
+    purpose: string,
+    account: string,
+    execution: string,
+    status: string,
+    detail: string,
+    needs-review: bool,
+    queued: bool,
 }

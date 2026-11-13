@@ -64,6 +64,8 @@ pub trait Interaction: Send + Sync {
     fn text(&self, _title: &str, _prompt: &str) -> Option<String> {
         None
     }
+    /// The exact bank result must be shown before payment authorization. Default: decline.
+    fn verify_payee(&self, _result: &crate::vop::PayeeVerification, _already_executed: bool) -> bool { false }
     /// Yes/no question (e.g. confirming a bank key fingerprint). Default: no.
     fn confirm(&self, _title: &str, _text: &str) -> bool {
         false
@@ -106,10 +108,13 @@ const ANONYMOUS_CUSTOMER: &str = "9999999999";
 const KAZ_VERSIONS: &[u32] = &[5, 6, 7];
 
 impl<'a> Client<'a> {
-    pub fn new(cfg: Config, state: State, mut medium: Medium, ui: &'a dyn Interaction) -> Result<Self> {
+    pub fn new(cfg: Config, mut state: State, mut medium: Medium, ui: &'a dyn Interaction) -> Result<Self> {
         if matches!(medium, Medium::PinTan) {
             crate::transport::validate_https_url(&cfg.url)?;
         }
+        // Old vaults did not store HIVPPS details. Request BPD once even if its
+        // bank-side version has not changed since the app was upgraded.
+        if !state.bpd.vop_parameters_known { state.bpd.version = 0; }
         let mut cfg = cfg;
         let mut ddv = None;
         if let Medium::Ddv(card) = &mut medium {
@@ -153,8 +158,10 @@ impl<'a> Client<'a> {
             let session = RdhSession {
                 cid: card.cid()?,
                 profile: context.profile,
-                sign_key: card.sign_key()?,
-                decipher_key: card.decipher_key()?,
+                // EF_KEYD describes physical card slots. FinTS key versions
+                // belong to the selected bank access in EF_NOTEPAD instead.
+                sign_key: crate::rdh::CardKey { version: context.sign_key.version, ..card.sign_key()? },
+                decipher_key: crate::rdh::CardKey { version: context.crypt_key.version, ..card.decipher_key()? },
             };
             if !matches!(session.profile, 7 | 9 | 10) {
                 return Err(Error::NotSupported(i18n::tr_format!("RDH-Profil {}", session.profile)));
@@ -265,8 +272,17 @@ impl<'a> Client<'a> {
         };
         self.msg_num += 1;
         let answer = self.transport.send(&raw)?;
-        crate::response::validate_envelope(&answer, &self.dialog_id, self.msg_num - 1)?;
-        self.last_trace = Some(format!(">> {}\n\n<< {}", protocol_summary(&raw), protocol_summary(&answer)));
+        let requested = self.last_request.iter().map(|(number, code)| format!("{code}:{number}")).collect::<Vec<_>>().join(" ");
+        self.last_trace = Some(format!(">> {}\n>> {requested}\n\n<< {}\n<< {}", protocol_summary(&raw),
+            protocol_summary(&answer), envelope_summary(&answer, &self.dialog_id, self.msg_num - 1)));
+        crate::response::validate_envelope(&answer, &self.dialog_id, self.msg_num - 1).map_err(|error| {
+            if self.is_rdh() {
+                if let Error::Syntax(reason) = &error {
+                    return Error::Syntax(crate::security::rdh_rejection_diagnostic(&answer, reason));
+                }
+            }
+            error
+        })?;
         let bank_sign = self.state.bank_keys.as_ref().and_then(|k| k.sign.as_ref());
         let segs = match (&mut self.medium, &self.ddv) {
             (Medium::Ddv(card), Some(ctx)) => open_message(&answer, Opener::Ddv(card.as_mut(), ctx.enc_key.num))?,
@@ -338,8 +354,9 @@ impl<'a> Client<'a> {
         };
         self.msg_num += 1;
         let answer = self.transport.send(&raw)?;
+        self.last_trace = Some(format!(">> {}\n\n<< {}\n<< {}", protocol_summary(&raw), protocol_summary(&answer),
+            envelope_summary(&answer, &self.dialog_id, self.msg_num - 1)));
         crate::response::validate_envelope(&answer, &self.dialog_id, self.msg_num - 1)?;
-        self.last_trace = Some(format!(">> {}\n\n<< {}", protocol_summary(&raw), protocol_summary(&answer)));
         let resp = Response::new(open_message(&answer, Opener::Plain)?);
         if let Some(id) = &resp.dialog_id {
             if self.dialog_id == "0" && id != "0" {
@@ -386,7 +403,11 @@ impl<'a> Client<'a> {
     }
 
     fn product_id(&self) -> String {
-        if self.cfg.product_id.is_empty() { "BANKINGCRAFT".to_string() } else { self.cfg.product_id.clone() }
+        if self.cfg.product_id.is_empty() {
+            "BANKINGCRAFT".to_string()
+        } else {
+            self.cfg.product_id.clone()
+        }
     }
 
     fn hktan_version(&self) -> u32 {
@@ -477,6 +498,11 @@ impl<'a> Client<'a> {
             segments.push(self.hktan_process4(reference));
         }
         let resp = self.exchange(segments, None)?;
+        self.authorize_response(resp, sca)
+    }
+
+    fn authorize_response(&mut self, resp: Response, sca: bool) -> Result<Response> {
+        if resp.code("3945").is_some() { return Err(crate::vop::invalid()); }
         let approval_pending = resp.code("0030").is_some() || resp.code("3955").is_some();
         if !approval_pending {
             return Ok(resp);
@@ -642,10 +668,13 @@ impl<'a> Client<'a> {
             crate::rdh::hkisa(profile, &self.cfg.blz, "S"),
         ];
         let r = self.exchange_anonymous(segs);
+        let key_trace = self.last_trace.clone();
         if self.dialog_id != "0" {
             let end = SegmentBuilder::new("HKEND", 1).de(self.dialog_id.clone());
             let _ = self.exchange_anonymous(vec![end]);
         }
+        // Preserve the key exchange when dialog cleanup returns a different error.
+        self.last_trace = key_trace;
         self.reset_dialog();
         let resp = r?;
         let mut keys = BankKeys::default();
@@ -728,6 +757,7 @@ impl<'a> Client<'a> {
     }
 
     fn reset_dialog(&mut self) {
+        self.transport.reset();
         self.dialog_id = "0".into();
         self.msg_num = 1;
         self.in_dialog = false;
@@ -858,7 +888,7 @@ impl<'a> Client<'a> {
 
     pub fn end_dialog(&mut self) -> Result<()> {
         if self.dialog_id == "0" {
-            self.in_dialog = false;
+            self.reset_dialog();
             return Ok(());
         }
         let seg = SegmentBuilder::new("HKEND", 1).de(self.dialog_id.clone());
@@ -1091,6 +1121,93 @@ impl<'a> Client<'a> {
         Ok(response)
     }
 
+    /// HKVPP only prepares the payment. HKVPA is sent once, after the user has
+    /// seen the result; 3091 permits the existing TAN challenge instead. Never retry.
+    fn send_verified_order(&mut self, code: &str, payment: SegmentBuilder, pain: &[u8], t: &SepaTransfer) -> Result<Response> {
+        use crate::vop;
+        self.open()?;
+        let bpd = &self.state.bpd;
+        if bpd.version_for("HKVPP", &[1]).is_none() || bpd.version_for("HKVPA", &[1]).is_none()
+            || !bpd.vop_jobs.iter().any(|j| j == code)
+            || !bpd.vop_formats.iter().any(|f| f == vop::REPORT_FORMAT) {
+            return Err(Error::NotSupported(i18n::tr("Die Bank bietet für diesen Auftrag keine unterstützte Empfängerprüfung an. Bitte den Auftrag im Onlinebanking der Bank ausführen.").into()));
+        }
+        let sca = self.uses_sca();
+        if self.is_pintan() && !sca { return Err(vop::invalid()); }
+        self.ui.progress(i18n::tr("Empfängername und IBAN werden von der Bank geprüft …"));
+        let check = || SegmentBuilder::new("HKVPP", 1).de(vop::REPORT_FORMAT);
+        let mut segments = vec![payment.clone(), check()];
+        if sca { segments.push(self.hktan_process4(code)); }
+        let mut resp = self.exchange(segments, None)?;
+        let mut invalidated = resp.code("3945").is_some();
+        let mut report_bytes = Vec::new();
+        let mut notices = Vec::new();
+        let mut polling_id = None;
+        for page in 0..20 {
+            invalidated |= resp.code("3945").is_some();
+            let responses: Vec<_> = resp.find("HIVPP").collect();
+            // A bank may explicitly waive both VoP execution confirmation and SCA.
+            if responses.is_empty() && sca && resp.code("3091").is_some() && resp.code("3076").is_some() && !invalidated {
+                completed_approval(&resp)?;
+                let result = vop::PayeeVerification { status: vop::PayeeStatus::Unavailable, name: pain::sepa_charset(&t.creditor_name), iban: t.creditor_iban.clone(), suggested_name: String::new(), reason: i18n::tr("Die Bank hat den Auftrag ohne Empfängerprüfung und ohne weitere Freigabe ausgeführt.").into(), bank_notice: resp.summary() };
+                self.ui.verify_payee(&result, true);
+                return Ok(resp);
+            }
+            if responses.len() != 1 { return Err(vop::invalid()); }
+            let result = responses[0];
+            if result.version != 1 || result.reference.is_some_and(|n| !self.last_request.iter().any(|(number, code)| *number == n && code == "HKVPP")) { return Err(vop::invalid()); }
+            if let Some(bytes) = result.bin(5, 0).filter(|b| !b.is_empty()) {
+                if result.text_or_empty(4, 0) != vop::REPORT_FORMAT { return Err(vop::invalid()); }
+                // Complete replacements start a new document; binary fragments append.
+                if std::str::from_utf8(bytes).ok().is_some_and(|s| s.trim_start().starts_with("<?xml") || s.trim_start().starts_with("<Document")) { report_bytes.clear(); }
+                if report_bytes.len() + bytes.len() > 1_048_576 { return Err(vop::invalid()); }
+                report_bytes.extend_from_slice(bytes);
+            }
+            let notice = result.text_or_empty(7, 0);
+            if !notice.is_empty() && !notices.contains(&notice) { notices.push(notice); }
+            if notices.iter().map(String::len).sum::<usize>() > 262_144 { return Err(vop::invalid()); }
+            if let Some(id) = result.bin(3, 0).filter(|b| !b.is_empty()) { polling_id = Some(id.to_vec()); }
+            let more = resp.code("3040").and_then(|c| c.params.first()).filter(|s| !s.is_empty());
+            if resp.code("3040").is_some() || resp.code("3093").is_some() {
+                let cursor = more.ok_or_else(vop::invalid)?;
+                if page == 19 || result.bin(1, 0).is_some_and(|b| !b.is_empty()) { return Err(vop::invalid()); }
+                let wait = result.text(8, 0).map(|s| s.parse::<u64>().map_err(|_| vop::invalid())).transpose()?.unwrap_or(1);
+                if wait > 9 { return Err(vop::invalid()); }
+                self.ui.progress(i18n::tr("Empfängerprüfung läuft noch …"));
+                std::thread::sleep(std::time::Duration::from_secs(wait));
+                let next = check().de(polling_id.clone().map(Val::Bin).unwrap_or(Val::Empty)).de(Val::Empty).de(cursor);
+                resp = self.exchange(vec![next], None)?;
+                continue;
+            }
+            let id = result.bin(1, 0).filter(|b| !b.is_empty()).ok_or_else(vop::invalid)?.to_vec();
+            let mut complete = result.clone();
+            // Put the assembled report and all bank notices into a single final result.
+            while complete.des.len() <= 7 { complete.des.push(vec![None]); }
+            if !report_bytes.is_empty() {
+                complete.des[4] = vec![Some(vop::REPORT_FORMAT.as_bytes().to_vec())];
+                complete.des[5] = vec![Some(report_bytes.clone())];
+            }
+            complete.des[7] = vec![Some(crate::syntax::string_to_latin1(&notices.join("\n\n")))];
+            let verification = vop::parse(&complete, pain, t, self.state.bpd.vop_structured_notice)?;
+            let skip_execution = sca && resp.code("3091").is_some() && !invalidated;
+            let already_executed = skip_execution && resp.code("3076").is_some()
+                && resp.code("0030").is_none() && resp.code("3955").is_none();
+            if skip_execution && !already_executed && resp.code("0030").is_none() && resp.code("3955").is_none() { return Err(vop::invalid()); }
+            if already_executed { completed_approval(&resp)?; }
+            if !self.ui.verify_payee(&verification, already_executed) && !already_executed { return Err(Error::Cancelled); }
+            if skip_execution {
+                let response = self.authorize_response(resp, sca)?;
+                completed_approval(&response)?;
+                return Ok(response);
+            }
+            // Clone, do not rebuild: message ID, end-to-end ID and pain bytes must stay identical.
+            let response = self.exchange_sca(vec![payment, SegmentBuilder::new("HKVPA", 1).bin(id)], code, true)?;
+            completed_approval(&response)?;
+            return Ok(response);
+        }
+        Err(vop::invalid())
+    }
+
     pub fn transfer(&mut self, a: &Account, t: &SepaTransfer) -> Result<String> {
         pain::validate_transfer(t)?;
         validate_debtor(a, t)?;
@@ -1105,8 +1222,8 @@ impl<'a> Client<'a> {
             ("HKCCS", descriptor)
         };
         let pain = pain::build_pain001(&desc, t, None);
-        let seg = SegmentBuilder::new(code, 1).deg(Self::sepa_account(a)).de(desc).bin(pain);
-        let r = self.send_order(code, seg)?;
+        let seg = SegmentBuilder::new(code, 1).deg(Self::sepa_account(a)).de(desc).bin(pain.clone());
+        let r = self.send_verified_order(code, seg, &pain, t)?;
         Ok(r.summary())
     }
 
@@ -1122,8 +1239,8 @@ impl<'a> Client<'a> {
         }
         let desc = self.state.bpd.preferred_pain001();
         let pain = pain::build_pain001(&desc, t, None);
-        let seg = SegmentBuilder::new("HKCSE", 1).deg(Self::sepa_account(a)).de(desc).bin(pain);
-        let r = self.send_order("HKCSE", seg)?;
+        let seg = SegmentBuilder::new("HKCSE", 1).deg(Self::sepa_account(a)).de(desc).bin(pain.clone());
+        let r = self.send_verified_order("HKCSE", seg, &pain, t)?;
         let id = r.first("HICSE").map(|s| s.text_or_empty(1, 0)).unwrap_or_default();
         Ok(format!("{}{}", r.summary(), if id.is_empty() { String::new() } else { i18n::tr_format!("\nAuftrags-ID: {id}") }))
     }
@@ -1154,9 +1271,11 @@ impl<'a> Client<'a> {
         let seg = SegmentBuilder::new("HKCDE", 1)
             .deg(Self::sepa_account(a))
             .de(desc)
-            .bin(pain)
+            .bin(pain.clone())
             .deg(Self::standing_details(so));
-        let r = self.send_order("HKCDE", seg)?;
+        let r = if self.state.bpd.vop_jobs.iter().any(|j| j == "HKCDE") {
+            self.send_verified_order("HKCDE", seg, &pain, &t)?
+        } else { self.send_order("HKCDE", seg)? };
         Ok(r.summary())
     }
 
@@ -1274,8 +1393,8 @@ fn merge(mut a: Response, b: Response) -> Response {
 }
 
 fn completed_approval(response: &Response) -> Result<()> {
-    if response.codes.iter().any(|c| matches!(c.code.as_str(), "0030" | "3955" | "3956"))
-        || !response.codes.iter().any(|c| c.code.len() == 4 && c.code.starts_with('0') && c.code != "0030" && c.code.bytes().all(|b| b.is_ascii_digit())) {
+    if response.codes.iter().any(|c| matches!(c.code.as_str(), "0030" | "3955" | "3956" | "3945"))
+        || !response.codes.iter().any(|c| c.code.len() == 4 && c.code.starts_with('0') && !matches!(c.code.as_str(), "0030" | "0025") && c.code.bytes().all(|b| b.is_ascii_digit())) {
         return Err(Error::Security(i18n::tr("Keine abschließende Auftragsbestätigung der Bank; Status bitte bei der Bank prüfen und Auftrag nicht erneut senden").into()));
     }
     Ok(())
@@ -1352,6 +1471,19 @@ fn parse_hitab(resp: &Response) -> Vec<String> {
     names
 }
 
+/// Describe envelope mismatches without recording session identifiers or raw fields.
+fn envelope_summary(raw: &[u8], dialog_id: &str, expected: u32) -> String {
+    let Ok(segs) = crate::syntax::parse_segments(raw) else { return String::new() };
+    let head = segs.iter().find(|s| s.code == "HNHBK");
+    let tail = segs.iter().find(|s| s.code == "HNHBS");
+    // Numeric metadata and a comparison result only; never log dialog IDs or
+    // malformed field contents. This also diagnoses rejected envelopes.
+    let number = |s: Option<&crate::syntax::Segment>, de, part| s.and_then(|s| s.text(de, part)).and_then(|v| v.parse::<u64>().ok());
+    format!("bytes={} declared={:?} version={:?} message={:?} tail_message={:?} reference={:?} expected={} dialog_matches={}",
+        raw.len(), number(head, 1, 0), number(head, 2, 0), number(head, 4, 0), number(tail, 1, 0), number(head, 5, 1),
+        expected, head.is_some_and(|h| h.text(3, 0).is_some() && (dialog_id == "0" || h.text_or_empty(3, 0) == dialog_id)))
+}
+
 /// Keep diagnostic segment identifiers without storing credentials, account data or binary payloads.
 fn protocol_summary(raw: &[u8]) -> String {
     match crate::syntax::parse_segments(raw) {
@@ -1398,6 +1530,31 @@ mod security_regressions {
         let trace=protocol_summary(&raw);
         assert!(!trace.contains("secret") && !trace.contains("user"));
         assert!(!protocol_summary(b"secretPIN").contains("secretPIN"));
+    }
+    #[test]
+    fn rejected_envelope_replaces_the_previous_trace_without_exposing_identifiers() {
+        struct Rejection;
+        impl Transport for Rejection {
+            fn send(&mut self, _: &[u8]) -> Result<Vec<u8>> {
+                build_message(&Envelope { dialog_id: "0", message_number: 9999, blz: "12345678",
+                    user_id: "private-user", system_id: "private-system" }, Auth::None,
+                    vec![SegmentBuilder::new("HIRMG", 2).deg(vec!["9800".into(), Val::Empty, "rejected".into()])])
+            }
+        }
+        let mut client = Client::new(Config { url: "https://bank.invalid".into(), user_id: "private-user".into(),
+            ..Default::default() }, State::default(), Medium::PinTan, &Ui).unwrap();
+        client.dialog_id = "private-dialog".into();
+        client.msg_num = 2;
+        client.pin = Some(Zeroizing::new("secret-PIN".into()));
+        client.last_trace = Some("previous exchange".into());
+        client.set_transport(Box::new(Rejection));
+        assert!(matches!(client.exchange(vec![SegmentBuilder::new("HKSPA", 1)], None), Err(Error::Syntax(_))));
+        let trace = client.last_trace.unwrap();
+        assert!(trace.contains("HKSPA:3") && trace.contains("message=Some(9999)"));
+        assert!(trace.contains("expected=2 dialog_matches=false"));
+        for secret in ["private-user", "private-dialog", "private-system", "secret-PIN", "rejected", "previous exchange"] {
+            assert!(!trace.contains(secret), "{trace}");
+        }
     }
 }
 

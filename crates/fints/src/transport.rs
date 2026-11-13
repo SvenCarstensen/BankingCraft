@@ -21,6 +21,8 @@ pub fn validate_https_url(value: &str) -> Result<()> {
 
 pub trait Transport: Send {
     fn send(&mut self, message: &[u8]) -> Result<Vec<u8>>;
+    /// End the transport session when a FinTS dialog ends or is reset.
+    fn reset(&mut self) {}
 }
 
 pub struct HttpsTransport {
@@ -72,26 +74,32 @@ impl Transport for HttpsTransport {
 
 pub struct TcpTransport {
     addr: String,
+    stream: Option<TcpStream>,
+    failed: bool,
 }
 
 impl TcpTransport {
     pub fn new(host: &str) -> Self {
         let addr = if host.contains(':') { host.to_string() } else { format!("{host}:3000") };
-        Self { addr }
+        Self { addr, stream: None, failed: false }
     }
-}
 
-impl Transport for TcpTransport {
-    fn send(&mut self, message: &[u8]) -> Result<Vec<u8>> {
+    fn connect(&self) -> Result<TcpStream> {
         let addresses = self.addr.to_socket_addrs().map_err(|e| Error::Transport(e.to_string()))?;
         let mut connection = Err(std::io::Error::new(std::io::ErrorKind::NotFound, i18n::tr("Keine Serveradresse gefunden")));
         for address in addresses {
             connection = TcpStream::connect_timeout(&address, Duration::from_secs(20));
             if connection.is_ok() { break; }
         }
-        let mut s = connection.map_err(|e| Error::Transport(e.to_string()))?;
+        let s = connection.map_err(|e| Error::Transport(e.to_string()))?;
         s.set_read_timeout(Some(Duration::from_secs(120))).map_err(|e| Error::Transport(e.to_string()))?;
         s.set_write_timeout(Some(Duration::from_secs(120))).map_err(|e| Error::Transport(e.to_string()))?;
+        Ok(s)
+    }
+
+    fn exchange(&mut self, message: &[u8]) -> Result<Vec<u8>> {
+        if self.stream.is_none() { self.stream = Some(self.connect()?); }
+        let s = self.stream.as_mut().expect("connected above");
         s.write_all(message).map_err(|e| Error::Transport(e.to_string()))?;
         // HNHBK:1:3+000000000123+... -> read the header first, then the announced size.
         // "HNHBK:1:3+" is 10 bytes, followed by the 12 digit total size.
@@ -112,5 +120,112 @@ impl Transport for TcpTransport {
         let mut all = head.to_vec();
         all.extend(rest);
         Ok(all)
+    }
+}
+
+impl Transport for TcpTransport {
+    fn send(&mut self, message: &[u8]) -> Result<Vec<u8>> {
+        if self.failed {
+            return Err(Error::Transport(i18n::tr("Die TCP-Verbindung ist nach einem Fehler geschlossen. Bitte den Bankabruf neu starten.").into()));
+        }
+        // HBCI gateways bind a dialog to its socket. Reuse it for every message;
+        // reconnect only at an explicit dialog boundary, never replay a request.
+        let result = self.exchange(message);
+        if result.is_err() {
+            self.stream = None;
+            self.failed = true;
+        }
+        result
+    }
+
+    fn reset(&mut self) {
+        self.stream = None;
+        self.failed = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    fn packet(dialog: &str, number: u32) -> Vec<u8> {
+        crate::security::build_message(&crate::security::Envelope {
+            dialog_id: dialog, message_number: number, blz: "12345678", user_id: "anonymous", system_id: "0",
+        }, crate::security::Auth::None, vec![]).unwrap()
+    }
+
+    #[test]
+    fn tcp_keeps_one_connection_for_all_messages_in_a_dialog() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let first = packet("0", 1);
+        let second = packet("TEST", 2);
+        let requests = [first.clone(), second.clone()];
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            for expected in requests {
+                let mut received = vec![0; expected.len()];
+                stream.read_exact(&mut received).expect("the second message must use the existing connection");
+                assert_eq!(received, expected);
+                // Response headers and bodies may span several socket reads.
+                for chunk in expected.chunks(7) { stream.write_all(chunk).unwrap(); }
+            }
+        });
+        let mut transport = TcpTransport::new(&address);
+        assert_eq!(transport.send(&first).unwrap(), first);
+        assert_eq!(transport.send(&second).unwrap(), second);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn tcp_reset_closes_the_old_dialog_and_opens_a_new_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut transport = TcpTransport::new(&listener.local_addr().unwrap().to_string());
+        let request = packet("0", 1);
+        let expected = request.clone();
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                let mut received = vec![0; expected.len()];
+                stream.read_exact(&mut received).unwrap();
+                assert_eq!(received, expected);
+                stream.write_all(&expected).unwrap();
+                assert_eq!(stream.read(&mut [0u8; 1]).unwrap(), 0, "dialog reset closes the socket");
+            }
+        });
+        for _ in 0..2 {
+            assert_eq!(transport.send(&request).unwrap(), request);
+            transport.reset();
+        }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn tcp_does_not_replay_or_reconnect_after_an_uncertain_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut transport = TcpTransport::new(&listener.local_addr().unwrap().to_string());
+        let request = packet("TEST", 2);
+        let expected = request.clone();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut received = vec![0; expected.len()];
+            stream.read_exact(&mut received).unwrap();
+            assert_eq!(received, expected);
+            // The request was received, but the response is truncated. Its
+            // execution status is unknown: automatic resubmission is forbidden.
+            stream.write_all(b"HNHBK:1:3+").unwrap();
+            drop(stream);
+            listener
+        });
+        assert!(transport.send(&request).is_err());
+        let listener = server.join().unwrap();
+        assert!(transport.send(&request).is_err());
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock,
+            "no second connection or request without an explicit dialog reset");
     }
 }

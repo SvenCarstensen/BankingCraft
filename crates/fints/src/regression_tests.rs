@@ -47,6 +47,40 @@ mod tests {
         assert!(open_message(&body().encode(),Opener::Rdh(&mut card,Some(&key))).is_err());
     }
     #[test]
+    fn unencrypted_rdh_rejection_is_diagnostic_only_and_never_accepts_data() {
+        let (mut card, key, _) = setup();
+        let rejection = SegmentBuilder::new("HIRMG", 2)
+            .deg(vec!["9800".into(), Val::Empty, "Dialog abgebrochen".into()])
+            .deg(vec!["0010".into(), Val::Empty, "untrusted success".into()]);
+        let raw = crate::security::build_message(&crate::security::Envelope {
+            dialog_id: "0", message_number: 1, blz: "12345678", user_id: "test", system_id: "0",
+        }, crate::security::Auth::None, vec![rejection]).unwrap();
+        let error = open_message(&raw, Opener::Rdh(&mut card, Some(&key))).unwrap_err();
+        assert!(matches!(&error, crate::Error::Security(_)), "must not become a trusted bank result");
+        let text = error.to_string();
+        assert!(text.contains("Nicht authentifizierte Fehlermeldung"));
+        assert!(text.contains("9800 Dialog abgebrochen"));
+        assert!(!text.contains("untrusted success"));
+
+        let mut injected = raw;
+        injected.extend(SegmentBuilder::new("HISYN", 4).de("UNTRUSTED-SYSTEM-ID").encode());
+        let error = open_message(&injected, Opener::Rdh(&mut card, Some(&key))).unwrap_err();
+        assert!(matches!(&error, crate::Error::Security(_)));
+        assert!(!error.to_string().contains("9800"), "mixed data must not be interpreted");
+    }
+    #[test]
+    fn unencrypted_rdh_diagnostics_are_bounded_and_strip_control_characters() {
+        let (mut card, key, _) = setup();
+        let status = SegmentBuilder::new("HIRMG", 2)
+            .deg(vec!["9800".into(), Val::Empty, format!("\u{1b}\r\n{}", "X".repeat(600)).into()]);
+        let raw: Vec<_> = (0..20).flat_map(|_| status.encode()).collect();
+        let error = open_message(&raw, Opener::Rdh(&mut card, Some(&key))).unwrap_err().to_string();
+        assert_eq!(error.matches("9800").count(), 8);
+        assert!(error.len() < 4400);
+        assert!(!error.contains('\u{1b}') && !error.contains('\r'));
+        assert!(!error.contains(&"X".repeat(513)));
+    }
+    #[test]
     fn rejects_encrypted_unsigned_response_with_known_bank_key() {
         let (mut card,key,session)=setup();
         let encrypted=encrypt(&session,&key,"12345678","bank","SYS",false,body().encode()).unwrap();

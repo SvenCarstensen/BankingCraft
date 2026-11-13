@@ -3293,5 +3293,355 @@
     "binary data exceeds message",
     "les données binaires dépassent le message",
     "los datos binarios superan el mensaje"
+  ],
+  "\n{} gespeicherte Überweisungen gesendet.": [
+    "\n{} saved transfers sent.",
+    "\n{} virements enregistrés envoyés.",
+    "\n{} transferencias guardadas enviadas."
+  ],
+  "Auftragsstatus konnte nicht gespeichert werden: {e}. Bitte vor einem erneuten Auftrag den Bankstatus prüfen.": [
+    "Could not save the order status: {e}. Check the status with your bank before creating another order.",
+    "Impossible d’enregistrer le statut de l’ordre : {e}. Vérifiez le statut auprès de la banque avant de créer un nouvel ordre.",
+    "No se pudo guardar el estado de la orden: {e}. Consulte el estado con su banco antes de crear otra orden."
+  ],
+  "Ausführung am {}": [
+    "Execution on {}",
+    "Exécution le {}",
+    "Ejecución el {}"
+  ],
+  "Ausführungsdatum nur bei Terminüberweisungen erlaubt.": [
+    "An execution date is only allowed for scheduled transfers.",
+    "Une date d’exécution est autorisée uniquement pour les virements programmés.",
+    "Solo se permite una fecha de ejecución en las transferencias programadas."
+  ],
+  "Auftrag nicht gefunden": [
+    "Order not found",
+    "Ordre introuvable",
+    "Orden no encontrada"
+  ],
+  "Empfänger nicht gefunden": [
+    "Recipient not found",
+    "Bénéficiaire introuvable",
+    "Beneficiario no encontrado"
+  ],
+  "Dieser Auftrag wurde bereits verarbeitet. Bitte den Status prüfen.": [
+    "This order has already been processed. Please check its status.",
+    "Cet ordre a déjà été traité. Veuillez vérifier son statut.",
+    "Esta orden ya se ha procesado. Compruebe su estado."
+  ],
+  "Empfänger auswählen …": [
+    "Select a recipient …",
+    "Choisir un bénéficiaire …",
+    "Seleccionar beneficiario …"
+  ],
+  "Gespeichert": [
+    "Saved",
+    "Enregistré",
+    "Guardada"
+  ],
+  "Gesendet": [
+    "Sent",
+    "Envoyé",
+    "Enviada"
+  ],
+  "Bitte prüfen": [
+    "Review required",
+    "À vérifier",
+    "Revisar"
+  ],
+  "Keine automatische Wiederholung. Bitte den Status bei der Bank prüfen, bevor Sie einen neuen Auftrag anlegen.": [
+    "No automatic retry. Check the status with your bank before creating a new order.",
+    "Aucune nouvelle tentative automatique. Vérifiez le statut auprès de la banque avant de créer un nouvel ordre.",
+    "No se reintentará automáticamente. Consulte el estado con su banco antes de crear una nueva orden."
+  ],
+  "Überweisung gespeichert. Versand bei der nächsten Synchronisierung dieses Kontos.": [
+    "Transfer saved. It will be sent when this account is next synchronized.",
+    "Virement enregistré. Il sera envoyé à la prochaine synchronisation de ce compte.",
+    "Transferencia guardada. Se enviará cuando se vuelva a sincronizar esta cuenta."
+  ],
+  "Empfänger löschen?": [
+    "Delete recipient?",
+    "Supprimer le bénéficiaire ?",
+    "¿Eliminar beneficiario?"
+  ],
+  "Der Empfänger wird nur aus dem Adressbuch dieses Kontos entfernt.": [
+    "The recipient will only be removed from this account’s address book.",
+    "Le bénéficiaire sera supprimé uniquement du carnet d’adresses de ce compte.",
+    "El beneficiario solo se eliminará de la libreta de direcciones de esta cuenta."
+  ],
+  "Der gespeicherte Auftrag wird entfernt und nicht gesendet.": [
+    "The saved order will be removed and will not be sent.",
+    "L’ordre enregistré sera supprimé et ne sera pas envoyé.",
+    "La orden guardada se eliminará y no se enviará."
+  ],
+  "Nur der lokale Eintrag wird entfernt. Ein bereits an die Bank übermittelter Auftrag wird dadurch nicht storniert.": [
+    "Only the local entry will be removed. An order already sent to the bank will not be cancelled.",
+    "Seule l’entrée locale sera supprimée. Un ordre déjà transmis à la banque ne sera pas annulé.",
+    "Solo se eliminará la entrada local. No se cancelará una orden ya enviada al banco."
+  ],
+  "Auftrag entfernen?": [
+    "Remove order?",
+    "Supprimer l’ordre ?",
+    "¿Eliminar orden?"
+  ],
+  "Adressbuch dieses Kontos": [
+    "Address book for this account",
+    "Carnet d’adresses de ce compte",
+    "Libreta de direcciones de esta cuenta"
+  ],
+  "Empfänger löschen": [
+    "Delete recipient",
+    "Supprimer le bénéficiaire",
+    "Eliminar beneficiario"
+  ],
+  "Im Adressbuch speichern": [
+    "Save to address book",
+    "Enregistrer dans le carnet d’adresses",
+    "Guardar en la libreta de direcciones"
+  ],
+  "Überweisung speichern": [
+    "Save transfer",
+    "Enregistrer le virement",
+    "Guardar transferencia"
+  ],
+  "Gespeicherte Überweisungen werden bei der nächsten Synchronisierung des Kontos gesendet.": [
+    "Saved transfers will be sent when the account is next synchronized.",
+    "Les virements enregistrés seront envoyés à la prochaine synchronisation du compte.",
+    "Las transferencias guardadas se enviarán cuando se vuelva a sincronizar la cuenta."
+  ],
+  "Auftragsliste": [
+    "Payment orders",
+    "Ordres de paiement",
+    "Órdenes de pago"
+  ],
+  "Noch keine Überweisungsaufträge gespeichert.": [
+    "No transfer orders saved yet.",
+    "Aucun ordre de virement enregistré.",
+    "Todavía no hay órdenes de transferencia guardadas."
+  ],
+  "Anzeigename ändern": [
+    "Change display name",
+    "Modifier le nom affiché",
+    "Cambiar nombre visible"
+  ],
+  "Anzeigename": [
+    "Display name",
+    "Nom affiché",
+    "Nombre visible"
+  ],
+  "Bitte einen Anzeigenamen ohne Zeilenumbrüche oder Steuerzeichen eingeben.": [
+    "Please enter a display name without line breaks or control characters.",
+    "Veuillez saisir un nom affiché sans saut de ligne ni caractère de contrôle.",
+    "Introduce un nombre visible sin saltos de línea ni caracteres de control."
+  ],
+  "Kontoname der Bank": [
+    "Account name from bank",
+    "Nom du compte fourni par la banque",
+    "Nombre de cuenta del banco"
+  ],
+  "Originalnamen verwenden": [
+    "Use original name",
+    "Utiliser le nom d’origine",
+    "Usar nombre original"
+  ],
+  "Leer lassen, um den Kontonamen der Bank zu verwenden.": [
+    "Leave blank to use the account name from the bank.",
+    "Laissez vide pour utiliser le nom du compte fourni par la banque.",
+    "Deja el campo vacío para usar el nombre de cuenta del banco."
+  ],
+  "Alle Dateien": [
+    "All files",
+    "Tous les fichiers",
+    "Todos los archivos"
+  ],
+  "Tresor öffnen": [
+    "Open vault",
+    "Ouvrir un coffre",
+    "Abrir bóveda"
+  ],
+  "Tresor öffnen …": [
+    "Open vault…",
+    "Ouvrir un coffre…",
+    "Abrir bóveda…"
+  ],
+  "Neuen Tresor anlegen": [
+    "Create a new vault",
+    "Créer un nouveau coffre",
+    "Crear una nueva bóveda"
+  ],
+  "Neuen Tresor anlegen …": [
+    "Create a new vault…",
+    "Créer un nouveau coffre…",
+    "Crear una nueva bóveda…"
+  ],
+  "Neuer Tresor": [
+    "New vault",
+    "Nouveau coffre",
+    "Nueva bóveda"
+  ],
+  "Zuletzt geöffnete Tresore": [
+    "Recently opened vaults",
+    "Coffres ouverts récemment",
+    "Bóvedas abiertas recientemente"
+  ],
+  "Geben Sie das Passwort für den ausgewählten Tresor ein.": [
+    "Enter the password for the selected vault.",
+    "Saisissez le mot de passe du coffre sélectionné.",
+    "Introduce la contraseña de la bóveda seleccionada."
+  ],
+  "Beim Öffnen eines anderen Tresors werden ungespeicherte Formulare verworfen.": [
+    "Opening another vault discards unsaved forms.",
+    "L’ouverture d’un autre coffre abandonne les formulaires non enregistrés.",
+    "Al abrir otra bóveda se descartan los formularios sin guardar."
+  ],
+  "Tresore": [
+    "Vaults",
+    "Coffres",
+    "Bóvedas"
+  ],
+  "Getrennte Tresore für unterschiedliche Konten und Zugangsdaten.": [
+    "Separate vaults for different accounts and credentials.",
+    "Des coffres séparés pour différents comptes et identifiants.",
+    "Bóvedas separadas para distintas cuentas y credenciales."
+  ],
+  "Tresor wechseln / anlegen": [
+    "Switch / create vault",
+    "Changer / créer un coffre",
+    "Cambiar / crear bóveda"
+  ],
+  "Bitte den laufenden Vorgang abschließen, bevor Sie den Tresor wechseln.": [
+    "Please finish the current operation before switching vaults.",
+    "Veuillez terminer l’opération en cours avant de changer de coffre.",
+    "Finaliza la operación en curso antes de cambiar de bóveda."
+  ],
+  "Diese Datei existiert bereits. Bitte einen anderen Namen für den neuen Tresor wählen.": [
+    "This file already exists. Please choose another name for the new vault.",
+    "Ce fichier existe déjà. Veuillez choisir un autre nom pour le nouveau coffre.",
+    "Este archivo ya existe. Elige otro nombre para la nueva bóveda."
+  ],
+  "Tresor geöffnet. Die Auswahl konnte nicht gespeichert werden: {e}": [
+    "Vault opened. The selection could not be saved: {e}",
+    "Coffre ouvert. La sélection n’a pas pu être enregistrée : {e}",
+    "Bóveda abierta. No se pudo guardar la selección: {e}"
+  ],
+  "Tresor auswählen …": [
+    "Select vault…",
+    "Sélectionner un coffre…",
+    "Seleccionar bóveda…"
+  ],
+  "Empfängerprüfung": [
+    "Verification of payee",
+    "Vérification du bénéficiaire",
+    "Verificación del beneficiario"
+  ],
+  "Name und IBAN stimmen überein": [
+    "Name and IBAN match",
+    "Le nom et l’IBAN correspondent",
+    "El nombre y el IBAN coinciden"
+  ],
+  "Der Empfängername weicht leicht ab": [
+    "The payee name is a close match",
+    "Le nom du bénéficiaire est légèrement différent",
+    "El nombre del beneficiario difiere ligeramente"
+  ],
+  "Name und IBAN stimmen nicht überein": [
+    "Name and IBAN do not match",
+    "Le nom et l’IBAN ne correspondent pas",
+    "El nombre y el IBAN no coinciden"
+  ],
+  "Empfängerprüfung nicht möglich": [
+    "Payee verification unavailable",
+    "Vérification du bénéficiaire impossible",
+    "No se puede verificar al beneficiario"
+  ],
+  "Name bei der Empfängerbank": [
+    "Name held by the payee’s bank",
+    "Nom enregistré par la banque du bénéficiaire",
+    "Nombre registrado en el banco del beneficiario"
+  ],
+  "Namen kopieren": [
+    "Copy name",
+    "Copier le nom",
+    "Copiar nombre"
+  ],
+  "Hinweis Ihrer Bank": [
+    "Notice from your bank",
+    "Information de votre banque",
+    "Aviso de su banco"
+  ],
+  "Weiter zur Freigabe": [
+    "Continue to authorization",
+    "Continuer vers l’autorisation",
+    "Continuar con la autorización"
+  ],
+  "Trotzdem fortfahren": [
+    "Continue anyway",
+    "Continuer malgré tout",
+    "Continuar de todos modos"
+  ],
+  "Wenn Sie fortfahren, kann das Geld auf ein Konto gelangen, dessen Inhaber nicht dem angegebenen Empfänger entspricht. Prüfen Sie die Angaben vor der Freigabe.": [
+    "If you continue, the money could reach an account whose holder is not the payee you entered. Check the details before authorizing.",
+    "Si vous continuez, les fonds pourraient être versés sur un compte dont le titulaire ne correspond pas au bénéficiaire indiqué. Vérifiez les informations avant d’autoriser.",
+    "Si continúa, el dinero podría llegar a una cuenta cuyo titular no coincide con el beneficiario indicado. Revise los datos antes de autorizar."
+  ],
+  "Die Bank hat den Auftrag bereits ausgeführt.": [
+    "The bank has already executed the payment.",
+    "La banque a déjà exécuté l’ordre.",
+    "El banco ya ha ejecutado la orden."
+  ],
+  "Zum Ändern des Empfängernamens brechen Sie ab und senden den korrigierten Auftrag erneut zur Prüfung.": [
+    "To change the payee name, cancel and submit the corrected payment for verification again.",
+    "Pour modifier le nom du bénéficiaire, annulez puis soumettez l’ordre corrigé à une nouvelle vérification.",
+    "Para cambiar el nombre del beneficiario, cancele y envíe la orden corregida para verificarla de nuevo."
+  ],
+  "Empfängerprüfung unvollständig oder ungültig; keine Zahlungsfreigabe erteilt": [
+    "Payee verification is incomplete or invalid; payment authorization was not granted",
+    "Vérification du bénéficiaire incomplète ou invalide ; aucune autorisation de paiement accordée",
+    "Verificación del beneficiario incompleta o no válida; no se ha autorizado el pago"
+  ],
+  "Die Bank hat kein Prüfergebnis geliefert.": [
+    "The bank did not provide a verification result.",
+    "La banque n’a fourni aucun résultat de vérification.",
+    "El banco no ha proporcionado ningún resultado de verificación."
+  ],
+  "Die Bank bietet für diesen Auftrag keine unterstützte Empfängerprüfung an. Bitte den Auftrag im Onlinebanking der Bank ausführen.": [
+    "The bank does not offer a supported payee verification for this payment. Please use the bank’s online banking.",
+    "La banque ne propose pas de vérification du bénéficiaire prise en charge pour cet ordre. Veuillez utiliser son service bancaire en ligne.",
+    "El banco no ofrece una verificación del beneficiario compatible para esta orden. Utilice la banca en línea del banco."
+  ],
+  "Empfängername und IBAN werden von der Bank geprüft …": [
+    "The bank is verifying the payee name and IBAN …",
+    "La banque vérifie le nom et l’IBAN du bénéficiaire …",
+    "El banco está verificando el nombre y el IBAN del beneficiario …"
+  ],
+  "Empfängerprüfung läuft noch …": [
+    "Payee verification is still in progress …",
+    "Vérification du bénéficiaire en cours …",
+    "La verificación del beneficiario sigue en curso …"
+  ],
+  "Die Bank hat den Auftrag ohne Empfängerprüfung und ohne weitere Freigabe ausgeführt.": [
+    "The bank executed the payment without payee verification or further authorization.",
+    "La banque a exécuté l’ordre sans vérification du bénéficiaire ni autorisation supplémentaire.",
+    "El banco ha ejecutado la orden sin verificar al beneficiario ni solicitar otra autorización."
+  ],
+  "Demo-Modus: Es findet keine Empfängerprüfung durch eine Bank statt.": [
+    "Demo mode: no bank verification of the payee takes place.",
+    "Mode démo : aucune banque ne vérifie le bénéficiaire.",
+    "Modo de demostración: ningún banco verifica al beneficiario."
+  ],
+  "{0}\n\nNicht authentifizierte Fehlermeldung (nur Diagnose):\n{1}": [
+    "{0}\n\nUnauthenticated error message (diagnostic only):\n{1}",
+    "{0}\n\nMessage d’erreur non authentifié (diagnostic uniquement) :\n{1}",
+    "{0}\n\nMensaje de error no autenticado (solo diagnóstico):\n{1}"
+  ],
+  "Die TCP-Verbindung ist nach einem Fehler geschlossen. Bitte den Bankabruf neu starten.": [
+    "The TCP connection was closed after an error. Please restart the bank retrieval.",
+    "La connexion TCP a été fermée après une erreur. Veuillez relancer la récupération bancaire.",
+    "La conexión TCP se cerró tras un error. Vuelva a iniciar la consulta bancaria."
+  ],
+  "Schließen": [
+    "Close",
+    "Fermer",
+    "Cerrar"
   ]
 }

@@ -75,10 +75,26 @@ fn ss(s: impl AsRef<str>) -> SharedString {
     SharedString::from(s.as_ref())
 }
 
+fn account_kind(kind: u32) -> &'static str {
+    match kind {
+        1..=9 => i18n::tr("Girokonto"),
+        10..=19 => i18n::tr("Sparkonto"),
+        20..=29 => i18n::tr("Festgeld"),
+        30..=39 => i18n::tr("Depot"),
+        40..=49 => i18n::tr("Darlehen"),
+        50..=59 => i18n::tr("Kreditkarte"),
+        _ => i18n::tr("Konto"),
+    }
+}
+
+pub fn bank_account_name(account: &fints::Account) -> &str {
+    if account.product.is_empty() { account_kind(account.kind) } else { &account.product }
+}
+
 pub fn account_label(v: &Vault, id: u32) -> String {
     v.account(id)
         .map(|a| {
-            let name = if a.account.product.is_empty() { a.account.account_number.clone() } else { a.account.product.clone() };
+            let name = if a.display_name.is_empty() { bank_account_name(&a.account) } else { &a.display_name };
             let bank = v.access(a.access_id).map(|x| x.name.clone()).unwrap_or_default();
             format!("{name} · {bank}")
         })
@@ -97,6 +113,7 @@ fn short_iban(iban: &str) -> String {
 /// Filter state kept on the Rust side.
 #[derive(Default)]
 pub struct ViewState {
+    pub recipient_ids: Vec<u32>,
     pub account_filter: Vec<u32>,
     pub sepa_accounts: Vec<u32>,
     pub standing_index: Vec<usize>,
@@ -150,21 +167,14 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             }
             None => ("–".into(), false, String::new()),
         };
-        let kind = match a.account.kind {
-            1..=9 => i18n::tr("Girokonto"),
-            10..=19 => i18n::tr("Sparkonto"),
-            20..=29 => i18n::tr("Festgeld"),
-            30..=39 => i18n::tr("Depot"),
-            40..=49 => i18n::tr("Darlehen"),
-            50..=59 => i18n::tr("Kreditkarte"),
-            _ => i18n::tr("Konto"),
-        };
-        let name = if a.account.product.is_empty() { kind.to_string() } else { a.account.product.clone() };
+        let kind = account_kind(a.account.kind);
+        let bank_name = bank_account_name(&a.account);
+        let name = if a.display_name.is_empty() { bank_name } else { &a.display_name };
         rows.push(AccountRow {
             id: a.id as i32,
             group_index: v.groups.iter().position(|g| g.account_ids.contains(&a.id)).map(|i| i as i32 + 1).unwrap_or(0),
             group_name: ss(v.groups.iter().find(|g| g.account_ids.contains(&a.id)).map(|g| g.name.as_str()).unwrap_or(i18n::tr("Ohne Gruppe"))),
-            name: ss(&name),
+            name: ss(name),
             bank: ss(&bank),
             iban: ss(if a.account.iban.is_empty() { a.account.account_number.clone() } else { short_iban(&a.account.iban) }),
             owner: ss(&a.account.owner),
@@ -204,6 +214,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     if st.get_tf_account() as usize >= vs.sepa_accounts.len() {
         st.set_tf_account(0);
     }
+    crate::payments_ui::refresh(app, v, vs);
     st.set_total_balance(ss(fmt_eur(total)));
     st.set_total_negative(total.is_sign_negative());
     if let Some(t) = v.accounts.iter().filter_map(|a| a.last_sync).max() {

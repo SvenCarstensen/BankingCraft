@@ -6,19 +6,20 @@ use std::sync::{Arc, Mutex};
 use rust_decimal::Decimal;
 
 type Step = Box<dyn FnOnce(&[Segment]) -> Result<Vec<SegmentBuilder>> + Send>;
-struct Bank { steps: VecDeque<Step>, requests: Arc<Mutex<Vec<Vec<Segment>>>> }
+struct Bank { encrypted: bool, steps: VecDeque<Step>, requests: Arc<Mutex<Vec<Vec<Segment>>>> }
 impl Transport for Bank {
     fn send(&mut self, raw: &[u8]) -> Result<Vec<u8>> {
-        let request = open_message(raw, Opener::Plain)?;
+        let mut card = TestDdvCard;
+        let request = open_message(raw, if self.encrypted { Opener::Ddv(&mut card, 1) } else { Opener::Plain })?;
         self.requests.lock().unwrap().push(request.clone());
         let header = request.iter().find(|s| s.code == "HNHBK").unwrap();
         let msg_num = header.text_or_empty(4, 0).parse().unwrap();
         let response = self.steps.pop_front().expect("unexpected network request: no automatic payment retries")(&request)?;
-        build_message(&Envelope { dialog_id: "TEST", message_number: msg_num, blz: "12345678", user_id: "fixture", system_id: "TEST" }, Auth::None, response)
+        build_message(&Envelope { dialog_id: "TEST", message_number: msg_num, blz: "12345678", user_id: "fixture", system_id: "TEST" }, if self.encrypted { Auth::Ddv { card: &mut card, cid: b"TEST", sig_key: DdvKey { num: 1, version: 1 }, enc_key: DdvKey { num: 1, version: 1 } } } else { Auth::None }, response)
     }
 }
 #[derive(Default)]
-struct Ui { answers: Mutex<VecDeque<TanAnswer>>, challenges: Mutex<Vec<TanChallenge>>, choices: Mutex<Vec<Vec<String>>> }
+struct Ui { verifications: Mutex<Vec<crate::vop::PayeeVerification>>, decline_vop: Mutex<bool>, answers: Mutex<VecDeque<TanAnswer>>, challenges: Mutex<Vec<TanChallenge>>, choices: Mutex<Vec<Vec<String>>> }
 impl Interaction for Ui {
     fn pin(&self, _: &str) -> Option<String> { panic!("offline test must not request real credentials") }
     fn choose_tan_method(&self, m: &[TanMethod]) -> Option<String> {
@@ -29,6 +30,7 @@ impl Interaction for Ui {
         self.challenges.lock().unwrap().push(c.clone()); self.answers.lock().unwrap().pop_front().expect("unexpected TAN prompt")
     }
     fn progress(&self, _: &str) {}
+    fn verify_payee(&self, result: &crate::vop::PayeeVerification, _: bool) -> bool { self.verifications.lock().unwrap().push(result.clone()); !*self.decline_vop.lock().unwrap() }
 }
 fn method(code: &str) -> TanMethod {
     TanMethod { security_function: code.into(), name: "Test TAN".into(), technical_id: String::new(), dk_id: String::new(), tan_process: "2".into(),
@@ -36,13 +38,16 @@ fn method(code: &str) -> TanMethod {
 }
 fn setup(ui: &Ui, steps: Vec<Step>) -> (Client<'_>, Arc<Mutex<Vec<Vec<Segment>>>>) {
     let mut state = State { system_id: "TEST".into(), tan_method: Some("900".into()), ..Default::default() };
+    state.bpd.vop_jobs = ["HKCCS", "HKIPZ", "HKCSE"].map(str::to_owned).to_vec();
+    state.bpd.vop_formats = vec![crate::vop::REPORT_FORMAT.into()];
+    state.bpd.versions.insert("HKVPP".into(), vec![1]); state.bpd.versions.insert("HKVPA".into(), vec![1]);
     state.bpd.hktan_version = 7; state.bpd.tan_methods = vec![method("900")];
     for code in ["HKCCS", "HKIPZ", "HKCSE", "HKCDE", "HKCDL", "HKCAZ", "HKCDB"] { state.bpd.versions.insert(code.into(), vec![1]); }
     state.bpd.versions.insert("HKSAL".into(), vec![5, 6, 7]); state.bpd.versions.insert("HKKAZ".into(), vec![5, 6, 7]);
     state.bpd.pain001_formats = vec!["urn:iso:std:iso:20022:tech:xsd:pain.001.001.09".into()];
     let mut client = Client::new(Config { url: "https://bank.invalid".into(), blz: "12345678".into(), ..Default::default() }, state, Medium::PinTan, ui).unwrap();
     client.in_dialog = true; client.dialog_authenticated = true; client.dialog_id = "TEST".into(); client.pin = Some(zeroize::Zeroizing::new("synthetic-pin".into()));
-    let requests = Arc::new(Mutex::new(vec![])); client.set_transport(Box::new(Bank { steps: steps.into(), requests: requests.clone() }));
+    let requests = Arc::new(Mutex::new(vec![])); client.set_transport(Box::new(Bank { encrypted: false, steps: steps.into(), requests: requests.clone() }));
     (client, requests)
 }
 fn status(code: &str) -> SegmentBuilder { SegmentBuilder::new("HIRMS", 2).deg(vec![code.into(), Val::Empty, "Fixture status".into()]) }
@@ -68,7 +73,7 @@ fn transfer_requires_sca_then_sends_only_tan_followup() {
     let (mut client, requests) = setup(&ui, vec![Box::new(|r| {
         let s = segment(r, "HKCCS"); assert_eq!(s.text_or_empty(1, 0), account().iban);
         assert_eq!(pain::read_pain001(s.bin(3, 0).unwrap()).unwrap().amount, Decimal::new(1234, 2));
-        assert_eq!(segment(r, "HKTAN").text_or_empty(1, 0), "4"); Ok(challenge(false))
+        assert_eq!(segment(r, "HKTAN").text_or_empty(1, 0), "4"); Ok(matched(challenge(false)))
     }), Box::new(|r| {
         assert!(!r.iter().any(|s| s.code == "HKCCS")); let tan = segment(r, "HKTAN");
         assert_eq!(tan.text_or_empty(1, 0), "2"); assert_eq!(tan.text_or_empty(5, 0), "TASK-1"); Ok(ok())
@@ -80,14 +85,14 @@ fn transfer_requires_sca_then_sends_only_tan_followup() {
 #[test]
 fn cancelled_payment_is_not_submitted_again() {
     let ui = Ui::default(); ui.answers.lock().unwrap().push_back(TanAnswer::Cancel);
-    let (mut client, requests) = setup(&ui, vec![Box::new(|_| Ok(challenge(false)))]);
+    let (mut client, requests) = setup(&ui, vec![Box::new(|_| Ok(matched(challenge(false))))]);
     assert!(matches!(client.transfer(&account(), &transfer()), Err(Error::Cancelled))); assert_eq!(requests.lock().unwrap().len(), 1);
 }
 
 #[test]
 fn decoupled_payment_polls_without_resending_the_payment() {
     let ui = Ui::default(); ui.answers.lock().unwrap().extend([TanAnswer::Confirmed, TanAnswer::Confirmed]);
-    let (mut client, requests) = setup(&ui, vec![Box::new(|_| Ok(challenge(true))), Box::new(|r| {
+    let (mut client, requests) = setup(&ui, vec![Box::new(|_| Ok(matched(challenge(true)))), Box::new(|r| {
         assert!(!r.iter().any(|s| s.code == "HKCCS")); assert_eq!(segment(r, "HKTAN").text_or_empty(1, 0), "S"); Ok(vec![status("3956")])
     }), Box::new(|r| { assert_eq!(segment(r, "HKTAN").text_or_empty(5, 0), "TASK-1"); Ok(ok()) })]);
     assert!(client.transfer(&account(), &transfer()).is_ok()); assert_eq!(requests.lock().unwrap().len(), 3);
@@ -124,7 +129,7 @@ fn invalid_payment_and_schedule_inputs_make_no_bank_request() {
 fn instant_transfer_uses_hkipz_and_never_falls_back_to_normal_transfer() {
     let ui = Ui::default(); let mut t = transfer(); t.instant = true;
     let (mut c, requests) = setup(&ui, vec![Box::new(|r| {
-        assert!(!r.iter().any(|s| s.code == "HKCCS")); let t = pain::read_pain001(segment(r, "HKIPZ").bin(3, 0).unwrap()).unwrap(); assert!(t.instant); Ok(ok())
+        assert!(!r.iter().any(|s| s.code == "HKCCS")); let t = pain::read_pain001(segment(r, "HKIPZ").bin(3, 0).unwrap()).unwrap(); assert!(t.instant); Ok(matched(vec![status("0010"), status("3076")]))
     })]); assert!(c.transfer(&account(), &t).is_ok()); assert_eq!(requests.lock().unwrap().len(), 1);
     c.state.bpd.versions.remove("HKIPZ"); assert!(matches!(c.transfer(&account(), &t), Err(Error::NotSupported(_)))); assert_eq!(requests.lock().unwrap().len(), 1);
 }
@@ -134,7 +139,7 @@ fn scheduled_transfer_contains_execution_date_and_returns_bank_order_id() {
     let ui = Ui::default(); let mut t = transfer(); t.execution_date = Some(chrono::Local::now().date_naive() + chrono::Duration::days(7)); let expected = t.execution_date.unwrap().to_string();
     let (mut c, _) = setup(&ui, vec![Box::new(move |r| {
         let s = segment(r, "HKCSE"); assert!(String::from_utf8_lossy(s.bin(3, 0).unwrap()).contains(&format!("<ReqdExctnDt><Dt>{expected}</Dt>")));
-        let mut out = ok(); out.push(SegmentBuilder::new("HICSE", 1).de("ORDER-42")); Ok(out)
+        let mut out = matched(vec![status("0010"), status("3076")]); out.push(SegmentBuilder::new("HICSE", 1).de("ORDER-42")); Ok(out)
     })]); assert!(c.scheduled_transfer(&account(), &t).unwrap().contains("ORDER-42"));
 }
 
@@ -301,7 +306,7 @@ fn giro_and_standing_pages_reject_missing_or_repeated_cursor() {
 fn incomplete_authorization_is_never_reported_as_payment_success() {
     for reply in [vec![status("0030")], vec![status("3955")], vec![status("3956")], vec![]] {
         let ui = Ui::default(); ui.answers.lock().unwrap().push_back(TanAnswer::Tan("123456".into()));
-        let (mut c, requests) = setup(&ui, vec![Box::new(|_| Ok(challenge(false))), Box::new(move |_| Ok(reply))]);
+        let (mut c, requests) = setup(&ui, vec![Box::new(|_| Ok(matched(challenge(false)))), Box::new(move |_| Ok(reply))]);
         assert!(c.transfer(&account(), &transfer()).is_err()); assert_eq!(requests.lock().unwrap().len(), 2);
     }
 }
@@ -317,7 +322,7 @@ fn missing_success_code_and_unhandled_sca_do_not_confirm_a_payment() {
     for response in [vec![], vec![status("3956")], vec![status("0030")]] {
         let ui = Ui::default(); let (mut c, requests) = setup(&ui, vec![Box::new(move |_| Ok(response))]);
         c.state.bpd.hktan_version = 0;
-        assert!(c.transfer(&account(), &transfer()).is_err()); assert_eq!(requests.lock().unwrap().len(), 1);
+        assert!(c.transfer(&account(), &transfer()).is_err()); assert_eq!(requests.lock().unwrap().len(), 0);
     }
 }
 
@@ -333,4 +338,151 @@ fn payment_debtor_must_match_selected_account_before_any_bank_request() {
 fn bank_return_codes_cannot_inject_free_text_into_logs() {
     for code in ["1234\nSECRET", "PIN", "12345", "９９９９"] { assert_eq!(diagnostic_code(code), "[ungültig]"); }
     assert_eq!(diagnostic_code("0010"), "0010");
+}
+
+
+fn vop_result(code: &str) -> SegmentBuilder {
+    SegmentBuilder::new("HIVPP", 1).bin(b"VOP-ID".to_vec()).de(Val::Empty).de(Val::Empty).de(Val::Empty).de(Val::Empty)
+        .deg(vec![transfer().creditor_iban.into(), Val::Empty, if code == "RVMC" { "Synthetic Receiver GmbH".into() } else { Val::Empty }, Val::Empty, code.into(), Val::Empty])
+        .de("Bank notice: please review the result.")
+}
+fn matched(mut response: Vec<SegmentBuilder>) -> Vec<SegmentBuilder> {
+    response.push(vop_result("RCVC")); response.push(status("3091")); response
+}
+
+#[test]
+fn vop_precedes_tan_and_cancel_never_authorizes_or_resends() {
+    let ui = Ui::default(); *ui.decline_vop.lock().unwrap() = true;
+    let (mut c, requests) = setup(&ui, vec![Box::new(|r| {
+        assert_eq!(segment(r, "HKVPP").text_or_empty(1, 0), crate::vop::REPORT_FORMAT);
+        assert!(!r.iter().any(|s| s.code == "HKVPA")); Ok(matched(challenge(false)))
+    })]);
+    assert!(matches!(c.transfer(&account(), &transfer()), Err(Error::Cancelled)));
+    assert_eq!(ui.verifications.lock().unwrap().len(), 1);
+    assert!(ui.challenges.lock().unwrap().is_empty()); assert_eq!(requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn vop_warnings_and_invalidated_match_require_identical_payment_and_new_tan() {
+    for status_code in ["RVMC", "RVNM", "RVNA", "RCVC"] {
+        let ui = Ui::default(); ui.answers.lock().unwrap().push_back(TanAnswer::Tan("123456".into()));
+        let original = Arc::new(Mutex::new(Vec::new())); let sent = original.clone(); let check = original.clone();
+        let (mut c, requests) = setup(&ui, vec![Box::new(move |r| {
+            *sent.lock().unwrap() = segment(r, "HKCCS").bin(3, 0).unwrap().to_vec();
+            Ok(vec![vop_result(status_code), status("3090"), status("3945"), status("0025")])
+        }), Box::new(move |r| {
+            assert_eq!(segment(r, "HKVPA").bin(1, 0).unwrap(), b"VOP-ID");
+            assert_eq!(segment(r, "HKCCS").bin(3, 0).unwrap(), *check.lock().unwrap());
+            assert_eq!(segment(r, "HKTAN").text_or_empty(1, 0), "4");
+            assert!(!r.iter().any(|s| s.code == "HKVPP")); Ok(challenge(false))
+        }), Box::new(|r| { assert!(!r.iter().any(|s| s.code == "HKCCS" || s.code == "HKVPA")); Ok(ok()) })]);
+        assert!(c.transfer(&account(), &transfer()).is_ok());
+        assert_eq!(ui.verifications.lock().unwrap().len(), 1); assert_eq!(ui.challenges.lock().unwrap().len(), 1);
+        assert_eq!(requests.lock().unwrap().len(), 3);
+    }
+}
+
+#[test]
+fn unsupported_vop_never_sends_a_payment_and_missing_results_never_request_a_tan() {
+    for mode in 0..4 {
+        let ui = Ui::default(); let (mut c, requests) = setup(&ui, vec![]);
+        match mode { 0 => { c.state.bpd.versions.remove("HKVPP"); }, 1 => c.state.bpd.vop_jobs.clear(), 2 => c.state.bpd.vop_formats.clear(), _ => { c.state.bpd.versions.insert("HKVPA".into(), vec![99]); } }
+        assert!(c.transfer(&account(), &transfer()).is_err()); assert!(requests.lock().unwrap().is_empty());
+    }
+    for result in [vec![status("0010")], challenge(false), vec![vop_result("PDNG")], vec![vop_result("XXXX")]] {
+        let ui = Ui::default(); let (mut c, requests) = setup(&ui, vec![Box::new(move |_| Ok(result))]);
+        assert!(c.transfer(&account(), &transfer()).is_err()); assert!(ui.challenges.lock().unwrap().is_empty()); assert!(ui.verifications.lock().unwrap().is_empty()); assert_eq!(requests.lock().unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn vop_polling_never_resends_payment_before_acknowledgement() {
+    let ui = Ui::default(); *ui.decline_vop.lock().unwrap() = true;
+    let (mut c, requests) = setup(&ui, vec![Box::new(|_| {
+        Ok(vec![SegmentBuilder::new("HIVPP", 1).de(Val::Empty).de(Val::Empty).bin(b"POLL".to_vec()).de(Val::Empty).de(Val::Empty).de(Val::Empty).de("Notice from first page").de("0"),
+            status("3945"), SegmentBuilder::new("HIRMS", 2).deg(vec!["3040".into(), Val::Empty, "More".into(), "CURSOR".into()])])
+    }), Box::new(|r| {
+        assert!(!r.iter().any(|s| s.code == "HKCCS" || s.code == "HKTAN" || s.code == "HKVPA"));
+        let request = segment(r, "HKVPP"); assert_eq!(request.bin(2, 0).unwrap(), b"POLL"); assert_eq!(request.text_or_empty(4, 0), "CURSOR");
+        Ok(vec![vop_result("RCVC"), status("3094")])
+    })]);
+    assert!(matches!(c.transfer(&account(), &transfer()), Err(Error::Cancelled)));
+    assert!(ui.verifications.lock().unwrap()[0].bank_notice.contains("Notice from first page")); assert_eq!(requests.lock().unwrap().len(), 2);
+}
+
+
+struct TestDdvCard;
+impl DdvCard for TestDdvCard {
+    fn cid(&mut self) -> Result<Vec<u8>> { Ok(b"TEST".to_vec()) }
+    fn bank_data(&mut self, _: u8) -> Result<crate::security::DdvBankData> { unreachable!() }
+    fn keys(&mut self) -> Result<(DdvKey, DdvKey)> { Ok((DdvKey { num: 1, version: 1 }, DdvKey { num: 1, version: 1 })) }
+    fn sig_id(&mut self) -> Result<u32> { Ok(1) }
+    fn set_sig_id(&mut self, _: u32) -> Result<()> { Ok(()) }
+    fn verify_pin(&mut self) -> Result<()> { Ok(()) }
+    fn sign(&mut self, _: &[u8; 20]) -> Result<[u8; 8]> { Ok([0; 8]) }
+    fn session_keys(&mut self, _: u32) -> Result<([u8; 16], [u8; 16])> { Ok(([1; 16], [1; 16])) }
+    fn decrypt_key(&mut self, _: u32, _: &[u8]) -> Result<[u8; 16]> { Ok([1; 16]) }
+}
+#[test]
+fn chip_card_vop_always_resubmits_identical_payment_with_execution_id_after_confirmation() {
+    for decline in [false, true] {
+        let ui = Ui::default(); *ui.decline_vop.lock().unwrap() = decline;
+        let (mut c, requests) = setup(&ui, vec![]);
+        c.medium = Medium::Ddv(Box::new(TestDdvCard));
+        c.ddv = Some(DdvCtx { cid: b"TEST".to_vec(), sig_key: DdvKey { num: 1, version: 1 }, enc_key: DdvKey { num: 1, version: 1 } });
+        let original = Arc::new(Mutex::new(Vec::new())); let saved = original.clone(); let check = original.clone();
+        let mut steps: Vec<Step> = vec![Box::new(move |r| {
+            assert!(!r.iter().any(|s| s.code == "HKTAN" || s.code == "HKVPA")); segment(r, "HKVPP");
+            *saved.lock().unwrap() = segment(r, "HKCCS").bin(3, 0).unwrap().to_vec();
+            // 3091 is a PIN/TAN shortcut and must never bypass the chip-card authorization.
+            Ok(vec![vop_result("RCVC"), status("3091"), status("0025")])
+        })];
+        if !decline { steps.push(Box::new(move |r| {
+            assert!(!r.iter().any(|s| s.code == "HKTAN" || s.code == "HKVPP"));
+            assert_eq!(segment(r, "HKCCS").bin(3, 0).unwrap(), *check.lock().unwrap());
+            assert_eq!(segment(r, "HKVPA").bin(1, 0).unwrap(), b"VOP-ID"); Ok(ok())
+        })); }
+        c.set_transport(Box::new(Bank { encrypted: true, steps: steps.into(), requests: requests.clone() }));
+        let result = c.transfer(&account(), &transfer());
+        if decline { assert!(matches!(result, Err(Error::Cancelled))); } else { assert!(result.is_ok(), "{result:?}"); }
+        assert_eq!(requests.lock().unwrap().len(), if decline { 1 } else { 2 }); assert!(ui.challenges.lock().unwrap().is_empty());
+    }
+}
+
+
+#[test]
+fn upgrading_an_existing_bank_access_refreshes_vop_parameters_once() {
+    let ui = Ui::default(); let config = Config { url: "https://bank.invalid".into(), ..Default::default() };
+    let mut state = State::default(); state.bpd.version = 42;
+    let client = Client::new(config.clone(), state.clone(), Medium::PinTan, &ui).unwrap();
+    assert_eq!(client.state.bpd.version, 0);
+    state.bpd.vop_parameters_known = true;
+    let client = Client::new(config, state, Medium::PinTan, &ui).unwrap(); assert_eq!(client.state.bpd.version, 42);
+}
+
+
+#[test]
+fn explicit_bank_waiver_is_reported_as_executed_without_resubmission() {
+    let ui = Ui::default(); *ui.decline_vop.lock().unwrap() = true;
+    let (mut c, requests) = setup(&ui, vec![Box::new(|_| Ok(vec![status("0010"), status("3091"), status("3076")]))]);
+    assert!(c.transfer(&account(), &transfer()).is_ok());
+    assert_eq!(ui.verifications.lock().unwrap()[0].status, crate::vop::PayeeStatus::Unavailable);
+    assert_eq!(requests.lock().unwrap().len(), 1); assert!(ui.challenges.lock().unwrap().is_empty());
+}
+
+#[test]
+fn bank_result_without_verification_never_appears_as_a_match() {
+    let ui = Ui::default(); *ui.decline_vop.lock().unwrap() = true;
+    let (mut c, requests) = setup(&ui, vec![Box::new(|_| Ok(vec![SegmentBuilder::new("HIVPP", 1).bin(b"notprovided".to_vec()).de(Val::Empty).de(Val::Empty).de(Val::Empty).de(Val::Empty).de(Val::Empty).de("Bank explains why verification is unavailable"), status("3945"), status("3090")]))]);
+    assert!(matches!(c.transfer(&account(), &transfer()), Err(Error::Cancelled)));
+    let results = ui.verifications.lock().unwrap(); assert_eq!(results[0].status, crate::vop::PayeeStatus::Unavailable); assert!(results[0].bank_notice.contains("Bank explains"));
+    assert_eq!(requests.lock().unwrap().len(), 1); assert!(ui.challenges.lock().unwrap().is_empty());
+}
+
+#[test]
+fn failed_execution_response_never_retries_payment_after_vop_confirmation() {
+    let ui = Ui::default();
+    let (mut c, requests) = setup(&ui, vec![Box::new(|_| Ok(vec![vop_result("RVNM"), status("3945")])), Box::new(|r| { segment(r, "HKVPA"); Err(Error::Transport("simulated connection loss".into())) })]);
+    assert!(c.transfer(&account(), &transfer()).is_err()); assert_eq!(requests.lock().unwrap().len(), 2);
+    assert_eq!(ui.verifications.lock().unwrap().len(), 1);
 }

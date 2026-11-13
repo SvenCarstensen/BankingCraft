@@ -20,6 +20,14 @@ pub struct Bpd {
     #[serde(default)]
     pub standing_pain001_formats: Vec<String>,
     pub camt_formats: Vec<String>,
+    #[serde(default)]
+    pub vop_jobs: Vec<String>,
+    #[serde(default)]
+    pub vop_formats: Vec<String>,
+    #[serde(default)]
+    pub vop_structured_notice: bool,
+    #[serde(default)]
+    pub vop_parameters_known: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -34,6 +42,12 @@ fn text(f: &Field) -> String {
 
 impl Bpd {
     pub fn update_from(&mut self, resp: &Response) {
+        if resp.first("HIBPA").is_some() {
+            // A fresh BPD must also remove capabilities withdrawn by the bank.
+            self.vop_parameters_known = true;
+            self.vop_jobs.clear(); self.vop_formats.clear(); self.vop_structured_notice = false;
+            self.versions.remove("HKVPP"); self.versions.remove("HKVPA");
+        }
         for s in &resp.segments {
             match s.code.as_str() {
                 "HIBPA" => {
@@ -42,6 +56,13 @@ impl Bpd {
                 }
                 "HIPINS" => self.parse_hipins(s),
                 "HITANS" => self.parse_hitans(s),
+                "HIVPPS" if s.version == 1 => {
+                    self.vop_parameters_known = true;
+                    self.vop_structured_notice = s.text_or_empty(4, 1) == "J";
+                    self.vop_formats = s.text_or_empty(4, 5).split_whitespace().map(str::to_owned).collect();
+                    self.vop_jobs = s.de(4).iter().skip(6).map(text).filter(|s| !s.is_empty()).collect();
+                    self.add_version(s);
+                }
                 "HISPAS" => {
                     self.pain001_formats = collect_urns(s, "pain.001");
                     self.add_version(s);

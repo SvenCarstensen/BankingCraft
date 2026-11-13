@@ -446,10 +446,14 @@ pub(crate) mod tests {
 
     impl SoftCard {
         pub fn new() -> Self {
+            Self::with_bits(2048)
+        }
+
+        pub fn with_bits(bits: usize) -> Self {
             let mut rng = rand_rsa::rng();
             Self {
-                sign_key: PrivateKey::new(&mut rng, 2048).unwrap(),
-                crypt_key: PrivateKey::new(&mut rng, 2048).unwrap(),
+                sign_key: PrivateKey::new(&mut rng, bits).unwrap(),
+                crypt_key: PrivateKey::new(&mut rng, bits).unwrap(),
                 counter: 41,
             }
         }
@@ -466,10 +470,10 @@ pub(crate) mod tests {
             Ok(vec![])
         }
         fn sign_key(&mut self) -> Result<CardKey> {
-            Ok(CardKey { num: 2, version: 1, size: 256 })
+            Ok(CardKey { num: 2, version: 1, size: self.sign_key.size() })
         }
         fn decipher_key(&mut self) -> Result<CardKey> {
-            Ok(CardKey { num: 3, version: 1, size: 256 })
+            Ok(CardKey { num: 3, version: 1, size: self.crypt_key.size() })
         }
         fn sign_counter(&mut self) -> Result<u32> {
             Ok(self.counter)

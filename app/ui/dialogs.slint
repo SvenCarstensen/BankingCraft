@@ -24,9 +24,31 @@ component Modal inherits Rectangle {
     }
 }
 
+export component AccountNameDialog inherits Modal {
+    dialog-width: 540px;
+    Text { text: @tr("Anzeigename ändern"); font-size: 18px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+    Text { text: AppState.account-name-context; color: Theme.text-muted; wrap: word-wrap; }
+    Text { text: @tr("Kontoname der Bank") + ": " + AppState.account-bank-name; color: Theme.text-muted; wrap: word-wrap; }
+    Text { text: @tr("Anzeigename"); font-weight: 600; color: Theme.text; }
+    account-name := LineEdit {
+        text <=> AppState.account-name-draft;
+        placeholder-text: AppState.account-bank-name;
+        accepted => { AppState.save-account-name(); }
+    }
+    Text { text: @tr("Leer lassen, um den Kontonamen der Bank zu verwenden."); color: Theme.text-muted; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 10px;
+        GhostButton { text: @tr("Originalnamen verwenden"); clicked => { AppState.account-name-draft = ""; account-name.focus(); } }
+        Rectangle { horizontal-stretch: 1; }
+        GhostButton { text: @tr("Abbrechen"); clicked => { AppState.show-account-name = false; } }
+        PrimaryButton { text: @tr("Speichern"); clicked => { AppState.save-account-name(); } }
+    }
+    init => { account-name.focus(); }
+}
+
 export component PinDialog inherits Modal {
     VerticalLayout {
-        spacing: 6px;
+        spacing: 10px;
         Text { text: AppState.pin-heading; font-size: 18px; font-weight: 700; color: Theme.text; }
         Text { text: AppState.pin-title; color: Theme.text-muted; wrap: word-wrap; }
     }
@@ -79,7 +101,7 @@ export component PinpadOverlay inherits Modal {
         }
         VerticalLayout {
             alignment: center;
-            spacing: 4px;
+            spacing: 8px;
             Text { text: @tr("Bitte am Kartenleser bestätigen"); font-size: 16px; font-weight: 700; color: Theme.text; }
             Text { text: AppState.pinpad-text; wrap: word-wrap; color: Theme.text-muted; }
         }
@@ -225,7 +247,7 @@ export component TanDialog inherits Modal {
 export component ChoiceDialog inherits Modal {
     Text { text: AppState.choice-title; font-size: 18px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
     for c in AppState.choices: Rectangle {
-        height: 54px;
+        height: 58px;
         border-radius: 8px;
         border-width: 1px;
         border-color: ta.has-hover ? Theme.accent : Theme.card-border;
@@ -233,6 +255,7 @@ export component ChoiceDialog inherits Modal {
         VerticalLayout {
             padding-left: 14px;
             alignment: center;
+            spacing: 4px;
             Text { text: c.title; font-weight: 600; color: Theme.text; }
             if c.subtitle != "": Text { text: c.subtitle; font-size: 12px; color: Theme.text-muted; }
         }
@@ -284,6 +307,58 @@ export component BusyOverlay inherits Rectangle {
                 vertical-alignment: center;
                 wrap: word-wrap;
                 color: Theme.text;
+            }
+        }
+    }
+}
+
+export component PayeeDialog inherits Rectangle {
+    background: #0b1424a0;
+    TouchArea { }
+    Rectangle {
+        width: min(640px, parent.width - 40px);
+        height: min(body.preferred-height + footer.preferred-height + 64px, parent.height - 48px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.card-bg;
+        border-radius: 14px;
+        VerticalLayout {
+            padding: 24px;
+            spacing: 20px;
+            ScrollView {
+                content-width: self.visible-width;
+                body := VerticalLayout {
+                    spacing: 14px;
+                    padding-right: 12px;
+                    Text { text: @tr("Empfängerprüfung"); color: Theme.text; font-size: 22px; font-weight: 700; wrap: word-wrap; }
+                    Text {
+                        text: AppState.vop-status == 0 ? @tr("Name und IBAN stimmen überein") : AppState.vop-status == 1 ? @tr("Der Empfängername weicht leicht ab") : AppState.vop-status == 2 ? @tr("Name und IBAN stimmen nicht überein") : @tr("Empfängerprüfung nicht möglich");
+                        color: AppState.vop-status == 0 ? Theme.success-text : Theme.warning;
+                        font-size: 17px; font-weight: 700; wrap: word-wrap;
+                    }
+                    Text { text: @tr("Empfänger") + ": " + AppState.vop-name; color: Theme.text; wrap: word-wrap; }
+                    Text { text: "IBAN: " + AppState.vop-iban; color: Theme.text-muted; wrap: word-wrap; }
+                    if AppState.vop-suggested-name != "": Text { text: @tr("Name bei der Empfängerbank") + ": " + AppState.vop-suggested-name; color: Theme.text; font-weight: 600; wrap: word-wrap; }
+                    if AppState.vop-suggested-name != "": HorizontalLayout {
+                        GhostButton { text: @tr("Namen kopieren"); clicked => { AppState.vop-copy-name(); } }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                    if AppState.vop-reason != "": Text { text: AppState.vop-reason; color: Theme.text-muted; wrap: word-wrap; }
+                    if AppState.vop-status != 0 && !AppState.vop-executed: Text { text: @tr("Wenn Sie fortfahren, kann das Geld auf ein Konto gelangen, dessen Inhaber nicht dem angegebenen Empfänger entspricht. Prüfen Sie die Angaben vor der Freigabe."); color: Theme.text; wrap: word-wrap; }
+                    if AppState.vop-notice != "": Text { text: @tr("Hinweis Ihrer Bank"); color: Theme.text; font-weight: 600; }
+                    if AppState.vop-notice != "": Text { text: AppState.vop-notice; color: Theme.text-muted; wrap: word-wrap; }
+                    Text { text: AppState.vop-executed ? @tr("Die Bank hat den Auftrag bereits ausgeführt.") : @tr("Zum Ändern des Empfängernamens brechen Sie ab und senden den korrigierten Auftrag erneut zur Prüfung."); color: Theme.text-faint; wrap: word-wrap; }
+                }
+            }
+            footer := HorizontalLayout {
+                vertical-stretch: 0;
+                spacing: 12px;
+                alignment: end;
+                if !AppState.vop-executed: GhostButton { text: @tr("Abbrechen"); clicked => { AppState.vop-cancel(); } }
+                PrimaryButton {
+                    text: AppState.vop-executed ? @tr("Schließen") : AppState.vop-status == 0 ? @tr("Weiter zur Freigabe") : @tr("Trotzdem fortfahren");
+                    clicked => { AppState.vop-accept(); }
+                }
             }
         }
     }

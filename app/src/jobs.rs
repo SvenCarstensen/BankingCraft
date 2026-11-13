@@ -5,6 +5,7 @@ use crate::bridge::Bridge;
 use crate::demo;
 use crate::store::{AccessKind, BankAccess, StoredStanding, Vault, VaultFile};
 use crate::view;
+use crate::payments::{OrderStatus, PaymentOrder};
 use crate::AppState;
 use chrono::{Duration, Local};
 use fints::{Account, Client, Error, Medium, SepaTransfer, StandingOrder, TanChallenge, TanMethod};
@@ -23,6 +24,16 @@ pub struct Ctx {
 pub type JobResult = Result<String, String>;
 
 impl Ctx {
+    /// Commit a local edit only after the encrypted vault was saved successfully.
+    pub fn edit_vault<T>(&self, edit: impl FnOnce(&mut Vault) -> Result<T, String>) -> Result<T, String> {
+        let mut vault = self.vault.lock().unwrap();
+        let mut candidate = vault.clone();
+        let result = edit(&mut candidate)?;
+        self.file.lock().unwrap().as_ref().ok_or(i18n::tr("Tresor ist gesperrt"))?.save(&candidate)?;
+        *vault = candidate;
+        Ok(result)
+    }
+
     pub fn save(&self) -> Result<(), String> {
         let v = self.vault.lock().unwrap();
         match self.file.lock().unwrap().as_ref() {
@@ -50,10 +61,13 @@ impl Ctx {
             let result = f(&ctx);
             *ctx.bridge.pin_cache.lock().unwrap() = None;
             let save = ctx.save();
-            ctx.running.store(false, Ordering::Release);
-            let _ = ctx.bridge.weak.upgrade_in_event_loop(move |app| {
+            // Keep the session reserved until its final UI update has run, so a
+            // vault switch cannot overtake callbacks belonging to the old vault.
+            let running = ctx.running.clone();
+            let queued = ctx.bridge.weak.upgrade_in_event_loop(move |app| {
                 let st = app.global::<AppState>();
                 st.set_busy(false);
+                running.store(false, Ordering::Release);
                 st.set_show_pinpad(false);
                 crate::refresh_view(&app);
                 match (result, save) {
@@ -63,6 +77,7 @@ impl Ctx {
                     (Err(e), Err(save)) => crate::toast(&app, &i18n::tr_format!("{e}\n\nLokales Speichern fehlgeschlagen: {save}"), true),
                 }
             });
+            if queued.is_err() { ctx.running.store(false, Ordering::Release); }
         });
     }
 }
@@ -83,7 +98,7 @@ fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -
     });
     r.map_err(|e| {
         let mut msg = err_text(ctx, &e);
-        if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
+        if matches!(e, Error::Bank { .. } | Error::Syntax(_) | Error::Security(_)) {
             if let Some(p) = write_error_report(trace.as_deref()) {
                 msg.push_str(&i18n::tr_format!("\n\nFehlerprotokoll (ohne Nachrichteninhalte): {}", p.display()));
             }
@@ -208,7 +223,8 @@ fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result
     let mut cfg = access.config.clone();
     {
         let v = ctx.vault.lock().unwrap();
-        cfg.product_id = v.product_id.clone();
+        // This fallback belongs only to the transient client config, never the vault.
+        cfg.product_id = crate::product_id::resolve(&v.product_id);
         cfg.product_version = v.product_version.clone();
     }
     Client::new(cfg, access.state.clone(), medium, bridge).map_err(|e| err_text(ctx, &e))
@@ -229,10 +245,13 @@ fn allowed(acc: &Account, codes: &[&str]) -> bool {
 pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
     let access = ctx.vault.lock().unwrap().access(access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
     if access.kind == AccessKind::Demo {
-        return Ok(i18n::tr_format!("{}: Demo-Daten sind aktuell.", access.name));
+        let sent = dispatch_queued(ctx, access_id)?;
+        let mut message = i18n::tr_format!("{}: Demo-Daten sind aktuell.", access.name);
+        if sent > 0 { message.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)); }
+        return Ok(message);
     }
     let bridge = ctx.bridge.clone();
-    let mut client = make_client(ctx, &access, &bridge)?;
+    let mut client = make_client(ctx, &access, &bridge).map_err(|e| format!("{}:\n{e}", access.name))?;
     let mut warnings: Vec<String> = Vec::new();
     let mut new_tx = 0usize;
     let result: Result<usize, Error> = (|| {
@@ -295,8 +314,13 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
         }
         Ok(accounts.len())
     })();
-    let count = conclude(ctx, access_id, client, result)?;
+    let count = conclude(ctx, access_id, client, result).map_err(|e| format!("{}:\n{e}", access.name))?;
     let mut msg = i18n::tr_format!("{}: {} Konten geprüft, {} neue Umsätze.", access.name, count, new_tx);
+    match dispatch_queued(ctx, access_id) {
+        Ok(sent) if sent > 0 => msg.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)),
+        Ok(_) => {},
+        Err(e) => warnings.push(e),
+    }
     if !warnings.is_empty() {
         msg.push('\n');
         msg.push_str(&warnings.join("\n"));
@@ -369,12 +393,66 @@ fn demo_tan(ctx: &Ctx, what: &str) -> Result<(), String> {
         task_reference: "DEMO".into(),
     };
     match ctx.bridge.tan(&ch) {
-        fints::TanAnswer::Cancel => Err(i18n::tr("Vorgang abgebrochen.").into()),
+        fints::TanAnswer::Cancel => Err(err_text(ctx, &Error::Cancelled)),
         _ => Ok(()),
     }
 }
 
-pub fn transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool) -> JobResult {
+/// Immediate sending uses the same durable record as a saved order.
+pub fn transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool, save_recipient: bool) -> JobResult {
+    let id = ctx.edit_vault(|v| v.queue_transfer(account_id, t, scheduled, save_recipient))?;
+    submit_order_with(ctx, id, perform_transfer)
+}
+
+fn dispatch_queued(ctx: &Ctx, access_id: u32) -> Result<usize, String> {
+    dispatch_queued_with(ctx, access_id, perform_transfer)
+}
+
+fn dispatch_queued_with(
+    ctx: &Ctx, access_id: u32,
+    mut send: impl FnMut(&Ctx, u32, SepaTransfer, bool) -> JobResult,
+) -> Result<usize, String> {
+    let ids = ctx.vault.lock().unwrap().queued_orders_for_access(access_id);
+    let mut sent = 0;
+    for id in ids {
+        if ctx.bridge.cancelled.load(Ordering::Acquire) { return Err(i18n::tr("Vorgang abgebrochen.").into()); }
+        submit_order_with(ctx, id, &mut send)?;
+        sent += 1;
+    }
+    Ok(sent)
+}
+
+fn submit_order_with(
+    ctx: &Ctx, id: u32,
+    send: impl FnOnce(&Ctx, u32, SepaTransfer, bool) -> JobResult,
+) -> JobResult {
+    // If persistence fails, no bank request is made. A crash or lost reply leaves a
+    // non-queued record on disk, so a later synchronization cannot send it twice.
+    let order: PaymentOrder = ctx.edit_vault(|v| {
+        let order = v.payment_orders.iter_mut().find(|o| o.id == id).ok_or(i18n::tr("Auftrag nicht gefunden"))?;
+        if order.status != OrderStatus::Queued { return Err(i18n::tr("Dieser Auftrag wurde bereits verarbeitet. Bitte den Status prüfen.").into()); }
+        order.status = OrderStatus::Submitting;
+        Ok(order.clone())
+    })?;
+    let result = (|| {
+        let t = ctx.vault.lock().unwrap().prepare_transfer(order.account_id, order.transfer, order.scheduled)?;
+        send(ctx, order.account_id, t, order.scheduled)
+    })();
+    {
+        let mut v = ctx.vault.lock().unwrap();
+        let stored = v.payment_orders.iter_mut().find(|o| o.id == id).expect("order retained while job runs");
+        stored.status = if result.is_ok() { OrderStatus::Sent } else { OrderStatus::NeedsReview };
+        stored.message = match &result { Ok(message) | Err(message) => message.clone() };
+    }
+    // Keep the in-memory outcome even on a save failure. Disk still contains the
+    // Submitting marker, which is deliberately never eligible for automatic retry.
+    if let Err(e) = ctx.save() {
+        return Err(i18n::tr_format!("Auftragsstatus konnte nicht gespeichert werden: {e}. Bitte vor einem erneuten Auftrag den Bankstatus prüfen."));
+    }
+    result
+}
+
+fn perform_transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool) -> JobResult {
     let (acc, access) = account_and_access(ctx, account_id)?;
     let mut t = t;
     t.debtor_iban = acc.iban.clone();
@@ -383,6 +461,10 @@ pub fn transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool) ->
         t.debtor_name = if acc.owner.is_empty() { i18n::tr("Kontoinhaber").into() } else { acc.owner.clone() };
     }
     if access.kind == AccessKind::Demo {
+        let result = fints::vop::PayeeVerification { status: fints::vop::PayeeStatus::Unavailable,
+            name: t.creditor_name.clone(), iban: t.creditor_iban.clone(), suggested_name: String::new(),
+            reason: i18n::tr("Demo-Modus: Es findet keine Empfängerprüfung durch eine Bank statt.").into(), bank_notice: String::new() };
+        if !fints::Interaction::verify_payee(&ctx.bridge, &result, false) { return Err(err_text(ctx, &Error::Cancelled)); }
         demo_tan(ctx, &i18n::tr_format!("Überweisung {} an {}", view::fmt_eur(t.amount), t.creditor_name))?;
         let mut tx = fints::Transaction {
             booking_date: t.execution_date.unwrap_or_else(|| Local::now().date_naive()),
@@ -565,11 +647,31 @@ mod business_tests {
         assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
         assert!(ctx.vault.lock().unwrap().accounts.iter().all(|a| fints::pain::iban_valid(&a.account.iban)));
     }
+
+    #[test]
+    fn combined_sync_names_the_failed_access_after_another_access_succeeds() {
+        let ctx = context();
+        demo::add_demo(&mut ctx.vault.lock().unwrap());
+        {
+            let mut vault = ctx.vault.lock().unwrap();
+            let mut access = vault.accesses[0].clone();
+            access.id = vault.new_id();
+            access.name = "VR Testbank".into();
+            access.kind = AccessKind::PinTan;
+            access.config.url = "http://bank.invalid".into(); // fails before any network/PIN request
+            vault.accesses.push(access);
+        }
+        let before = serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap();
+        let message = sync_all(&ctx).unwrap_err();
+        assert!(message.contains("Demo-Daten sind aktuell."));
+        assert!(message.contains("\nVR Testbank:\nFinTS benötigt"), "{message}");
+        assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
+    }
     #[test]
     fn missing_access_account_or_order_fails_before_prompting_or_mutating() {
         let ctx = context(); assert!(sync_all(&ctx).is_err()); assert!(sync_access(&ctx, 999).is_err());
         assert!(reset_tan(&ctx, 999).is_err()); assert!(delete_standing(&ctx, 999).is_err());
-        let so = crate::business_tests::standing(); assert!(transfer(&ctx, 999, so.transfer.clone(), false).is_err());
+        let so = crate::business_tests::standing(); assert!(transfer(&ctx, 999, so.transfer.clone(), false, false).is_err());
         assert!(create_standing(&ctx, 999, so).is_err()); assert!(ctx.vault.lock().unwrap().accounts.is_empty());
     }
     #[test]
@@ -593,5 +695,116 @@ mod business_tests {
         *ctx.bridge.pin_save_requested.lock().unwrap() = true; assert!(handle_saved_pin(&ctx, id, true).is_some());
         assert!(ctx.vault.lock().unwrap().access(id).unwrap().saved_pin.is_none()); assert!(!*ctx.bridge.pin_save_requested.lock().unwrap());
         assert!(ctx.bridge.pin_cache.lock().unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod outgoing_order_tests {
+    use super::*;
+    struct Fixture { ctx: Ctx, dir: std::path::PathBuf, path: std::path::PathBuf, account: u32, access: u32 }
+    impl Fixture {
+        fn new() -> Self {
+            let dir = std::env::temp_dir().join(format!("bankingcraft-orders-{:016x}", rand::random::<u64>()));
+            std::fs::create_dir(&dir).unwrap();
+            let path = dir.join("test.vault");
+            let mut vault = Vault::default(); demo::add_demo(&mut vault);
+            let account = vault.accounts[0].id; let access = vault.accounts[0].access_id;
+            let ctx = Ctx { vault: Arc::new(Mutex::new(vault)),
+                file: Arc::new(Mutex::new(Some(VaultFile::create(path.clone(), "test").unwrap()))),
+                bridge: Bridge::new(slint::Weak::default()), running: Arc::new(AtomicBool::new(false)) };
+            ctx.save().unwrap();
+            Self { ctx, dir, path, account, access }
+        }
+        fn queue(&self) -> u32 {
+            self.ctx.edit_vault(|v| v.queue_transfer(self.account, crate::business_tests::standing().transfer, false, false)).unwrap()
+        }
+        fn reload(&self) -> Vault { VaultFile::open(self.path.clone(), "test").unwrap().1 }
+    }
+    impl Drop for Fixture { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.dir); } }
+
+    #[test]
+    fn queue_survives_restart_sends_once_and_only_for_matching_access() {
+        let f = Fixture::new(); let id = f.queue();
+        *f.ctx.vault.lock().unwrap() = f.reload();
+        assert_eq!(dispatch_queued_with(&f.ctx, 9999, |_, _, _, _| panic!("wrong account")).unwrap(), 0);
+        let mut calls = 0;
+        assert_eq!(dispatch_queued_with(&f.ctx, f.access, |_, account, t, scheduled| {
+            calls += 1; assert_eq!(account, f.account); assert!(!scheduled);
+            let saved = f.reload();
+            assert_eq!(saved.payment_orders[0].status, OrderStatus::Submitting);
+            assert_eq!(t.end_to_end_id, saved.payment_orders[0].transfer.end_to_end_id);
+            assert!(!t.end_to_end_id.is_empty());
+            Ok("Bank accepted".into())
+        }).unwrap(), 1);
+        assert_eq!(calls, 1); assert_eq!(f.reload().payment_orders[0].status, OrderStatus::Sent);
+        *f.ctx.vault.lock().unwrap() = f.reload();
+        assert_eq!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("duplicate payment")).unwrap(), 0);
+        assert!(submit_order_with(&f.ctx, id, |_, _, _, _| panic!("duplicate payment")).is_err());
+    }
+    #[test]
+    fn lost_reply_stops_batch_and_never_retries_uncertain_order() {
+        let f = Fixture::new(); let first = f.queue(); let second = f.queue();
+        let mut calls = 0;
+        assert!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| { calls += 1; Err("Reply lost".into()) }).is_err());
+        assert_eq!(calls, 1);
+        let loaded = f.reload();
+        assert_eq!(loaded.payment_orders[0].status, OrderStatus::NeedsReview);
+        assert_eq!(loaded.payment_orders[1].status, OrderStatus::Queued);
+        assert_eq!(loaded.queued_orders_for_access(f.access), vec![second]);
+        *f.ctx.vault.lock().unwrap() = loaded;
+        assert!(submit_order_with(&f.ctx, first, |_, _, _, _| panic!("uncertain order retried")).is_err());
+    }
+    #[test]
+    fn interrupted_or_unpersisted_sends_are_not_retried() {
+        let f = Fixture::new(); let id = f.queue();
+        // Simulate a crash after persisting the dispatch marker.
+        f.ctx.edit_vault(|v| { v.payment_orders[0].status = OrderStatus::Submitting; Ok(()) }).unwrap();
+        *f.ctx.vault.lock().unwrap() = f.reload();
+        assert_eq!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("crashed order retried")).unwrap(), 0);
+        f.ctx.edit_vault(|v| { v.payment_orders[0].status = OrderStatus::Queued; Ok(()) }).unwrap();
+        *f.ctx.file.lock().unwrap() = Some(VaultFile::create(f.path.join("invalid-child"), "test").unwrap());
+        assert!(submit_order_with(&f.ctx, id, |_, _, _, _| panic!("sent without durable marker")).is_err());
+        assert_eq!(f.ctx.vault.lock().unwrap().payment_orders[0].status, OrderStatus::Queued);
+    }
+    #[test]
+    fn successful_send_with_failed_final_save_leaves_safe_disk_marker() {
+        let f = Fixture::new(); let id = f.queue();
+        assert!(submit_order_with(&f.ctx, id, |ctx, _, _, _| {
+            *ctx.file.lock().unwrap() = Some(VaultFile::create(f.path.join("invalid-child"), "test").unwrap());
+            Ok("Accepted".into())
+        }).is_err());
+        assert_eq!(f.ctx.vault.lock().unwrap().payment_orders[0].status, OrderStatus::Sent);
+        let loaded = f.reload(); assert_eq!(loaded.payment_orders[0].status, OrderStatus::Submitting);
+        assert!(loaded.queued_orders_for_access(f.access).is_empty());
+    }
+    #[test]
+    fn cancelled_sync_and_expired_scheduled_orders_do_not_send() {
+        let f = Fixture::new(); f.queue();
+        f.ctx.bridge.cancelled.store(true, Ordering::Release);
+        assert!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("cancelled")).is_err());
+        assert_eq!(f.reload().payment_orders[0].status, OrderStatus::Queued);
+        f.ctx.bridge.cancelled.store(false, Ordering::Release);
+        f.ctx.edit_vault(|v| {
+            v.payment_orders[0].scheduled = true;
+            v.payment_orders[0].transfer.execution_date = Some(Local::now().date_naive()); Ok(())
+        }).unwrap();
+        assert!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("expired scheduled order")).is_err());
+        assert_eq!(f.reload().payment_orders[0].status, OrderStatus::NeedsReview);
+    }
+    #[test]
+    fn immediate_dispatch_submits_only_the_selected_order() {
+        let f = Fixture::new(); let deferred = f.queue(); let immediate = f.queue();
+        submit_order_with(&f.ctx, immediate, |_, _, _, _| Ok("Sent immediately".into())).unwrap();
+        assert_eq!(f.reload().queued_orders_for_access(f.access), vec![deferred]);
+        assert_eq!(f.reload().payment_orders[1].status, OrderStatus::Sent);
+    }
+    #[test]
+    fn failed_save_rolls_back_order_and_opted_in_recipient_together() {
+        let f = Fixture::new();
+        let before = serde_json::to_vec(&*f.ctx.vault.lock().unwrap()).unwrap();
+        *f.ctx.file.lock().unwrap() = Some(VaultFile::create(f.path.join("invalid-child"), "test").unwrap());
+        assert!(f.ctx.edit_vault(|v| v.queue_transfer(f.account, crate::business_tests::standing().transfer, false, true)).is_err());
+        assert_eq!(serde_json::to_vec(&*f.ctx.vault.lock().unwrap()).unwrap(), before);
+        assert_eq!(serde_json::to_vec(&f.reload()).unwrap(), before);
     }
 }

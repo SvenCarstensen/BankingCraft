@@ -55,6 +55,7 @@ export component CardHeader inherits HorizontalLayout {
     spacing: 8px;
     VerticalLayout {
         alignment: start;
+        spacing: 4px;
         Text {
             text: title;
             font-size: 15px;
@@ -228,6 +229,7 @@ export component LabeledField inherits VerticalLayout {
     in property <InputType> input-type: InputType.text;
     in-out property <string> text;
     callback edited(string);
+    callback accepted();
     spacing: 4px;
     Text {
         text: label;
@@ -240,6 +242,7 @@ export component LabeledField inherits VerticalLayout {
         placeholder-text: placeholder;
         input-type: root.input-type;
         edited(t) => { root.edited(t); }
+        accepted => { root.accepted(); }
     }
     Text {
         text: hint;

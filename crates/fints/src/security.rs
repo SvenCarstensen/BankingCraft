@@ -341,6 +341,24 @@ pub fn open_message(raw: &[u8], opener: Opener) -> Result<Vec<Segment>> {
     Ok(result)
 }
 
+/// Include untrusted error codes solely as diagnostic text, never as a bank result.
+/// Used even when a gateway rejection has a zero dialog ID or message number 9999.
+pub(crate) fn rdh_rejection_diagnostic(raw: &[u8], reason: &str) -> String {
+    let Ok(outer) = parse_segments(raw) else { return reason.into() };
+    if !outer.iter().all(|s| matches!(s.code.as_str(), "HNHBK" | "HIRMG" | "HIRMS" | "HNHBS")) {
+        return reason.into();
+    }
+    let response = crate::response::Response::new(outer);
+    let errors = response.codes.iter()
+        .filter(|c| c.is_error() && c.code.len() == 4 && c.code.bytes().all(|b| b.is_ascii_digit()))
+        .take(8)
+        .map(|c| format!("{} {}", c.code, c.text.chars().filter(|ch| !ch.is_control()).take(512).collect::<String>()))
+        .collect::<Vec<_>>().join("\n");
+    if errors.is_empty() { reason.into() } else {
+        i18n::tr_format!("{0}\n\nNicht authentifizierte Fehlermeldung (nur Diagnose):\n{1}", reason, errors)
+    }
+}
+
 /// Personal RDH responses must be encrypted and authenticated in their entirety.
 /// Anonymous key discovery uses `Opener::Plain` and validates retrieved keys separately.
 fn open_rdh_message(raw: &[u8], card: &mut dyn RdhCard, key: Option<&BankKey>) -> Result<Vec<Segment>> {
@@ -350,7 +368,8 @@ fn open_rdh_message(raw: &[u8], card: &mut dyn RdhCard, key: Option<&BankKey>) -
     if heads.len() != 1 || bodies.len() != 1
         || outer.iter().any(|s| !matches!(s.code.as_str(), "HNHBK" | "HNVSK" | "HNVSD" | "HNHBS"))
     {
-        return Err(Error::Security(i18n::tr("RDH-Antwort ist nicht vollständig verschlüsselt – Antwort verworfen").into()));
+        return Err(Error::Security(rdh_rejection_diagnostic(raw,
+            i18n::tr("RDH-Antwort ist nicht vollständig verschlüsselt – Antwort verworfen"))));
     }
     let head = heads[0];
     let profile = head.text_or_empty(1, 1);

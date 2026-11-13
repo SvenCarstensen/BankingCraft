@@ -45,6 +45,7 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | RDH smart cards | ZKA/SECCOS cards such as VR-NetWorld-Card, RDH-7/9/10 profiles, card notepad access, HKISA bank keys checked against the card hash, card-generated RSA-PSS signatures and signature counters, two-key 3DES and RSA key transport (PKCS#1 v1.5 for RDH-7/9, mode 2 for RDH-10), bank signature verification |
 | Secure PIN entry | `FEATURE_VERIFY_PIN_DIRECT` for class 2/3 readers; the PIN stays on the reader. Software PIN entry is available only for readers without a PIN pad |
 | Payments | SEPA transfers (HKCCS), instant transfers (HKIPZ), scheduled transfers (HKCSE), standing order creation/retrieval/deletion (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
+| Payment orders and recipients | Encrypted outgoing queue, automatic dispatch when the bank connection is synchronized, immediate sending on request, and a separate opt-in address book per account |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month reports |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
 | Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
@@ -79,6 +80,20 @@ cargo build --release
 **macOS application:** double-click `macos/build-macos.command`. It builds `BankingCraft.app`
 next to the project directory, includes the icon, applies an ad-hoc signature and launches the app.
 
+A product ID already configured in a vault takes precedence. Normal builds use only that
+setting; otherwise the client sends the unregistered placeholder `BANKINGCRAFT`.
+Product IDs are not embedded through build environment variables.
+
+For local tests only, build with `cargo build --release --locked --features local-fints-test`.
+This opt-in build can read a fallback ID at runtime from
+`BankingCraft/local-tests/fints-product-id` inside the current user's OS configuration directory
+(macOS: `~/Library/Application Support/BankingCraft/local-tests/fints-product-id`).
+Keep this file outside the repository with permissions `0600`; its contents must never appear
+in source, examples, documentation or commits. The ID is neither compiled into the app nor
+saved to a vault. A configured vault ID always takes precedence. Normal builds ignore this file;
+copying the test app to another machine does not copy its local configuration.
+The former `BANKINGCRAFT_DEFAULT_PRODUCT_ID` build variable is no longer used.
+
 For environments without GPU/OpenGL support, use
 `SLINT_BACKEND=winit-software ./target/release/bankingcraft`.
 
@@ -100,6 +115,19 @@ release. Product registration fields are not shown in Settings.
 Without a bank connection, **Load demo data** creates a local demo connection. Demo transfers
 show a sample flicker code and are simulated locally; they do not contact a bank.
 
+**Save transfer** is the default payment action, including Enter in the transfer fields. It adds
+the transfer to **Payment orders** without contacting the bank. Synchronizing the corresponding
+bank connection, individually or in the account refresh, sends its saved orders with the normal
+bank authorization. **Send transfer** sends only the current transfer immediately after confirmation.
+Sent orders remain visible in the list and are not sent again. Interrupted or failed attempts are
+marked **Review required** and are not retried automatically; check the bank status before creating
+a replacement. Removing a local entry does not cancel an order already received by the bank.
+
+Each account has its own recipient address book. Select a recipient to fill in name, IBAN and BIC.
+A recipient is saved or updated only when **Save to address book** is checked when saving or sending
+the transfer. The checkbox is off by default and resets after a successful payment action or account
+change. The same IBAN updates a recipient only in that account. Existing vaults remain compatible.
+
 Window size and position are saved when the window closes or the application quits and restored
 on the next launch, including the locked screen. `window-state.json` next to the vault contains
 only window preferences. If a previous monitor is unavailable, the window is moved to an accessible
@@ -118,6 +146,29 @@ so it also applies before unlocking on the next launch. System mode resolves the
 at startup. User-created group names, account names and bank-supplied transaction descriptions
 remain unchanged. Category IDs and payment data remain stable across language changes.
 Numeric dates and financial amounts retain their existing input/output conventions.
+
+## Multiple vaults
+
+The startup password dialog lets you choose a recent vault, **Open vault…** from a file,
+or **Create a new vault…** with its own filename and password. The last successfully opened
+vault is selected on the next launch; the original `vault.kontor` remains discoverable.
+Under **Settings → Vaults → Switch / create vault**, the same selection is available while
+working. The active vault's name is shown in the window title and Settings.
+
+Each vault is a separate encrypted `.kontor` file. Creating a vault never overwrites an existing
+file. Canceling or entering a wrong password preserves the current session; a successful switch
+clears unsaved forms and previous selections. Switching waits until bank operations and their
+UI updates are complete. Existing data is saved before switching, and a save failure keeps the
+current vault open. `vaults.json` in the original application data directory stores only recent
+file paths, without passwords or banking data. Appearance, language and window preferences
+remain application-wide. The one-time Bank X import only applies to the original default vault.
+
+## Account display names
+
+Long account names wrap in the overview and account list. Under **Accounts → Change display name**,
+set a local name or leave the field blank to use the bank's name again. The display name is encrypted
+with the vault, survives bank refreshes, and appears in account selectors, transactions and payments.
+The bank's original product name and the account details used for banking remain unchanged.
 
 ## Account groups
 
@@ -220,3 +271,27 @@ fixes, the dependency scan and remaining limitations.
 - Language tests cover first-start detection, English fallback, persistence, all four bundled UI
   languages, translated format placeholders, stable categories and unchanged account/group/form data.
 - Direct debit reversal is not implemented. Standing orders are changed by deleting and recreating them.
+
+### Empfängerprüfung (Verification of Payee)
+
+Überweisungen, Echtzeit- und Terminüberweisungen verwenden die von der Bank angebotene
+FinTS-Empfängerprüfung (HKVPP/HIVPP, Version 1). BankingCraft zeigt das Ergebnis zum
+übermittelten Namen und zur IBAN sowie den vollständigen Bankhinweis vor der Freigabe.
+Bei ähnlichem Namen wird die Schreibweise der Empfängerbank angezeigt und kann kopiert
+werden. Zum Korrigieren den Vorgang abbrechen und den geänderten Auftrag neu prüfen lassen.
+Bei Abweichung oder nicht möglicher Prüfung kann nach Kenntnisnahme ausdrücklich fortgefahren
+werden. Ein fehlendes Ergebnis wird niemals als Übereinstimmung dargestellt.
+
+Die weitere Einreichung richtet sich nach den Bankcodes: vorhandene TAN-Freigabe bei 3091,
+sonst identischer Zahlungsauftrag mit HKVPA und der bankseitigen VOP-ID. Chipkarten benötigen
+immer die zweite Einreichung. Aufträge aus der Auftragsliste verwenden denselben Ablauf;
+es gibt keinen automatischen Zahlungsretry. Dauerauftragsanlagen verwenden die Prüfung,
+wenn die Bank sie dafür in ihren Parametern vorsieht. Bietet eine Bank keinen unterstützten
+Prüfablauf für Überweisungen an, bleibt die Freigabe gesperrt und die App verweist auf deren
+Onlinebanking. Das explizite bankseitige Ausführen ohne weitere Freigabe (3091 + 3076) wird
+als bereits ausgeführt angezeigt. Der Demo-Modus kennzeichnet die fehlende Bankprüfung.
+
+Grundlage: [FinTS-Spezifikation, VoP V1.02 vom 19.10.2026](https://www.fints.org/de/spezifikation/aenderungen)
+und [DK Anlage 3 V3.9, Kapitel 2.2.6, pain.002.001.10](https://www.ebics.de/de/datenformate/gueltige-version).
+Die Prüfung ist mit simulierten Bankantworten getestet; ein realer Bank-/Hardwaretest ist
+kein Bestandteil der Offline-Tests.

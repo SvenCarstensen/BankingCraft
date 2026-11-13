@@ -5,6 +5,9 @@ target/
 .env
 .env.*
 !.env.example
+.local/
+fints-product-id
+fints-product-id.*
 *.log
 *.app/
 *.dmg

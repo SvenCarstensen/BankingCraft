@@ -46,6 +46,9 @@ pub struct StoredAccount {
     pub id: u32,
     pub access_id: u32,
     pub account: Account,
+    /// Local display name; bank refreshes only replace `account`.
+    #[serde(default)]
+    pub display_name: String,
     pub balance: Option<Balance>,
     pub last_sync: Option<NaiveDateTime>,
 }
@@ -90,6 +93,10 @@ pub struct Vault {
     pub chiptan_reader: String,
     #[serde(default)]
     pub groups: Vec<AccountGroup>,
+    #[serde(default)]
+    pub payment_orders: Vec<crate::payments::PaymentOrder>,
+    #[serde(default)]
+    pub recipients: Vec<crate::payments::Recipient>,
 }
 
 impl Vault {
@@ -102,6 +109,15 @@ impl Vault {
         self.accounts.iter().find(|a| a.id == id)
     }
 
+    pub fn rename_account(&mut self, id: u32, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.chars().any(char::is_control) {
+            return Err(i18n::tr("Bitte einen Anzeigenamen ohne Zeilenumbrüche oder Steuerzeichen eingeben.").into());
+        }
+        self.accounts.iter_mut().find(|a| a.id == id).ok_or(i18n::tr("Konto nicht gefunden"))?.display_name = name.into();
+        Ok(())
+    }
+
     pub fn access(&self, id: u32) -> Option<&BankAccess> {
         self.accesses.iter().find(|a| a.id == id)
     }
@@ -112,6 +128,8 @@ impl Vault {
         self.accounts.retain(|a| a.access_id != id);
         self.transactions.retain(|t| !account_ids.contains(&t.account_id));
         self.standing.retain(|s| !account_ids.contains(&s.account_id));
+        self.payment_orders.retain(|o| !account_ids.contains(&o.account_id));
+        self.recipients.retain(|r| !account_ids.contains(&r.account_id));
         for group in &mut self.groups {
             group.account_ids.retain(|id| !account_ids.contains(id));
         }
@@ -134,7 +152,7 @@ impl Vault {
                 }
                 None => {
                     let id = self.new_id();
-                    self.accounts.push(StoredAccount { id, access_id, account: acc, balance: None, last_sync: None });
+                    self.accounts.push(StoredAccount { id, access_id, account: acc, display_name: String::new(), balance: None, last_sync: None });
                     ids.push(id);
                 }
             }
@@ -213,6 +231,7 @@ impl VaultFile {
 
     pub fn open(path: PathBuf, password: &str) -> Result<(Self, Vault), String> {
         use std::io::Read;
+        let path = path.canonicalize().map_err(|e| i18n::tr_format!("Tresor nicht lesbar: {e}"))?;
         const MAX_VAULT_SIZE: u64 = 256 * 1024 * 1024;
         let file = std::fs::File::open(&path).map_err(|e| i18n::tr_format!("Tresor nicht lesbar: {e}"))?;
         let metadata = file.metadata().map_err(|e| e.to_string())?;
@@ -236,20 +255,36 @@ impl VaultFile {
         Ok((Self { path, salt, key }, vault))
     }
 
-    pub fn save(&self, vault: &Vault) -> Result<(), String> {
+    fn encode(&self, vault: &Vault) -> Result<Vec<u8>, String> {
         let plain = Zeroizing::new(serde_json::to_vec(vault).map_err(|e| e.to_string())?);
         let cipher = Aes256Gcm::new_from_slice(self.key.as_ref()).map_err(|e| e.to_string())?;
         let mut nonce = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce);
         let ct = cipher.encrypt(Nonce::from_slice(&nonce), plain.as_ref()).map_err(|e| e.to_string())?;
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
         let mut out = Vec::with_capacity(36 + ct.len());
         out.extend_from_slice(MAGIC);
         out.extend_from_slice(&self.salt);
         out.extend_from_slice(&nonce);
         out.extend_from_slice(&ct);
+        Ok(out)
+    }
+
+    /// Create a complete encrypted vault without ever replacing an existing file.
+    pub fn create_new(path: PathBuf, password: &str, vault: &Vault) -> Result<Self, String> {
+        let mut file = Self::create(path, password)?;
+        if let Some(dir) = file.path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        crate::private_file::write_new(&file.path, &file.encode(vault)?).map_err(|e| e.to_string())?;
+        file.path = file.path.canonicalize().map_err(|e| e.to_string())?;
+        Ok(file)
+    }
+
+    pub fn save(&self, vault: &Vault) -> Result<(), String> {
+        let out = self.encode(vault)?;
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
         // Use an exclusive, private temporary file and flush it before replacing the vault.
         use std::io::Write;
         let tmp = self.path.with_extension(format!("{:016x}.tmp", rand::random::<u64>()));

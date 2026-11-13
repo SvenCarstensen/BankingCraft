@@ -275,7 +275,9 @@ fn parse_keyd(record: u8, raw: &[u8]) -> Option<KeyEntry> {
     // D0 holds tag/length descriptors, not the actual RSA modulus/exponent.
     // See libchipcard's LC_TokenZkaCard__ParseKeyData.
     let size = modulus_size(direct)?;
-    if !(256..=512).contains(&size) {
+    // VR-NetWorld cards also use 1984-bit (248-byte) RDH keys. Their
+    // 2048-bit authentication key must not hide valid signing/decipher keys.
+    if !(248..=512).contains(&size) {
         return None;
     }
     let counter = items.iter().skip(1).find(|(t, _)| *t == 0x91).map(|(_, v)| {
@@ -613,6 +615,44 @@ mod tests {
     }
 
     #[test]
+    fn keyd_recognizes_1984_bit_vr_card_signing_and_decipher_keys() {
+        // EF_KEYD layout observed on a VR-NetWorld card (counter is synthetic).
+        // Its authentication key is 2048 bits, but keys #2 and #3 use 248 bytes.
+        // Do not discard those two keys while accepting only the unrelated #4.
+        for (record, number, size, exponent) in [(1, 4, 256u16, 0x84), (2, 2, 248, 0x84), (3, 3, 248, 0x82)] {
+            let [hi, lo] = size.to_be_bytes();
+            let raw = [
+                tlv(0x84, &[number, 0, 0x0f, number, 0x0e, number]),
+                tlv(0xd0, &[0x81, 0x82, hi, lo, exponent, if exponent == 0x82 { 3 } else { 0 }, 0x92, 0]),
+                tlv(0x90, &[0xff]),
+                tlv(0x91, &[0xff, 0xd5]),
+            ].concat();
+            let key = parse_keyd(record, &raw).expect("existing VR card key must not be discarded");
+            assert_eq!((key.record, key.num, key.version, key.size, key.counter),
+                (record, u32::from(number), 0, usize::from(size), Some(42)));
+        }
+    }
+
+    #[test]
+    fn keyd_still_rejects_public_missing_and_out_of_range_keys() {
+        for tag in [0x83, 0x93] {
+            let raw = [tlv(tag, &[2, 1]), tlv(0xd0, &[0x81, 0x81, 0xf8])].concat();
+            assert!(parse_keyd(1, &raw).is_none());
+        }
+        assert!(parse_keyd(1, &tlv(0x84, &[2, 1])).is_none());
+        for size in [0u16, 128, 247, 513] {
+            let [hi, lo] = size.to_be_bytes();
+            let raw = [tlv(0x84, &[2, 1]), tlv(0xd0, &[0x81, 0x82, hi, lo])].concat();
+            assert!(parse_keyd(1, &raw).is_none(), "invalid modulus length {size}");
+        }
+        for size in [248u16, 256, 384, 512] {
+            let [hi, lo] = size.to_be_bytes();
+            let raw = [tlv(0x94, &[3, 1]), tlv(0xd0, &[0x81, 0x82, hi, lo])].concat();
+            assert_eq!(parse_keyd(1, &raw).unwrap().size, usize::from(size));
+        }
+    }
+
+    #[test]
     fn pin_formats() {
         // 2.1.6 → ASCII, min 6 ; 1.1.4 → FPIN2
         assert_eq!(pin_format(&[0x21, 0x60]), Some((false, 6)));
@@ -720,6 +760,22 @@ mod tests {
         assert!(matches!(pin_result(0x6401), Err(fints::Error::Cancelled)));
         assert!(pin_result(0x63c1).unwrap_err().to_string().contains("PIN-Versuche: 1"));
         assert!(pin_result(0x6983).unwrap_err().to_string().contains("gesperrt"));
+    }
+
+    #[test]
+    fn apdu_uses_exact_1984_bit_card_key_size() {
+        let hash = [0xaa; 32];
+        let sign = apdu_ext(0, 0x88, 0, 0, &hash, Some(248));
+        assert_eq!(&sign[..5], &[0, 0x88, 0, 0, 32]);
+        assert_eq!(&sign[5..37], &hash);
+        assert_eq!(&sign[37..], &[0xf8]);
+
+        let mut block = vec![0];
+        block.extend([0xab; 248]);
+        let decipher = apdu_ext(0, 0x2a, 0x80, 0x86, &block, Some(248));
+        assert_eq!(&decipher[..5], &[0, 0x2a, 0x80, 0x86, 249]);
+        assert_eq!(&decipher[5..254], &block);
+        assert_eq!(&decipher[254..], &[0xf8]);
     }
 
     #[test]

@@ -57,8 +57,9 @@ impl RdhCard for UserCard {
             user_id: "9999999999000000001".into(),
             customer_id: "9999999999000000001".into(),
             profile: 7,
-            sign_key: KeyRef { num: 7, version: 1 },
-            crypt_key: KeyRef { num: 7, version: 1 },
+            // Bank-facing versions from EF_NOTEPAD differ from EF_KEYD (version 1).
+            sign_key: KeyRef { num: 7, version: 3 },
+            crypt_key: KeyRef { num: 7, version: 4 },
             bank_key_hash: Some(self.hash.clone()),
             ..Default::default()
         }])
@@ -112,8 +113,20 @@ impl Transport for Bank {
         self.msg = outer[0].text_or_empty(4, 0).parse::<u32>().unwrap() - 1;
         let text = latin1_to_string(message);
         if outer.iter().any(|s| s.code == "HKISA") {
+            // Atruvia requires both keys in the same anonymous initialization.
+            // A single HKISA returns BPD only, without any HIISA.
+            let requests: Vec<_> = outer.iter().filter(|s| s.code == "HKISA").collect();
+            assert_eq!(requests.len(), 2, "request both public keys together");
+            assert_eq!(requests[0].text_or_empty(4, 3), "V");
+            assert_eq!(requests[1].text_or_empty(4, 3), "S");
+            assert_eq!(outer.iter().map(|s| s.code.as_str()).collect::<Vec<_>>(),
+                ["HNHBK", "HKIDN", "HKVVB", "HKISA", "HKISA", "HNHBS"]);
+            assert_eq!(outer[0].text_or_empty(3, 0), "0");
+            assert_eq!(outer[0].text_or_empty(4, 0), "1");
+            assert_eq!(outer[1].text_or_empty(2, 0), "9999999999");
             self.log.lock().unwrap().push("anon-keys".into());
             assert!(text.contains("HKISA:4:3+2+124+RDH:7+280:21763542:999:V:999:999'"), "{text}");
+            assert!(text.contains("HKISA:5:3+2+124+RDH:7+280:21763542:999:S:999:999'"), "{text}");
             let key = |kind: &str, k: &rsa::PublicKey| {
                 let b = bank_key(kind, k);
                 SegmentBuilder::new("HIISA", 3)
@@ -128,6 +141,9 @@ impl Transport for Bank {
             return Ok(self.reply(segs, false));
         }
         if outer.iter().any(|s| s.code == "HKEND") && !outer.iter().any(|s| s.code == "HNVSK") {
+            assert_eq!(outer[0].text_or_empty(3, 0), "DLG42");
+            assert_eq!(outer[0].text_or_empty(4, 0), "2");
+            self.log.lock().unwrap().push("anon-end".into());
             return Ok(self.reply(vec![ok()], false));
         }
         // signed and encrypted user message
@@ -147,6 +163,7 @@ impl Transport for Bank {
         let inner = parse_segments(&plain).unwrap();
         let shk = &inner[0];
         assert_eq!(shk.code, "HNSHK");
+        assert_eq!(shk.text_or_empty(11, 5), "3", "use the bank access key version, not the card's internal version");
         let sysid = shk.text(6, 2).unwrap_or_default();
         let has_cid = shk.bin(6, 1).map(|b| !b.is_empty()).unwrap_or(false);
         let idn = inner.iter().find(|s| s.code == "HKIDN");
@@ -174,10 +191,21 @@ impl Transport for Bank {
 
 #[test]
 fn rdh7_dialog_flow() {
+    rdh7_dialog_with_card(SoftCard::new());
+}
+
+#[test]
+fn rdh7_dialog_flow_with_1984_bit_card() {
+    let mut card = SoftCard::with_bits(1984);
+    assert_eq!(card.sign_key().unwrap().size, 248);
+    assert_eq!(card.decipher_key().unwrap().size, 248);
+    rdh7_dialog_with_card(card);
+}
+
+fn rdh7_dialog_with_card(user: SoftCard) {
     let mut rng = rand_rsa::rng();
     let bank_crypt = PrivateKey::new(&mut rng, 2048).unwrap();
     let bank_sign = SoftCard::new();
-    let user = SoftCard::new();
     let crypt_pub = bank_key("V", &bank_crypt.to_public_key());
     let hash = BankKeyHash { key: KeyRef { num: 1, version: 3 }, sha256: true, hash: crypt_pub.hash(true) };
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -203,5 +231,72 @@ fn rdh7_dialog_flow() {
     assert!(keys.verified);
     assert!(keys.sign.is_some());
     let log = log.lock().unwrap().clone();
-    assert_eq!(log, vec!["anon-keys", "sync", "HKEND seq=42", "init seq=43", "HKEND seq=44"], "{log:?}");
+    assert_eq!(log, vec!["anon-keys", "anon-end", "sync", "HKEND seq=42", "init seq=43", "HKEND seq=44"], "{log:?}");
+}
+
+struct KeyFailureBank {
+    fail_kind: &'static str,
+    omit_key: bool,
+    requests: Arc<Mutex<Vec<String>>>,
+}
+
+impl Transport for KeyFailureBank {
+    fn send(&mut self, raw: &[u8]) -> crate::Result<Vec<u8>> {
+        let request = parse_segments(raw)?;
+        let head = &request[0];
+        let msg_num = head.text_or_empty(4, 0).parse().unwrap();
+        let response = if request.iter().any(|s| s.code == "HKEND") {
+            self.requests.lock().unwrap().push("end".into());
+            vec![ok()]
+        } else {
+            assert_eq!(request.iter().map(|s| s.code.as_str()).collect::<Vec<_>>(),
+                ["HNHBK", "HKIDN", "HKVVB", "HKISA", "HKISA", "HNHBS"]);
+            assert_eq!(head.text_or_empty(3, 0), "0");
+            assert_eq!(msg_num, 1);
+            self.requests.lock().unwrap().push("V+S".into());
+            if self.omit_key {
+                let kind = if self.fail_kind == "V" { "S" } else { "V" };
+                vec![ok(), SegmentBuilder::new("HIISA", 3).de("1").de("TEST").de("1").de("224")
+                    .deg(vec!["280".into(), "21763542".into(), "test-bank".into(), kind.into(), "1".into(), "3".into()])
+                    .deg(vec!["5".into(), "16".into(), "10".into(), Val::Bin(vec![0xff; 256]), "12".into(), Val::Bin(vec![1, 0, 1]), "13".into()])]
+            } else {
+                vec![SegmentBuilder::new("HIRMG", 2)
+                    .deg(vec!["9050".into(), Val::Empty, "Die Nachricht enthält Fehler.".into()])
+                    .deg(vec!["9078".into(), Val::Empty, "Software nicht als FinTS-Produkt registriert.".into()])]
+            }
+        };
+        // Return a dialog ID even on errors so cleanup is exercised as well.
+        build_message(&Envelope { dialog_id: "KEYTEST", message_number: msg_num,
+            blz: "21763542", user_id: "test-bank", system_id: "0" }, Auth::None, response)
+    }
+}
+
+#[test]
+fn key_download_failures_preserve_existing_keys_and_the_original_trace() {
+    for fail_kind in ["V", "S"] {
+        for omit_key in [false, true] {
+            let ui = Ui;
+            let card = UserCard { inner: SoftCard::new(), hash: BankKeyHash::default() };
+            let old_keys = BankKeys { crypt: Some(BankKey { kind: "V".into(), num: 42, ..Default::default() }),
+                sign: None, verified: false };
+            let state = State { bank_keys: Some(old_keys.clone()), ..Default::default() };
+            let mut client = Client::new(Config::default(), state, Medium::Rdh(Box::new(card), 0), &ui).unwrap();
+            let requests = Arc::new(Mutex::new(vec![]));
+            client.set_transport(Box::new(KeyFailureBank { fail_kind, omit_key, requests: requests.clone() }));
+            let error = client.fetch_bank_keys().unwrap_err();
+            if omit_key {
+                assert!(matches!(error, crate::Error::Security(_)), "{error}");
+            } else {
+                assert!(matches!(error, crate::Error::Bank { .. }), "{error}");
+                assert!(error.to_string().contains("9078"));
+            }
+            let expected = vec!["V+S", "end"];
+            assert_eq!(*requests.lock().unwrap(), expected, "stop after a rejected or missing key");
+            let trace = client.last_trace.as_deref().unwrap();
+            assert!(trace.contains("HKISA:4:3"), "{trace}");
+            assert!(!trace.contains("HKEND"), "cleanup must not hide the failed request: {trace}");
+            let state = client.finish();
+            assert_eq!(state.bank_keys.unwrap(), old_keys);
+        }
+    }
 }

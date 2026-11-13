@@ -23,6 +23,7 @@ pub mod security;
 pub mod syntax;
 pub mod tan;
 pub mod transport;
+pub mod vop;
 #[cfg(test)]
 mod business_data_tests;
 #[cfg(test)]

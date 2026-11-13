@@ -195,3 +195,234 @@ PIN-freien Diagnose meldete die App jedoch keinen verfügbaren Kartenleser;
 der tatsächliche Fehlversuchszähler konnte deshalb noch nicht gelesen werden.
 Es wurde keine PIN-Prüfung ausgelöst. Die Bestätigung mit der echten Karte
 und ein erfolgreicher VR-Bank-Abruf stehen weiterhin aus.
+
+## Schlüsselerkennung am 13.11.2026
+
+Beim VR-Bank-Abruf erschien „Schlüssel #2 nicht auf der Chipkarte“.
+Eine rein lesende EF_KEYD-Diagnose zeigte, dass der Signaturschlüssel #2 und
+der Entschlüsselungsschlüssel #3 vorhanden sind, jeweils mit 248 Byte
+(1984 Bit). Nur der Authentisierungsschlüssel #4 hat 256 Byte (2048 Bit).
+Der Parser verwarf bisher alle Schlüssel unter 256 Byte und meldete die
+beiden benötigten Schlüssel deshalb fälschlich als fehlend.
+
+Die Erkennung berücksichtigt jetzt auch 248-Byte-Schlüssel; private
+Schlüsselreferenzen und gültige Längenbeschreibungen bleiben erforderlich.
+Ein Regressionstest mit derselben Metadatenstruktur und synthetischem Zähler
+reproduzierte den Fehler vor der Korrektur. Tests prüfen außerdem die Grenzen,
+öffentliche Referenzen und die exakten APDU-Längen. Ein zusätzlicher simulierter
+RDH-7-Dialog prüft Signatur und Entschlüsselung mit 1984-Bit-Kartenschlüsseln.
+
+Der korrigierte produktive Kartenlesercode erkannte anschließend auf der
+angeschlossenen Karte beide Schlüssel mit jeweils 1984 Bit. Diese Prüfung
+erfolgte ohne PIN-Prüfung, Signatur oder Bankverbindung. Ein vollständiger
+realer VR-Bank-Abruf ist damit noch nicht bestätigt.
+
+Offline-Verifikation: 186 Workspace-Tests erfolgreich, zwei manuelle
+Renderingtests ausgelassen; Clippy mit `-D warnings` ohne Befund.
+Der Release-Build wurde in die vorhandene macOS-App übernommen, die
+Ad-hoc-Signatur geprüft und die App bis zum Tresor-Entsperrbildschirm gestartet.
+
+## Anonymer Bankschlüsselabruf am 13.11.2026
+
+Nach der Schlüsselerkennung scheiterte der Abruf mit 9050/9800/9110.
+Die Ursache war die fehlende FinTS-Produktregistrierung: Mit dem Standardwert
+`BANKINGCRAFT` weist Atruvia die kombinierte V/S-Schlüsselanfrage irreführend
+als „Falsche Segmentzusammenstellung“ zurück. Ein anonymer BPD-Abruf mit
+demselben Produktnamen liefert den eindeutigen Fehler 9078 „Software nicht
+als FinTS-Produkt registriert“.
+
+Auf ausdrücklichen Nutzerwunsch wurde vorübergehend eine fremde Produkt-ID für
+den lokalen Test verwendet. Ihr Wert wird nicht im Repository dokumentiert.
+Die ursprüngliche Übergabe über `BANKINGCRAFT_DEFAULT_PRODUCT_ID` wurde später
+entfernt: Nur ein expliziter Build mit `local-fints-test` liest die Test-ID zur
+Laufzeit aus einer privaten Datei außerhalb des Projekts. Normale Builds
+ignorieren diese Datei. Eine im Tresor hinterlegte eigene ID hat Vorrang;
+die lokale Test-ID wird nicht in den Tresor übernommen.
+
+Mit dieser Testkonfiguration lieferte der produktive FinTS-Client vom Server
+`fints1.atruvia.de:3000` für die öffentliche BLZ 21763542 beide öffentlichen
+Bankschlüssel: V und S, jeweils 2048 Bit, Nummer 7, Version 2; Rückmeldungen
+0020 und 0010. Beide HKISA-Segmente müssen in derselben Anfrage stehen, wie
+auch in den AqBanking-/HBCI4Java-Vorlagen. Eine einzelne HKISA-Anfrage liefert
+nur BPD und keinen Schlüssel. Die kombinierte Anfrage bleibt deshalb erhalten.
+
+Der Test verwendete ausschließlich synthetische Kartenmetadaten und die
+anonyme Kundenkennung. Die anschließende Fingerabdruckbestätigung wurde
+abgelehnt; es wurden keine Schlüssel gespeichert, keine persönlichen
+Anmeldungen, PIN-Prüfungen oder Signaturen ausgelöst. Ein vollständiger
+VR-Bank-Kontenabruf mit der echten Karte steht noch aus.
+
+Die ursprüngliche HKISA-Segmentübersicht bleibt nun erhalten, wenn der Server
+beim anschließenden anonymen Dialogende einen anderen Fehler meldet (im
+Live-Test 9800). Abruffehler nennen außerdem den betroffenen Bankzugang.
+Regressionstests prüfen die kombinierte Anfrage, RDH-7 mit 2048/1984 Bit,
+fehlende Schlüssel, erhaltene bestehende Schlüssel und Fehlerprotokolle sowie
+die Bankzuordnung nach einem teilweise erfolgreichen Kontenrundruf.
+
+Validierung mit gesetzter Test-ID: 188 Workspace-Tests erfolgreich, zwei
+manuelle Renderingtests ausgelassen; Clippy mit `-D warnings` ohne Befund.
+Der Release-Build wurde in die vorhandene macOS-App übernommen. Test-ID im
+Binary, übereinstimmende Build-UUID und Ad-hoc-Signatur wurden geprüft; die
+App wurde bis zum Tresor-Entsperrbildschirm neu gestartet.
+
+## Persönlicher RDH-Abruf am 13.11.2026
+
+Der vom Nutzer freigegebene VR-Bank-Abruf wurde bei leerer Auftragsliste
+gestartet. Nach der PIN-Eingabe am Kartenleser brach die App mit
+„RDH-Antwort ist nicht vollständig verschlüsselt“ ab. Da diese Sicherheitsfehler
+bisher keine Segmentübersicht speicherten, war die eigentliche Bankablehnung
+nicht sichtbar.
+
+Beim Quellvergleich wurde ein weiterer Protokollfehler festgestellt:
+Die übermittelte Signaturschlüsselversion stammte aus EF_KEYD, obwohl die
+bankseitigen Versionen im ausgewählten EF_NOTEPAD-Zugang maßgeblich sind.
+Auch libchipcard übernimmt deshalb die Versionen aus dem Kontext
+(`zkacard.c`, `LC_Crypt_TokenZka_GetContext`, Zeilen 772–788 der oben verlinkten
+Revision). BankingCraft übernimmt jetzt Signatur-/Entschlüsselungsversion aus
+dem Bankzugang, während die physischen Slots und Schlüssellängen erhalten
+bleiben. Die RDH-7-Tests mit 2048 und 1984 Bit reproduzierten vorher die falsche
+Version und bestehen nach der Korrektur.
+
+Bei reinen unverschlüsselten Fehlerantworten werden nun ausschließlich
+9xxx-Codes als nicht authentifizierte Diagnose an den Sicherheitsfehler
+angehängt, mit Mengen-/Längenbegrenzung und ohne Steuerzeichen. Die Antwort
+wird weiterhin verworfen; weder Erfolg noch Geschäftsdaten, System-ID oder
+Bankparameter werden übernommen. Gemischte Antworten werden nicht ausgewertet.
+Auch Sicherheitsfehler erhalten eine Segmentübersicht ohne Nachrichteninhalte;
+bei verschlüsselten Anfragen sind zusätzlich nur die angefragten Segmentnamen
+und -nummern enthalten.
+
+Offline-Verifikation: 190 Workspace-Tests erfolgreich, zwei manuelle
+Renderingtests ausgelassen; Clippy mit `-D warnings` ohne Befund. Die
+Bestätigung dieser Korrektur im persönlichen Live-Abruf steht noch aus.
+
+Nach Installation und erneuter PIN-Freigabe zeigte der nächste Abruf eine
+verschlüsselte Antwort auf HKIDN/HKVVB. Der folgende Abbruch betraf jedoch die
+Nachrichtenhülle; die bisherige Protokollierung zeigte dabei noch die vorherige
+Antwort. Die Übersicht wird deshalb jetzt vor der Hüllenprüfung aktualisiert.
+Sie enthält zusätzlich ausschließlich numerische Länge/Version/Zähler und das
+boolesche Ergebnis des Dialog-ID-Vergleichs, keine Dialog-IDs. Reine
+Fehlerantworten mit abweichenden Hüllendaten können ihre 9xxx-Codes als
+nicht authentifizierte Diagnose anzeigen; alle bisherigen Hüllenprüfungen
+bleiben verbindlich. Ein Regressionstest prüft die aktualisierte, datenarme
+Übersicht bei einer abgewiesenen Antwort (Nachrichtennummer 9999).
+Validierung dieses Diagnoseschritts: 191 Tests und Clippy erfolgreich.
+
+## Erneuter Quellvergleich am 13.11.2026: Kartenzugriff und TCP-Dialog
+
+Der nächste reale Abruf kam durch die persönliche Dialoginitialisierung. Erst
+HKSPA, Nachricht 2, erhielt eine unverschlüsselte Ablehnung 9800 „FGW Die
+Kundennachricht enthaelt ungueltige Daten“. Die Fehlerantwort hatte im Kopf die
+Nachrichtennummer 2, im Abschluss dagegen 1. Die strikte Hüllenprüfung ist
+deshalb korrekt; ihre Lockerung würde die Ursache nicht beheben.
+
+Der erneute Vergleich umfasst die oben genannten unveränderten Referenzrevisionen.
+Für den Kartenzugriff ist libchipcard maßgeblich, für FinTS-Nachrichten und
+Verbindungen dessen Aufrufer AqBanking/AqHBCI.
+
+| Bereich | Referenzverhalten und BankingCraft-Befund |
+|---|---|
+| Kartendateien | MF/EF_ID `0003`, EF_PWDD `0015`, EF_FBZ `0016`, DF_SIG `d27600006601` mit EF_KEYD `0013`, DF_NOTEPAD `d2760000254e500100` mit EF_NOTEPAD `a611` stimmen mit `zkacard-app.xml` überein. |
+| PIN-Beschreibung und Leser | PWDD-Pseudo-OID bestimmt ASCII bzw. FPIN2 und Mindestlänge. Der generische PC/SC-ASCII-Pfad übergibt nur den vier Byte langen VERIFY-Kopf; FPIN2 verwendet den separaten Acht-Byte-Block. Die frühere ASCII-Korrektur entspricht `generic_pcsc/card.xml`. BankingCraft verwirft unbekannte Formate, während libchipcard teils ASCII annimmt. Keine automatische PIN-Wiederholung. |
+| Private Kartenschlüssel | Private Referenzen `84`/`94`, D0-Längenbeschreibung und Auswahl der höchsten physischen Version entsprechen dem verwendeten ZKA-Pfad. Die früher ausgeschlossenen 248-Byte-Schlüssel werden erkannt. Der Record, nicht die FinTS-Schlüsselnummer, adressiert den Kartenbefehl. |
+| Kontext und Versionen | Gleiche Signatur-/Chiffrierschlüsselnummern im Notepad kennzeichnen das RDH-Profil. Physische Schlüssel sind #2/#3; die bankseitigen Versionen kommen aus EF_NOTEPAD. Die bereits korrigierte Übernahme entspricht ausdrücklich `LC_Crypt_TokenZka_GetContext`. |
+| Kartenkennung | Das vollständige rohe EF_ID wird als CID verwendet, wie in `LC_Crypt_TokenZka__ReadContextList`. Bei fehlender Kundenkennung gilt die Benutzerkennung. |
+| Signaturzähler | Der 16-Bit-Komplementwert aus KEYD-Tag `91` wird verwendet und vor einer Signatur frisch gelesen. Ein Lesefehler führt nicht zum Wiederverwenden eines alten Zählers. |
+| Signierbefehl | MSE `00 22 41 A4` mit `84 01 (Record\|80)` und `80 01 46`, danach INTERNAL AUTHENTICATE `00 88 00 00`: entspricht libchipcard `LC_ZkaCard_Sign` und `_isoManageSe`. Der Host hasht einmal SHA-256, die Karte übernimmt den zweiten Hash und RSA-PSS. |
+| Entschlüsseln | MSE `00 22 41 B8`, Algorithmus `1A`; PSO DECIPHER `00 2A 80 86` mit vorangestelltem `00`: entspricht libchipcard. BankingCraft fordert die bekannte Moduluslänge als Le an, statt der maximalen Antwortlänge. Tests decken 248/256/384 Byte ab. |
+| FinTS-Signatur | HNSHK 4, RDH-Profil, Funktion 2, Rolle/Bereich 1, Hash `1:6:1`, Signatur `6:10:19`, Schlüsseltyp S mit Profilnummer und Kontextversion entsprechen AqBanking für die hier verwendete Sicherheitsklasse. |
+| FinTS-Verschlüsselung | HNVSK 3, Funktion 4, 2-Key-3DES-CBC; RSA-PKCS#1-v1.5-Schlüsseltransport (Modus 18) für RDH-7/9. HNVSK nutzt den öffentlichen V-Schlüssel der Bank. RDH-10 verwendet separat den rohen RSA-Modus 2. |
+| Anonyme Schlüsselanfrage | HKIDN/HKVVB mit beiden HKISA-Segmenten V und S, Benutzer/Nummer/Version `999` in den Schlüsselanfragen, entsprechen `jobgetkeys.xml`. Beide Schlüssel wurden vom realen Server geliefert. |
+| System-ID | Signierte, verschlüsselte HKIDN/HKVVB/HKSYN-Anfrage mit System-ID 0 entspricht `jobgetsysid.xml`. |
+| TCP-Verbindung | **Neu gefundener Fehler:** AqBanking hält `dlg->ioLayer` vom Dialogbeginn bis zum Ende offen. BankingCraft erzeugte bisher für jedes `send()` einen neuen Socket und verlor damit die Bindung des Dialogs an die Verbindung. |
+
+### Ursache, Korrektur und Nachweis
+
+[AqBanking `dialog_hbci.c`](https://github.com/aqbanking/aqbanking/blob/33504e378993d9cdb6702bd90c7039ef378fe31f/src/libs/plugins/backends/aqhbci/msglayer/dialog_hbci.c)
+legt den Socket nur an, wenn `dlg->ioLayer` noch nicht existiert. Alle folgenden
+Send-/Receive-Aufrufe verwenden diese Verbindung, bis der Dialog sie schließt.
+
+Ein PIN-freier Test mit ausschließlich öffentlichen/anonymen Angaben bestätigte
+die Bedeutung für den Atruvia-Server: HKISA und nachfolgendes HKEND auf derselben
+Verbindung ergaben 0010 „Nachricht entgegengenommen“ und 0100 „Dialog beendet“.
+Das vorherige Dialogende über eine neue Verbindung hatte 9800 ergeben.
+
+`TcpTransport` hält jetzt seinen Stream über alle Nachrichten eines Dialogs.
+`Client::reset_dialog()` schließt ihn; der nächste Dialog eröffnet eine neue
+Verbindung. Auch ein Ende ohne zugewiesene Dialog-ID räumt den Transport auf.
+Nach einem Transportfehler ist die Verbindung gesperrt, bis explizit ein neuer
+Dialog beginnt. Es gibt weder automatisches Wiederverbinden innerhalb des
+Dialogs noch ein erneutes Senden einer Anfrage mit unklarem Ausführungsstatus.
+HTTPS-Verhalten und sämtliche Signatur-, Verschlüsselungs- und Hüllenprüfungen
+bleiben erhalten.
+
+Drei lokale Socket-Regressionen prüfen mehrere Nachrichten über einen Socket
+(einschließlich fragmentierter Antworten), das Schließen/Neuverbinden an
+Dialoggrenzen und das Unterbinden einer Wiederholung nach abgebrochener Antwort.
+Der Test für die zweite Nachricht schlug vor der Korrektur fehl und besteht
+danach. Zusammen bestehen 194 Workspace-Tests und Clippy mit `-D warnings`;
+zwei manuelle Renderingtests sind weiterhin ausgelassen.
+
+### Verbleibende Unterschiede und Prüfumfang
+
+Dieser Vergleich bestätigt keine vollständige Gleichwertigkeit mit libchipcard.
+BankingCraft beschränkt sich auf den bekannten ZKA-Pfad: keine alternativen
+KEYD-Datenlayouts D1/D2/D8, Karteninitialisierung oder Zertifikatsverfahren;
+keine vollständige Abdeckung herstellerspezifischer Leser-Vorlagen. EF_GD0/EF_SSD
+werden nicht wie im allgemeinen libchipcard-Reopen-Pfad ausgewertet. PWDD wird
+derzeit nur über die ersten acht Records gelesen (libchipcard: bis 31); die
+angeschlossene Karte liefert ihre eindeutige Beschreibung innerhalb dieses
+Bereichs. Der allgemeine KEYD-/Notepad-Record-Leser beendet auch bei anderen
+Lesefehlern als 6A83 die Aufzählung; eine unvollständige Liste kann daher als
+fehlender Schlüssel/Zugang erscheinen. Der gewünschte Kontext und die
+benötigten Schlüssel müssen dennoch vorhanden sein; es gibt keinen Fallback
+auf einen anderen Bankzugang.
+
+Der reale RDH-7-Kartendialog ist der konkrete Prüfgegenstand. RDH-9/10 und andere
+Karten-/Leserkombinationen sind dadurch nicht live bestätigt.
+
+Der Release-Build mit der vom Nutzer autorisierten temporären Test-Produkt-ID
+wurde installiert. Ad-hoc-Bundlesignatur und übereinstimmende Build-UUID
+`E7E7D670-56DD-3384-98D8-58F1F69BB39D` wurden geprüft; der vorherige App-Stand
+liegt als lokale Sicherung vor. Auch nach der abschließenden Dialogende-Korrektur
+bestehen alle 194 Tests und Clippy. Die App wurde bis zum Entsperrbildschirm
+gestartet. Der Nutzer bestätigte anschließend den erfolgreichen persönlichen
+VR-Bank-Abruf mit der TCP-Korrektur.
+
+## Lokale Test-Produkt-ID vom Repository getrennt
+
+Auf Nutzerwunsch wurde der konkrete Wert aus diesem Bericht entfernt. Er war
+in keinem bisherigen Commit enthalten. Die bisherige Compile-time-Variable
+`BANKINGCRAFT_DEFAULT_PRODUCT_ID` wird nicht mehr ausgewertet.
+
+Nur das ausdrücklich aktivierte App-Feature `local-fints-test` liest einen
+Fallback aus `BankingCraft/local-tests/fints-product-id` im Konfigurationsordner
+des lokalen Benutzers. Unter macOS liegt die Datei außerhalb des Projekts in
+`~/Library/Application Support`; Ordnerrechte sind 0700, Dateirechte 0600.
+Der Inhalt wird weder in das Binary eingebaut noch in den Tresor gespeichert.
+Ein vorhandener eigener Wert im Tresor bleibt vorrangig. Normale Builds lesen
+die Datei nicht; eine weitergegebene Test-App enthält die Test-ID nicht.
+
+In diesem lokalen Checkout sind `pre-commit`, `commit-msg` und `pre-push`
+eingerichtet. Eine separate private Sperrliste außerhalb des Projekts erlaubt
+die Prüfung, ohne den Wert in Prüfscripts oder versionierten Dateien abzulegen.
+Die Hooks prüfen gestagte Dateiinhalte/Namen, Commit-Nachrichten sowie sämtliche
+erreichbaren Objekte der zu pushenden Historie einschließlich früher gelöschter
+Vorkommen und Binärdaten. Sie und die Sperrliste sind bewusst maschinenlokal;
+die Schutzprüfung ist kein serverseitiger GitHub-Hook. Es wurde nichts gepusht.
+
+Die Hook-Prüfungen wurden in einem Wegwerf-Repository mit synthetischen Werten
+gegen saubere Inhalte, gestagte Treffer, Commit-Texte, später entfernte Treffer
+und UTF-16-Binärdaten über Chunk-Grenzen getestet. Die bestehende Historie und
+der bestehende Index bestehen die lokale Prüfung.
+
+Verifikation: Je 197 Workspace-Tests und Clippy mit `-D warnings` bestehen mit
+und ohne `local-fints-test`; zwei manuelle Renderingtests bleiben ausgelassen.
+Ein kurzzeitiger lokaler Prüflauf ohne Bankkontakt bestätigte das tatsächliche
+Laden der privaten Datei nur im Test-Build und den Vorrang eines konfigurierten
+eigenen Werts. Der normale Build ignorierte auch die frühere Build-Variable.
+Die Prüfhilfe wurde danach entfernt. Die Test-ID wurde weder in den aktuellen
+versionierten/nicht ignorierten Dateien noch im neuen Release-Binary gefunden.
+Die lokale Test-App wurde installiert, ihre Ad-hoc-Signatur und Build-UUID
+`E380DB8B-C372-35B6-961E-FA6A0E0F256C` geprüft und der Start bis zum
+Entsperrbildschirm bestätigt. Ein erneuter Bankabruf war dafür nicht nötig.
