@@ -6,6 +6,24 @@ an account dashboard, transaction lists with daily balances, payment forms and f
 The application was previously called Kontor. Existing vaults are still found in their original
 location; the file format, `vault.kontor` filename and key derivation remain compatible.
 
+## License
+
+Copyright (C) 2026 AppCreation GmbH.
+
+BankingCraft is free software licensed under the **GNU General Public License, version 3**
+(`GPL-3.0-only`). You may use, modify and redistribute it, including for commercial purposes,
+under the terms of the [GPL v3](LICENSE). When distributing the application or modified versions,
+you must comply with the GPL's corresponding-source and license-notice requirements.
+
+BankingCraft is distributed without any warranty, including the implied warranties of
+merchantability or fitness for a particular purpose, to the extent permitted by applicable law.
+See [LICENSE](LICENSE) for the complete terms.
+
+Third-party dependencies and bundled data retain their respective licenses. Slint is used under
+its GPL v3 option; the bank directory's source and license are described under
+[Bank directory](#bank-directory). This license change does not revoke rights already granted
+for earlier copies under their previous licenses.
+
 ## Privacy and data transmission
 
 BankingCraft does not collect or transmit telemetry or usage analytics. Personal and financial

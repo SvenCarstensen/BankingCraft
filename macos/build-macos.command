@@ -47,6 +47,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/bankingcraft "$APP/Contents/MacOS/BankingCraft"
 cp macos/Info.plist "$APP/Contents/Info.plist"
+cp LICENSE "$APP/Contents/Resources/LICENSE"
 
 # App-Icon aus dem PNG erzeugen
 ICONSET="$(mktemp -d)/BankingCraft.iconset"
