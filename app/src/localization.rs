@@ -1,7 +1,7 @@
 //! The UI language is an unencrypted preference; it never changes banking data.
 use i18n::Language;
 use serde::{Deserialize, Serialize};
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use crate::ui::{Model, ModelRc, VecModel};
 use std::{cell::Cell, io::Read, path::Path, rc::Rc};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -36,7 +36,6 @@ fn save(path: &Path, language: Mode) -> std::io::Result<()> {
 fn apply(app: &crate::AppWindow, mode: Mode) {
     let language = mode.resolve(&sys_locale::get_locale().unwrap_or_default());
     // All four language catalogues are compiled into the application.
-    slint::select_bundled_translation(language.code()).expect("bundled language");
     i18n::set_language(language);
     app.global::<crate::AppState>().set_language_mode(mode.index());
 }
@@ -121,11 +120,11 @@ mod tests {
 mod rendering_tests {
     use super::*;
     use crate::{AppState, AppWindow, store::Vault, view};
-    use slint::Model;
+    use crate::ui::Model;
 
     #[test]
     fn all_four_bundles_and_models_switch_without_changing_banking_data_or_filters() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let mut vault = Vault::default();
@@ -155,8 +154,7 @@ mod rendering_tests {
             (Language::Spanish, "Introducción del PIN", "Vivienda"),
         ] {
             i18n::with_language(language, || {
-                slint::select_bundled_translation(language.code()).unwrap();
-                assert_eq!(st.get_pin_heading().as_str(), pin, "Slint catalogue {}", language.code());
+                assert_eq!(st.get_pin_heading().as_str(), pin, "UI catalogue {}", language.code());
                 view::refresh_all(&app, &vault, &mut state);
                 view::show_detail(&app, &vault, 0);
                 assert_eq!(st.get_tx_detail().category.as_str(), housing);

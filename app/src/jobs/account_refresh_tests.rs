@@ -4,7 +4,7 @@ use fints::{security::{Auth, Envelope, Opener, build_message, open_message}, syn
 
 fn context() -> Ctx {
     Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)),
-        bridge: Bridge::new(slint::Weak::default()), running: Arc::new(AtomicBool::new(false)) }
+        bridge: Bridge::new(crate::ui::Weak::default()), running: Arc::new(AtomicBool::new(false)) }
 }
 
 #[test]

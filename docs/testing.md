@@ -47,7 +47,7 @@ Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnu
 | Bankensuche | Bekannte Banken und Suchbegriffe | `banks::tests` |
 | Sicherheit | Offene TAN-Freigabe, Auftraggeberkonto, HTTPS-Ziele, Parser-/XML-/Bildlimits, Bankschlüssel, DDV-Umschlag/Padding, RDH-10-Vektor, CSV-Formeln, private Dateien und Symlinks | `security_tests`, `client::business_flow_tests`, `rdh::tests`, `bridge::image_security_tests`, `private_file::tests`, `business_tests` |
 | Fenster wiederherstellen | Position und logische Größe, erneutes Speichern, ungültige/zu große Einstellungsdatei, negative Bildschirmkoordinaten, Retina-Skalierung, abgezogener Monitor | `window_state::tests` |
-| Erscheinungsbild | Systemstandard beim ersten Start, fehlende/ungültige/zu große Einstellungsdatei, wiederholter Wechsel und Persistenz aller drei Modi, Schreibfehler, Aufheben der Widget- und Fensterdesign-Vorgaben | `appearance::tests` |
+| Erscheinungsbild | Systemstandard beim ersten Start, fehlende/ungültige/zu große Einstellungsdatei, wiederholter Wechsel und Persistenz aller drei Modi, Schreibfehler, Rückkehr zum Systemdesign | `appearance::tests` |
 | RDH-Karten-PIN | ASCII-PC/SC-Referenzvektor ohne Füllzeichen, exakte Software-PIN-Länge, FPIN2-Längennibble/Füllung, Auswahl nur der Zugriffs-PIN, unbekannte/fehlende Metadaten, kein zweiter Versuch bei Fehler/Abbruch/Transportverlust, Erfolgs-Cache, Fehlversuchszähler und Leserantworten | `cardreader::rdh::tests` |
 
 ## Lokalisierung
@@ -58,7 +58,7 @@ Speicherung und Wiederherstellung sowie Schreibfehler. Alle Katalogeinträge mü
 Formatplatzhalter unverändert erhalten. Formatierungstests decken Unicode, benannte und
 positionale Werte sowie sprachunabhängige Abbruchsteuerung ab.
 
-Ein Slint-Test lädt alle vier eingebetteten Übersetzungen und aktualisiert die Ansichtsmodelle.
+Ein UI-Test lädt alle vier eingebetteten Übersetzungen und aktualisiert die Ansichtsmodelle.
 Dabei bleiben Kategorien-IDs, Filter, Kontonamen, Gruppen, Buchungstexte und Formularentwürfe
 unverändert. Die Tests verwenden synthetische Daten und ändern keine produktiven Einstellungen.
 
@@ -79,7 +79,7 @@ cargo test -p bankingcraft --locked render_account_names -- --ignored
 
 Der Export verwendet synthetische Konten mit langen Namen und schreibt deutsche
 und französische Ansichten bei 1100 und 1360 Pixel Breite nach
-`bankingcraft-account-name-review` im temporären Systemverzeichnis.
+`bankingcraft-egui-account-name-review` im temporären Systemverzeichnis.
 Die Sichtprüfung am 13.11.2026 bestätigte vollständig sichtbare Namen,
 passende Zeilenhöhen und lesbare Aktionen sowie den Umbenennungsdialog.
 Der Export umfasst außerdem die DDV- und RDH-Bankzugangsformulare. Die Controls
@@ -97,7 +97,7 @@ Der vorhandene Sichtprüfungsexport zeigt die gesamte Übersicht bei 1100 und 13
 `render_payment_pages` umfasst außerdem das Dauerauftragsformular mit einer gemeinsamen,
 vertikal zentrierten Zeile für Turnus und Ausführungsdaten in Deutsch und Französisch.
 
-Die fünf README-Ansichten werden mit den echten Slint-Seiten und ausschließlich synthetischen,
+Die fünf README-Ansichten werden mit den echten egui-Seiten und ausschließlich synthetischen,
 englisch beschrifteten Demo-Daten gerendert:
 
 ```sh
@@ -111,6 +111,33 @@ des Repositorys) und `BANKINGCRAFT_DEMO_PASSWORD` einen separaten verschlüsselt
 Vorhandene Dateien werden niemals überschrieben. Ohne diese Variablen werden nur die Bilder
 neu erzeugt; die Daten verwenden Datumswerte relativ zum Ausführungstag.
 
+## egui/eframe 0.36
+
+Die UI verwendet `egui_kittest` mit dem echten `eframe::App`-Einstiegspunkt.
+Interaktionstests betätigen Widgets und prüfen Enter im Überweisungsformular,
+Kontonavigation, Gruppenfilter und Drag-and-drop. Layouttests prüfen die vier
+Sprachen bei 1100 und 1360 Pixel Breite: Dauerauftragsfelder bleiben auf einer
+Höhe, lange Kontonamen verbreitern den Umsatzfilter nicht. TAN-Dialoge halten
+Abbruch und Freigabe auch bei langen Bankhinweisen und maximaler Flickergröße
+im kleinen Fenster erreichbar. Auswahl eines anderen Tresors löscht die
+Passwortentwürfe. Dispatcher-Tests prüfen UI-Thread-Grenzen, Ereignisreihenfolge,
+reentrante Callbacks und Timer-Abbruch.
+
+Die englischen README-Bilder werden mit dem Offscreen-Renderer aus denselben
+UI-Funktionen erzeugt. Screenshots lesen keine produktiven Einstellungen.
+Der native Build verwendet den OpenGL-Renderer; Textkantenglättung kann sich
+vom früheren Renderer unterscheiden.
+
+Nach der Umstellung am 13.11.2026 bestanden 213 reguläre Workspace-Tests und
+Clippy mit `-D warnings`. Die drei separaten Screenshot-Exporte liefen ebenfalls
+erfolgreich. Englische Demo-Seiten wurden in beiden Designs geprüft; lange
+deutsche/französische Namen und die Zahlungsformulare zusätzlich bei zwei
+Fensterbreiten. Der Release-Build wurde als signierte macOS-App installiert
+und gestartet: gespeicherte Fenstergröße, deutsche Sprache und Auswahl des
+bisherigen Tresors blieben erhalten. Der Entsperrbildschirm wurde mit dem
+nativen OpenGL-Renderer geprüft. Produktive Bankabrufe oder Zahlungen wurden
+bei der Migration nicht ausgelöst.
+
 ## Grenzen und Sichtprüfung
 
 Für eine reproduzierbare Offline-Sichtprüfung von Überweisungsformular und Auftragsliste:
@@ -122,7 +149,7 @@ cargo test -p bankingcraft --locked render_payment_pages -- --ignored
 Der Test umfasst auch die Umsatzansicht mit dem Zurück-Button zur Kontenliste sowie
 den VoP-Ergebnisdialog mit langen Bankhinweisen und schmalem Fenster.
 Der Test rendert ausschließlich synthetische Demo-Daten als PNG-Dateien nach
-`bankingcraft-payment-review` im temporären Systemverzeichnis. Geprüft werden Deutsch
+`bankingcraft-egui-payment-review` im temporären Systemverzeichnis. Geprüft werden Deutsch
 und Französisch bei 1100 und 1360 Pixel Breite. Die reguläre Testsuite überspringt
 diesen reinen Export; die separate Ausführung und Sichtprüfung am 13.11.2026 war erfolgreich.
 Checkbox, beide Überweisungsbuttons, kontobezogenes Adressbuch und alle Auftragsstatus
@@ -130,7 +157,9 @@ waren im dunklen Design lesbar und ohne abgeschnittene Beschriftungen.
 
 Die Tests prüfen fachliches Verhalten und Protokollabläufe, nicht jede Codezeile. Eine erfolgreiche Bankantwort im Simulator ersetzt weder Bankzertifizierung noch einen Hardwaretest. Reale Zahlungen werden für diese Tests nicht ausgelöst. Der Test mit einem echten Kartenleser bleibt auf Benutzerwunsch ausgesetzt.
 
-Zusätzlich wird die gebaute macOS-Anwendung geprüft: Tresor entsperren, Umsatzansicht mit vorgemerktem Umsatz, Kategoriechips, Kategorieauswahl und kompakte Umsatzzeilen. Status- und Kategoriechip müssen ihre Mitte auf derselben horizontalen Linie haben; Beschriftungen müssen innerhalb des Chips vertikal zentriert sein. Die tatsächliche Bankkommunikation der Postbank-Kreditkarte wurde separat lesend geprüft.
+Die folgenden nativen Sichtprüfungen wurden vor der egui-Umstellung durchgeführt; sie ersetzen keine Prüfung des neuen Renderers.
+
+Zusätzlich wurde die gebaute macOS-Anwendung geprüft: Tresor entsperren, Umsatzansicht mit vorgemerktem Umsatz, Kategoriechips, Kategorieauswahl und kompakte Umsatzzeilen. Status- und Kategoriechip müssen ihre Mitte auf derselben horizontalen Linie haben; Beschriftungen müssen innerhalb des Chips vertikal zentriert sein. Die tatsächliche Bankkommunikation der Postbank-Kreditkarte wurde separat lesend geprüft.
 
 Am 13.11.2026 wurde das Erscheinungsbild in der installierten macOS-App geprüft:
 ohne Einstellungsdatei das vorhandene dunkle Systemdesign übernommen, zwischen

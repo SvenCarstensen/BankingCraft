@@ -1,9 +1,9 @@
-//! Blocking bridge between the FinTS worker thread and the Slint dialogs.
+//! Blocking bridge between the FinTS worker thread and the egui dialogs.
 
 use crate::{AppState, AppWindow, ChoiceRow};
 use fints::tan::{parse_matrix_code, FlickerCode};
 use fints::{Interaction, TanAnswer, TanChallenge, TanKind, TanMethod};
-use slint::{ComponentHandle, ModelRc, SharedPixelBuffer, Rgba8Pixel, SharedString, VecModel};
+use crate::ui::{ModelRc, SharedPixelBuffer, Rgba8Pixel, SharedString, VecModel};
 use std::cell::{Cell, RefCell};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -17,7 +17,7 @@ pub enum Answer {
 
 #[derive(Clone)]
 pub struct Bridge {
-    pub weak: slint::Weak<AppWindow>,
+    pub weak: crate::ui::Weak<AppWindow>,
     /// Cancellation is control flow, independent of the translated message.
     pub cancelled: Arc<std::sync::atomic::AtomicBool>,
     pub pending: Arc<Mutex<Option<mpsc::Sender<Answer>>>>,
@@ -32,7 +32,7 @@ pub struct Bridge {
 }
 
 thread_local! {
-    static FLICKER_TIMER: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    static FLICKER_TIMER: RefCell<Option<crate::ui::Timer>> = const { RefCell::new(None) };
     static FLICKER_FRAMES: RefCell<Vec<[bool; 5]>> = const { RefCell::new(Vec::new()) };
     static FLICKER_POS: Cell<usize> = const { Cell::new(0) };
 }
@@ -41,8 +41,8 @@ thread_local! {
 pub fn restart_flicker(app: &AppWindow) {
     let hz = app.global::<AppState>().get_flicker_hz().clamp(2, 40) as u64;
     let weak = app.as_weak();
-    let timer = slint::Timer::default();
-    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(1000 / hz), move || {
+    let timer = crate::ui::Timer::default();
+    timer.start(crate::ui::TimerMode::Repeated, std::time::Duration::from_millis(1000 / hz), move || {
         let Some(app) = weak.upgrade() else { return };
         FLICKER_FRAMES.with(|f| {
             let f = f.borrow();
@@ -72,7 +72,7 @@ pub fn stop_flicker() {
 }
 
 impl Bridge {
-    pub fn new(weak: slint::Weak<AppWindow>) -> Self {
+    pub fn new(weak: crate::ui::Weak<AppWindow>) -> Self {
         Self {
             weak,
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -146,7 +146,7 @@ impl Bridge {
         let title = SharedString::from(title);
         let rows: Vec<ChoiceRow> = rows
             .into_iter()
-            .map(|(k, t, s)| ChoiceRow { key: k.into(), title: t.into(), subtitle: s.into() })
+            .map(|(k, t, s)| ChoiceRow { key: k, title: t, subtitle: s })
             .collect();
         match self.ask(move |app| {
             let st = app.global::<AppState>();
@@ -229,7 +229,7 @@ impl Interaction for Bridge {
             st.set_tan_value(SharedString::default());
             st.set_tan_usb_possible(usb_possible);
             if let Some(p) = pixels {
-                st.set_tan_image(slint::Image::from_rgba8(p));
+                st.set_tan_image(crate::ui::Image::from_rgba8(p));
             }
             if !frames.is_empty() {
                 FLICKER_FRAMES.with(|f| *f.borrow_mut() = frames);

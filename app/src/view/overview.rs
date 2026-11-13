@@ -68,7 +68,7 @@ pub(super) fn refresh(app: &AppWindow, v: &Vault, filters: &mut Filters) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slint::Model;
+    use crate::ui::Model;
 
     fn fixture() -> (Vault, Vec<u32>, u32, u32) {
         let mut v = Vault::default();
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn each_tile_filters_independently_without_changing_global_totals_or_vault_data() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let (v, ids, _, _) = fixture();
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn selection_survives_rename_reorder_translation_and_assignment_but_resets_with_vault() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let (mut v, ids, personal, business) = fixture();
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn filtering_precedes_limits_and_empty_groups_do_not_fall_back_to_all_accounts() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let (mut v, ids, _, _) = fixture();

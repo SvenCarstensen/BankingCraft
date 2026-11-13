@@ -3,8 +3,8 @@ name = "bankingcraft"
 description = "BankingCraft – Online-Banking für Windows, Linux und macOS (FinTS/HBCI, chipTAN USB, HBCI-Chipkarte)"
 version.workspace = true
 edition.workspace = true
+rust-version = "1.95"
 license.workspace = true
-build = "build.rs"
 
 [features]
 default = []
@@ -16,7 +16,11 @@ sys-locale = "0.3"
 i18n = { package = "bankingcraft-i18n", path = "../crates/i18n" }
 fints = { path = "../crates/fints" }
 cardreader = { path = "../crates/cardreader" }
-slint = { version = "~1.18", features = ["unstable-winit-030"] }
+egui = "=0.36.0"
+eframe = { version = "=0.36.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland", "accesskit"] }
+svgtypes = "0.16"
+fontdb = "0.23"
+winit = "0.30"
 chrono.workspace = true
 serde.workspace = true
 rust_decimal.workspace = true
@@ -33,14 +37,10 @@ arboard = { version = "3.7", default-features = false }
 sha2 = "0.10"
 rfd = "0.18"
 
-[build-dependencies]
-serde_json = "1"
-slint-build = "1.18"
-
 [package.metadata.bundle]
 name = "BankingCraft"
 identifier = "de.appcreation.bankingcraft"
 
 [dev-dependencies]
-i-slint-backend-testing = "=1.18.1"
+egui_kittest = { version = "=0.36.0", features = ["wgpu", "snapshot", "eframe"] }
 i18n = { package = "bankingcraft-i18n", path = "../crates/i18n", features = ["test-support"] }

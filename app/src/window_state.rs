@@ -1,16 +1,11 @@
 //! Window preferences are independent of the encrypted vault (also work while locked).
 use serde::{Deserialize, Serialize};
-use slint::{
-    winit_030::{winit, EventResult, WinitWindowAccessor},
-    ComponentHandle,
-};
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     io::Read,
     path::{Path, PathBuf},
     rc::Rc,
 };
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Geometry {
     x: i32,
@@ -87,184 +82,79 @@ fn load(path: &Path) -> Option<Geometry> {
 pub(crate) struct WindowState {
     path: PathBuf,
     geometry: Rc<RefCell<Option<Geometry>>>,
-    ready: Rc<Cell<bool>>,
-    capture_generation: Rc<Cell<u64>>,
-    app: Rc<RefCell<Option<slint::Weak<crate::AppWindow>>>>,
 }
-
 impl WindowState {
     pub(crate) fn new() -> Self {
         let path = crate::store::default_path().with_file_name("window-state.json");
-        let saved = load(&path);
-        Self {
-            path,
-            geometry: Rc::new(RefCell::new(saved)),
-            ready: Rc::new(Cell::new(false)),
-            capture_generation: Rc::new(Cell::new(0)),
-            app: Rc::new(RefCell::new(None)),
+        let geometry = Rc::new(RefCell::new(load(&path)));
+        Self { path, geometry }
+    }
+    pub(crate) fn restore(&self, window: &winit::window::Window) {
+        let screens: Vec<_> = window
+            .available_monitors()
+            .map(|m| {
+                let p = m.position();
+                let s = m.size();
+                Screen {
+                    x: p.x,
+                    y: p.y,
+                    width: s.width,
+                    height: s.height,
+                    scale: m.scale_factor(),
+                }
+            })
+            .collect();
+        let Some(g) = self.geometry.borrow().clone().map(|g| g.fit(&screens)) else {
+            return;
+        };
+        let _ = window.request_inner_size(winit::dpi::LogicalSize::new(g.width, g.height));
+        window.set_outer_position(winit::dpi::PhysicalPosition::new(g.x, g.y));
+        window.set_maximized(g.maximized);
+        if g.fullscreen {
+            window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
         }
     }
-
+    pub(crate) fn capture(&self, window: &winit::window::Window) {
+        if window.is_minimized() == Some(true) {
+            return;
+        }
+        let maximized = window.is_maximized();
+        let fullscreen = window.fullscreen().is_some();
+        let mut state = self.geometry.borrow_mut();
+        if maximized || fullscreen {
+            if let Some(g) = state.as_mut() {
+                g.maximized = maximized;
+                g.fullscreen = fullscreen;
+            }
+        } else if let Ok(p) = window.outer_position() {
+            let size = window.inner_size().to_logical::<f64>(window.scale_factor());
+            let g = Geometry {
+                x: p.x,
+                y: p.y,
+                width: size.width,
+                height: size.height,
+                maximized,
+                fullscreen,
+            };
+            if g.valid() {
+                *state = Some(g);
+            }
+        }
+    }
     pub(crate) fn save(&self) {
-        let geometry = self.geometry.borrow();
-        let Some(geometry) = geometry.as_ref().filter(|g| g.valid()) else {
+        let state = self.geometry.borrow();
+        let Some(g) = state.as_ref().filter(|g| g.valid()) else {
             return;
         };
         let result = (|| {
             if let Some(parent) = self.path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            crate::private_file::replace(&self.path, &serde_json::to_vec(geometry)?)
+            crate::private_file::replace(&self.path, &serde_json::to_vec(g)?)
         })();
         if result.is_err() {
             log::warn!("Fenstereinstellungen konnten nicht gespeichert werden");
         }
-    }
-
-    fn capture(&self, window: &slint::Window) {
-        if !self.ready.get() {
-            return;
-        }
-        window.with_winit_window(|native| {
-            if native.is_minimized() == Some(true) {
-                return;
-            }
-            let maximized = native.is_maximized();
-            let fullscreen = native.fullscreen().is_some();
-            let mut state = self.geometry.borrow_mut();
-            // Preserve normal geometry while zoomed/fullscreen; never persist minimized size.
-            if maximized || fullscreen {
-                if let Some(g) = state.as_mut() {
-                    g.maximized = maximized;
-                    g.fullscreen = fullscreen;
-                }
-            } else if let Ok(position) = native.outer_position() {
-                let size = native.inner_size().to_logical::<f64>(native.scale_factor());
-                let geometry = Geometry {
-                    x: position.x,
-                    y: position.y,
-                    width: size.width,
-                    height: size.height,
-                    maximized,
-                    fullscreen,
-                };
-                if geometry.valid() {
-                    *state = Some(geometry);
-                }
-            }
-        });
-    }
-
-    fn queue_capture(&self) {
-        // macOS reports intermediate sizes during the zoom animation before
-        // is_maximized becomes true. Do not replace normal geometry with them.
-        let generation = self.capture_generation.get().wrapping_add(1);
-        self.capture_generation.set(generation);
-        let tracked = self.clone();
-        slint::Timer::single_shot(std::time::Duration::from_millis(300), move || {
-            if tracked.capture_generation.get() == generation {
-                tracked.capture_current();
-            }
-        });
-    }
-
-    fn capture_current(&self) {
-        if let Some(app) = self.app.borrow().as_ref().and_then(slint::Weak::upgrade) {
-            self.capture(app.window());
-        }
-    }
-}
-
-// macOS Quit (Cmd-Q) terminates NSApplication without returning from app.run().
-// Winit still dispatches LoopExiting, so save here as well as on window close.
-impl slint::winit_030::CustomApplicationHandler for WindowState {
-    fn exiting(&mut self, _: &winit::event_loop::ActiveEventLoop) -> EventResult {
-        self.capture_current();
-        self.save();
-        EventResult::Propagate
-    }
-}
-
-impl WindowState {
-    pub(crate) fn install(&self, app: &crate::AppWindow) {
-        *self.app.borrow_mut() = Some(app.as_weak());
-        let saved = self.geometry.borrow().clone();
-        if let Some(g) = &saved {
-            app.window()
-                .set_size(slint::LogicalSize::new(g.width as f32, g.height as f32));
-            app.window()
-                .set_position(slint::PhysicalPosition::new(g.x, g.y));
-        }
-        let tracked = self.clone();
-        app.window().on_winit_window_event(move |window, event| {
-            if matches!(
-                event,
-                winit::event::WindowEvent::Moved(_)
-                    | winit::event::WindowEvent::Resized(_)
-                    | winit::event::WindowEvent::Focused(_)
-            ) {
-                tracked.queue_capture();
-            } else if matches!(
-                event,
-                winit::event::WindowEvent::CloseRequested | winit::event::WindowEvent::Destroyed
-            ) {
-                tracked.capture(window);
-                tracked.save();
-            } else if matches!(event, winit::event::WindowEvent::RedrawRequested)
-                && tracked.geometry.borrow().is_none()
-            {
-                tracked.capture(window);
-            }
-            EventResult::Propagate
-        });
-        let tracked = self.clone();
-        let weak = app.as_weak();
-        app.window().on_close_requested(move || {
-            if let Some(app) = weak.upgrade() {
-                tracked.capture(app.window());
-            }
-            tracked.save();
-            slint::CloseRequestResponse::HideWindow
-        });
-        // The native monitor list becomes available once the event loop has started.
-        let tracked = self.clone();
-        let weak = app.as_weak();
-        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-            let Some(app) = weak.upgrade() else { return };
-            if let Some(saved) = saved {
-                let screens = app
-                    .window()
-                    .with_winit_window(|native| {
-                        // Current screen first is the fallback if the old display no longer exists.
-                        let monitors = native
-                            .current_monitor()
-                            .into_iter()
-                            .chain(native.available_monitors());
-                        monitors
-                            .map(|m| Screen {
-                                x: m.position().x,
-                                y: m.position().y,
-                                width: m.size().width,
-                                height: m.size().height,
-                                scale: m.scale_factor(),
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                let saved = saved.fit(&screens);
-                app.window().set_size(slint::LogicalSize::new(
-                    saved.width as f32,
-                    saved.height as f32,
-                ));
-                app.window()
-                    .set_position(slint::PhysicalPosition::new(saved.x, saved.y));
-                app.window().set_maximized(saved.maximized);
-                app.window().set_fullscreen(saved.fullscreen);
-                *tracked.geometry.borrow_mut() = Some(saved);
-            }
-            tracked.ready.set(true);
-            tracked.queue_capture();
-        });
     }
 }
 
@@ -290,9 +180,6 @@ mod tests {
         let state = WindowState {
             path: path.clone(),
             geometry: Rc::new(RefCell::new(Some(normal()))),
-            ready: Rc::new(Cell::new(true)),
-            capture_generation: Rc::new(Cell::new(0)),
-            app: Rc::new(RefCell::new(None)),
         };
         state.save();
         assert_eq!(load(&path), Some(normal()));

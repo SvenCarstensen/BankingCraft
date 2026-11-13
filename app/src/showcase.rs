@@ -1,8 +1,8 @@
 //! Explicit export of fictional demo data and English screenshots for the README.
 //! Run only with: cargo test -p bankingcraft export_english_showcase -- --ignored
 use crate::{AppState, AppWindow, store::{Vault, VaultFile}, view};
-use slint::{ComponentHandle, platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType}};
-use std::{cell::Cell, path::PathBuf, rc::Rc, time::Duration};
+
+use std::path::PathBuf;
 
 fn english(text: &str) -> String {
     let translations = [
@@ -74,19 +74,10 @@ fn export_english_showcase() {
         let (_, restored) = VaultFile::open(path, &password).unwrap();
         assert_eq!(restored.transactions.len(), vault.transactions.len());
     }
-    struct Platform { window: Rc<MinimalSoftwareWindow>, time: Rc<Cell<Duration>> }
-    impl slint::platform::Platform for Platform {
-        fn create_window_adapter(&self) -> Result<Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> { Ok(self.window.clone()) }
-        fn duration_since_start(&self) -> Duration { self.time.get() }
-    }
-    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    let time = Rc::new(Cell::new(Duration::ZERO));
-    slint::platform::set_platform(Box::new(Platform { window: window.clone(), time: time.clone() })).unwrap();
     let app = AppWindow::new().unwrap();
-    slint::select_bundled_translation("en").unwrap();
     i18n::set_language(i18n::Language::English);
     let st = app.global::<AppState>();
-    app.global::<crate::Palette>().set_color_scheme(slint::language::ColorScheme::Dark);
+    st.set_theme_mode(2);
     st.set_unlocked(true);
     st.set_active_vault_name("Demo".into());
     st.set_language_mode(2);
@@ -98,28 +89,31 @@ fn export_english_showcase() {
     st.set_analysis_offset(-1); // a complete month for meaningful reports
     view::refresh_analysis(&app, &vault);
     st.set_tf_name("Harbor Housing".into());
-    st.set_tf_iban(crate::demo::iban("87654321", "100200").into());
+    st.set_tf_iban(crate::demo::iban("87654321", "100200"));
     st.set_tf_bic("DEMODEXXXXX".into());
     st.set_tf_amount("125,00".into());
     st.set_tf_purpose("Apartment maintenance".into());
+    st.set_so_first(chrono::Local::now().format("%d.%m.%Y").to_string());
     let selected = vault.transactions.iter().position(|s| s.tx.pending).unwrap();
     view::show_detail(&app, &vault, selected);
     let output = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/screenshots");
     std::fs::create_dir_all(&output).unwrap();
-    app.show().unwrap();
+
     for (page, name) in [(0, "overview"), (1, "accounts"), (2, "transactions"), (3, "transfer"), (5, "reports")] {
-        let (width, height) = (1440, if page == 0 { 1160 } else { 1000 });
-        window.set_size(slint::PhysicalSize::new(width, height));
+        let (width, height) = (1440, if page == 0 { 1360 } else { 1000 });
         st.set_page(page);
-        let mut buffer = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(width, height);
-        // Allow page/selection animations to settle before the exported frame.
-        for _ in 0..3 {
-            time.set(time.get() + Duration::from_millis(250));
-            slint::platform::update_timers_and_animations();
-            app.window().request_redraw();
-            assert!(window.draw_if_needed(|renderer| { renderer.render(buffer.make_mut_slice(), width as usize); }));
-        }
-        image::save_buffer(output.join(format!("{name}.png")), buffer.as_bytes(), width, height, image::ColorType::Rgb8).unwrap();
+        crate::ui::testing::snapshot(&app,width,height,output.join(format!("{name}.png")));
     }
-    app.hide().unwrap();
+
+    st.set_page(4);
+    crate::ui::testing::snapshot(&app, 1440, 1000, std::env::temp_dir().join("bankingcraft-egui-standing-orders-en.png"));
+
+    let light = std::env::temp_dir().join("bankingcraft-egui-light-review");
+    std::fs::create_dir_all(&light).unwrap();
+    st.set_theme_mode(1);
+    for (page, name) in [(0, "overview"), (2, "transactions"), (3, "transfer"), (4, "standing"), (5, "reports"), (6, "accesses"), (7, "reader"), (8, "settings"), (9, "orders")] {
+        st.set_page(page);
+        crate::ui::testing::snapshot(&app, 1360, if page == 0 { 1360 } else { 860 }, light.join(format!("{name}.png")));
+    }
+
 }

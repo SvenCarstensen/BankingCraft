@@ -1,6 +1,6 @@
 # BankingCraft – Desktop banking for Windows, Linux and macOS
 
-BankingCraft is a Rust desktop banking application with a Slint interface: a navigation sidebar,
+BankingCraft is a Rust desktop banking application using **egui 0.36** and **eframe 0.36**: a navigation sidebar,
 an account dashboard, transaction lists with daily balances, payment forms and financial reports.
 
 The application was previously called Kontor. Existing vaults are still found in their original
@@ -52,8 +52,8 @@ BankingCraft is distributed without any warranty, including the implied warranti
 merchantability or fitness for a particular purpose, to the extent permitted by applicable law.
 See [LICENSE](LICENSE) for the complete terms.
 
-Third-party dependencies and bundled data retain their respective licenses. Slint is used under
-its GPL v3 option; the bank directory's source and license are described under
+Third-party dependencies and bundled data retain their respective licenses. egui and eframe are
+dual-licensed under MIT or Apache-2.0; the bank directory's source and license are described under
 [Bank directory](#bank-directory). This license change does not revoke rights already granted
 for earlier copies under their previous licenses.
 
@@ -99,9 +99,9 @@ Drivers: REINER SCT drivers on macOS and Windows; `pcscd` and `ifd-cyberjack` on
 
 ## Build
 
-Requirements: stable Rust (tested with 1.99.1), plus:
+Requirements: Rust 1.95 or newer (tested with 1.99.1), a working OpenGL driver, plus:
 
-- **Linux:** `libpcsclite-dev`, `pcscd`, `libfontconfig1-dev`, `libxkbcommon-dev`
+- **Linux:** `libpcsclite-dev`, `pcscd`, `libxkbcommon-dev`
 - **macOS:** Xcode Command Line Tools; PC/SC uses `PCSC.framework`
 - **Windows:** no additional PC/SC package; WinSCard is part of Windows
 
@@ -126,9 +126,6 @@ in source, examples, documentation or commits. The ID is neither compiled into t
 saved to a vault. A configured vault ID always takes precedence. Normal builds ignore this file;
 copying the test app to another machine does not copy its local configuration.
 The former `BANKINGCRAFT_DEFAULT_PRODUCT_ID` build variable is no longer used.
-
-For environments without GPU/OpenGL support, use
-`SLINT_BACKEND=winit-software ./target/release/bankingcraft`.
 
 Set `RUST_LOG=debug` for protocol diagnostics. Message contents and PINs/TANs are not logged.
 Error reports contain technical segment summaries, without free-form bank messages.
@@ -238,13 +235,13 @@ crates/fints         FinTS 3.0 syntax, messages, PIN/TAN/DDV/RDH security, BPD/U
 crates/cardreader    PC/SC, DDV/RDH smart cards, chipTAN USB, PIN pads and diagnostics
 crates/i18n          Shared translation catalogue, locale resolution and runtime messages
 crates/i18n-macros   Compile-time checked translated format strings
-app                  Slint UI, encrypted vault, categorization and background jobs
+app                  egui/eframe UI, encrypted vault, categorization and background jobs
 ```
 
 `crates/i18n/catalogue.json` is the translation source of truth. Each German source string maps
-to English, French and Spanish translations. Slint translations are generated and bundled at build
-time; Rust format strings are checked by the compiler in every language. Add new user-facing text
-to this catalogue and use `@tr`, `i18n::tr` or `i18n::tr_format!`. Do not translate protocol values,
+to English, French and Spanish translations. Translations are compiled into the application;
+Rust format strings are checked by the compiler in every language. Add new user-facing text
+to this catalogue and use `i18n::tr` or `i18n::tr_format!`. Do not translate protocol values,
 persisted identifiers or user/bank-supplied text. Keep this README and commit messages in English.
 
 ## Bank directory

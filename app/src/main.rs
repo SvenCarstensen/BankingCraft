@@ -1,7 +1,8 @@
 // Hide the console window on Windows release builds.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-slint::include_modules!();
+mod ui;
+use ui::{AppWindow, state::*};
 
 mod accounts_ui;
 mod vaults;
@@ -33,7 +34,7 @@ use bridge::{Answer, Bridge};
 use chrono::Local;
 use fints::{Interval, SepaTransfer, StandingOrder};
 use jobs::Ctx;
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use crate::ui::{Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use store::{AccessKind, BankAccess, Rule, Vault, VaultFile};
@@ -64,7 +65,7 @@ pub fn toast(app: &AppWindow, text: &str, error: bool) {
     let weak = app.as_weak();
     let shown = text.to_string();
     let secs = if error { 12 } else { 6 } + text.len() as u64 / 60;
-    slint::Timer::single_shot(std::time::Duration::from_secs(secs), move || {
+    crate::ui::Timer::single_shot(std::time::Duration::from_secs(secs), move || {
         if let Some(app) = weak.upgrade() {
             let st = app.global::<AppState>();
             if st.get_toast().text == shown.as_str() {
@@ -127,9 +128,9 @@ fn selected_reader(app: &AppWindow, idx: i32) -> Option<String> {
 fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
     let import_result = if file.path() == store::default_path() { bankx_import::pending(&mut vault, &file) } else { Ok(None) };
     let st = app.global::<AppState>();
-    st.set_data_path(file.path().display().to_string().into());
-    st.set_product_id(vault.product_id.clone().into());
-    st.set_product_version(if vault.product_version.is_empty() { env!("CARGO_PKG_VERSION").into() } else { vault.product_version.clone().into() });
+    st.set_data_path(file.path().display().to_string());
+    st.set_product_id(vault.product_id.clone());
+    st.set_product_version(if vault.product_version.is_empty() { env!("CARGO_PKG_VERSION").into() } else { vault.product_version.clone() });
     let c = ctx();
     *c.vault.lock().unwrap() = vault;
     *c.file.lock().unwrap() = Some(file);
@@ -157,18 +158,14 @@ fn edit_vault(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<(), Strin
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    let window_state = window_state::WindowState::new();
-    slint::BackendSelector::new().backend_name("winit".into())
-        .with_winit_custom_application_handler(window_state.clone()).select().expect("window backend");
     let app = AppWindow::new().expect("UI");
-    window_state.install(&app);
     appearance::install(&app);
     localization::install(&app);
     accounts_ui::install(&app);
     transactions_ui::install(&app);
     let st = app.global::<AppState>();
     st.set_tx_period(1);
-    st.set_so_first(Local::now().date_naive().format("%d.%m.%Y").to_string().into());
+    st.set_so_first(Local::now().date_naive().format("%d.%m.%Y").to_string());
 
     let bridge = Bridge::new(app.as_weak());
     CTX.with(|c| {
@@ -499,7 +496,7 @@ fn main() {
                 .map(|(i, b)| BankRow {
                     index: i as i32,
                     name: b.name.into(),
-                    detail: i18n::tr_format!("BLZ {} · {} · {}", b.blz, b.city, b.bic).into(),
+                    detail: i18n::tr_format!("BLZ {} · {} · {}", b.blz, b.city, b.bic),
                     endpoint: if chip { b.host } else { b.url.trim_start_matches("https://") }.into(),
                 })
                 .collect();
@@ -523,7 +520,7 @@ fn main() {
             }
             st.set_bank_query(b.name.into());
             let hint = banks::login_hint(b);
-            st.set_bank_picked(i18n::tr_format!("✓ {} · BLZ {} übernommen{}", b.name, b.blz, hint.map(|h| format!(" – {h}")).unwrap_or_default()).into());
+            st.set_bank_picked(i18n::tr_format!("✓ {} · BLZ {} übernommen{}", b.name, b.blz, hint.map(|h| format!(" – {h}")).unwrap_or_default()));
             st.set_bank_results(ModelRc::new(VecModel::from(Vec::<BankRow>::new())));
         });
     }
@@ -548,19 +545,19 @@ fn main() {
                         st.set_busy(false);
                         match r {
                             Ok((c, number)) => {
-                                st.set_af_blz(c.blz.clone().into());
-                                st.set_af_user(c.user_id.clone().into());
-                                st.set_af_customer(if c.customer_id == c.user_id { String::new() } else { c.customer_id.clone() }.into());
-                                st.set_af_record(c.record.to_string().into());
+                                st.set_af_blz(c.blz.clone());
+                                st.set_af_user(c.user_id.clone());
+                                st.set_af_customer(if c.customer_id == c.user_id { String::new() } else { c.customer_id.clone() });
+                                st.set_af_record(c.record.to_string());
                                 let host = if c.host.trim().is_empty() {
                                     banks::by_blz(&c.blz).map(|x| x.host.to_string()).unwrap_or_default()
                                 } else {
                                     c.host.clone()
                                 };
-                                st.set_af_url(host.into());
+                                st.set_af_url(host);
                                 if st.get_af_name().is_empty() {
                                     let bank = if c.bank_name.is_empty() { i18n::tr_format!("BLZ {}", c.blz) } else { c.bank_name.clone() };
-                                    st.set_af_name(i18n::tr_format!("{bank} (RDH-Chipkarte)").into());
+                                    st.set_af_name(i18n::tr_format!("{bank} (RDH-Chipkarte)"));
                                 }
                                 toast(
                                     &app,
@@ -581,12 +578,12 @@ fn main() {
                     st.set_busy(false);
                     match r {
                         Ok(b) => {
-                            st.set_af_blz(b.blz.clone().into());
-                            st.set_af_user(b.user_id.clone().into());
+                            st.set_af_blz(b.blz.clone());
+                            st.set_af_user(b.user_id.clone());
                             let host = if b.host.trim().is_empty() { banks::by_blz(&b.blz).map(|x| x.host.to_string()).unwrap_or_default() } else { b.host.clone() };
-                            st.set_af_url(host.into());
+                            st.set_af_url(host);
                             if st.get_af_name().is_empty() {
-                                st.set_af_name(i18n::tr_format!("{} (Chipkarte)", b.short_name).into());
+                                st.set_af_name(i18n::tr_format!("{} (Chipkarte)", b.short_name));
                             }
                             toast(&app, &i18n::tr_format!("Karte gelesen: {} · BLZ {}", b.short_name, b.blz), false);
                         }
@@ -710,7 +707,7 @@ fn main() {
                 let _ = weak.upgrade_in_event_loop(move |app| {
                     let st = app.global::<AppState>();
                     st.set_busy(false);
-                    st.set_reader_report(ModelRc::new(VecModel::from(report.into_iter().map(SharedString::from).collect::<Vec<_>>())));
+                    st.set_reader_report(ModelRc::new(VecModel::from(report.into_iter().collect::<Vec<_>>())));
                     refresh_readers(&app);
                 });
             });
@@ -811,7 +808,7 @@ fn main() {
                         if cleared { i18n::tr("PIN eingefügt – die Zwischenablage wurde aus Sicherheitsgründen geleert.") } else { i18n::tr("PIN eingefügt.") }.into(),
                     );
                 }
-                Err(e) => st.set_paste_note(e.into()),
+                Err(e) => st.set_paste_note(e),
             }
         });
     }
@@ -821,7 +818,7 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             match clipboard_text() {
-                Ok(text) => st.set_tan_value(text.into()),
+                Ok(text) => st.set_tan_value(text),
                 Err(e) => toast(&app, &e, true),
             }
         });
@@ -945,8 +942,7 @@ fn main() {
         st.on_toast_close(move || weak.unwrap().global::<AppState>().set_toast(Toast::default()));
     }
 
-    app.run().expect("event loop");
-    window_state.save();
+    ui::run(app).expect("event loop");
 }
 
 /// Text from the system clipboard, trimmed (PINs/TANs are often copied with a trailing newline).

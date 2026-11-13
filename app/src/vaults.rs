@@ -1,7 +1,7 @@
 //! Vault selection contains file paths only. Passwords and bank data stay in the vault.
 use crate::{AppState, AppWindow, ctx, store::{Vault, VaultFile}};
 use serde::{Deserialize, Serialize};
-use slint::{ComponentHandle, ModelRc, VecModel, winit_030::WinitWindowAccessor};
+use crate::ui::{ModelRc, VecModel};
 use std::{cell::RefCell, io::Read, path::{Path, PathBuf}, rc::Rc, sync::atomic::Ordering};
 
 #[derive(Default, Serialize, Deserialize)]
@@ -60,12 +60,12 @@ fn show_selection(app: &AppWindow, selection: &Selection) {
     let st = app.global::<AppState>();
     let mut names = vec![i18n::tr("Tresor auswählen …").into()];
     names.extend(selection.recent.paths.iter().map(|p| {
-        format!("{} · {}", title(p), p.parent().unwrap_or(p).display()).into()
+        format!("{} · {}", title(p), p.parent().unwrap_or(p).display())
     }));
     st.set_recent_vaults(ModelRc::new(VecModel::from(names)));
     st.set_selected_vault(selection.recent.paths.iter().position(|p| p == &selection.path).map(|i| i as i32 + 1).unwrap_or(0));
-    st.set_selected_vault_name(title(&selection.path).into());
-    st.set_selected_vault_path(selection.path.display().to_string().into());
+    st.set_selected_vault_name(title(&selection.path));
+    st.set_selected_vault_path(selection.path.display().to_string());
     st.set_first_run(selection.creating);
     st.set_unlock_error(Default::default());
     // Clear both password inputs whenever the selected file changes.
@@ -104,7 +104,7 @@ fn dialog(app: &AppWindow, selection: &Selection) -> rfd::FileDialog {
         .add_filter("BankingCraft", &["kontor"])
         .add_filter(i18n::tr("Alle Dateien"), &["*"]);
     if let Some(parent) = selection.path.parent() { dialog = dialog.set_directory(parent); }
-    app.window().with_winit_window(|window| { dialog = dialog.clone().set_parent(window); });
+    app.with_native(|window| { dialog=dialog.clone().set_parent(window); });
     dialog
 }
 
@@ -119,7 +119,7 @@ fn activate(app: &AppWindow, manager: &Manager, vault: Vault, file: VaultFile) {
     let path = file.path().to_path_buf();
     crate::after_unlock(app, vault, file);
     let st = app.global::<AppState>();
-    st.set_active_vault_name(title(&path).into());
+    st.set_active_vault_name(title(&path));
     st.set_show_vault_manager(false);
     let mut selection = manager.borrow_mut();
     selection.path = path.clone();
@@ -172,7 +172,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
         if let Some(path) = path {
             if let Err(e) = select_path(&app, &selection, path, false) {
                 show_selection(&app, &selection.borrow());
-                app.global::<AppState>().set_unlock_error(e.into());
+                app.global::<AppState>().set_unlock_error(e);
             }
         } else { show_selection(&app, &selection.borrow()); }
     });
@@ -182,7 +182,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
         if !can_switch(&app) { return; }
         let picker = dialog(&app, &selection.borrow()).set_title(i18n::tr("Tresor öffnen"));
         if let Some(path) = picker.pick_file() {
-            if let Err(e) = select_path(&app, &selection, path, false) { app.global::<AppState>().set_unlock_error(e.into()); }
+            if let Err(e) = select_path(&app, &selection, path, false) { app.global::<AppState>().set_unlock_error(e); }
         }
     });
     let weak = app.as_weak(); let selection = manager.clone();
@@ -193,7 +193,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
             .set_file_name(format!("{}.kontor", i18n::tr("Neuer Tresor")));
         if let Some(mut path) = picker.save_file() {
             if path.extension().is_none() { path.set_extension("kontor"); }
-            if let Err(e) = select_path(&app, &selection, path, true) { app.global::<AppState>().set_unlock_error(e.into()); }
+            if let Err(e) = select_path(&app, &selection, path, true) { app.global::<AppState>().set_unlock_error(e); }
         }
     });
     let weak = app.as_weak(); let selection = manager.clone();
@@ -204,7 +204,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
             .and_then(|(file, vault)| { save_current(&app)?; Ok((file, vault)) });
         match result {
             Ok((file, vault)) => activate(&app, &selection, vault, file),
-            Err(e) => app.global::<AppState>().set_unlock_error(e.into()),
+            Err(e) => app.global::<AppState>().set_unlock_error(e),
         }
     });
     let weak = app.as_weak(); let selection = manager.clone();
@@ -222,7 +222,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
         let result = save_current(&app).and_then(|_| VaultFile::create_new(selection.borrow().path.clone(), &password, &vault));
         match result {
             Ok(file) => activate(&app, &selection, vault, file),
-            Err(e) => st.set_unlock_error(e.into()),
+            Err(e) => st.set_unlock_error(e),
         }
     });
     manager
@@ -248,7 +248,7 @@ fn reset_vault_view(app: &AppWindow) {
     st.set_page(0);
     st.set_tx_period(1);
     st.set_so_day("1".into());
-    st.set_so_first(chrono::Local::now().date_naive().format("%d.%m.%Y").to_string().into());
+    st.set_so_first(chrono::Local::now().date_naive().format("%d.%m.%Y").to_string());
     st.set_busy_text(Default::default());
     st.set_toast(Default::default());
     st.set_last_sync(Default::default());
@@ -357,7 +357,7 @@ fn reset_vault_view(app: &AppWindow) {
 mod tests {
     use super::*;
     use crate::{bridge::Bridge, jobs::Ctx};
-    use slint::Model;
+    use crate::ui::Model;
     use std::sync::{Arc, Mutex, atomic::AtomicBool};
 
     struct Temp(PathBuf);
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn create_open_cancel_and_switch_keep_vaults_and_drafts_separate() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let dir = Temp::new(); let first = dir.0.join("private.kontor"); let second = dir.0.join("business.kontor");
         let settings = dir.0.join("vaults.json");
         let mut original = Vault::default(); crate::demo::add_demo(&mut original);

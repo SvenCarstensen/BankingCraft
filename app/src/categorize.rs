@@ -86,9 +86,9 @@ const BUILTIN: &[(&str, &str)] = &[
     ("übertrag", "Umbuchung"),
 ];
 
-pub fn color_of(name: &str) -> slint::Color {
+pub fn color_of(name: &str) -> crate::ui::Color {
     let c = CATEGORIES.iter().find(|c| c.name == name).map(|c| c.color).unwrap_or((0x9a, 0xa5, 0xb1));
-    slint::Color::from_rgb_u8(c.0, c.1, c.2)
+    crate::ui::Color::from_rgb(c.0, c.1, c.2)
 }
 
 pub fn categorize(t: &StoredTx, rules: &[Rule]) -> String {

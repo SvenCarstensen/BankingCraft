@@ -9,7 +9,7 @@ use crate::payments::{OrderStatus, PaymentOrder};
 use crate::AppState;
 use chrono::{Duration, Local};
 use fints::{Account, Client, Error, Medium, SepaTransfer, StandingOrder, TanChallenge, TanMethod};
-use slint::{ComponentHandle, SharedString};
+use crate::ui::{SharedString};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -706,7 +706,7 @@ mod business_tests {
     use super::*;
     fn context() -> Ctx {
         Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)),
-            bridge: Bridge::new(slint::Weak::default()), running: Arc::new(AtomicBool::new(false)) }
+            bridge: Bridge::new(crate::ui::Weak::default()), running: Arc::new(AtomicBool::new(false)) }
     }
     #[test]
     fn cancellation_control_flow_does_not_depend_on_translated_or_bank_supplied_text() {
@@ -794,7 +794,7 @@ mod outgoing_order_tests {
             let account = vault.accounts[0].id; let access = vault.accounts[0].access_id;
             let ctx = Ctx { vault: Arc::new(Mutex::new(vault)),
                 file: Arc::new(Mutex::new(Some(VaultFile::create(path.clone(), "test").unwrap()))),
-                bridge: Bridge::new(slint::Weak::default()), running: Arc::new(AtomicBool::new(false)) };
+                bridge: Bridge::new(crate::ui::Weak::default()), running: Arc::new(AtomicBool::new(false)) };
             ctx.save().unwrap();
             Self { ctx, dir, path, account, access }
         }

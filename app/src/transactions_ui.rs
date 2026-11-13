@@ -1,6 +1,6 @@
 //! Transaction-page actions use the account selected at the time of the click.
 use crate::{AppState, AppWindow, VIEW};
-use slint::ComponentHandle;
+
 
 pub(crate) fn install(app: &AppWindow) {
     install_with(app, |account| match account {
@@ -31,11 +31,12 @@ fn install_with(app: &AppWindow, refresh: impl Fn(Option<u32>) + 'static) {
 mod tests {
     use super::*;
     use std::{cell::RefCell, rc::Rc};
-    use slint::{LogicalSize, ModelRc, VecModel};
+    use crate::ui::{ModelRc, VecModel};
+    use egui_kittest::kittest::Queryable;
 
     #[test]
     fn refresh_uses_the_current_account_and_back_returns_to_the_account_list() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         st.set_unlocked(true);
@@ -48,30 +49,26 @@ mod tests {
         st.on_refresh_all(|| panic!("the transactions button must use its own scoped callback"));
         let weak = app.as_weak();
         st.on_navigate(move |page| weak.unwrap().global::<AppState>().set_page(page));
-        app.window().set_size(LogicalSize::new(1100., 860.));
-        app.show().unwrap();
-        let click = |name: &str| {
-            i_slint_backend_testing::ElementHandle::find_by_element_id(&app, name).next().unwrap()
-                .mock_single_click(slint::platform::PointerEventButton::Left);
-        };
+        let mut harness=crate::ui::testing::harness(&app,1100.,860.);
         st.set_tx_account(1);
-        click("TransactionsPage::refresh-transactions-button");
+        harness.get_by_label(i18n::tr("Aktualisieren")).click(); harness.run_steps(3);
         st.set_tx_account(2);
-        click("TransactionsPage::refresh-transactions-button");
+        harness.get_by_label(i18n::tr("Aktualisieren")).click(); harness.run_steps(3);
         assert_eq!(*calls.borrow(), [Some(42), Some(7)]);
-        click("TransactionsPage::back-to-accounts");
+        harness.get_by_label(i18n::tr("Zurück zu den Konten")).click(); harness.run_steps(3);
         assert_eq!(st.get_page(), 1);
         assert_eq!(st.get_tx_account(), 2);
         st.set_page(2);
         st.set_tx_account(0);
-        click("TransactionsPage::refresh-transactions-button");
+        harness.run_steps(3);
+        harness.get_by_label(i18n::tr("Aktualisieren")).click(); harness.run_steps(3);
         assert_eq!(*calls.borrow(), [Some(42), Some(7), None]);
         for index in [-1, 99] {
             st.set_tx_account(index);
             st.invoke_refresh_transactions();
         }
         assert_eq!(calls.borrow().len(), 3, "an invalid selection must not trigger an all-account refresh");
-        app.hide().unwrap();
+
         VIEW.with(|vs| *vs.borrow_mut() = Default::default());
     }
 }

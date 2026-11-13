@@ -1,6 +1,6 @@
 use crate::{AppState, AppWindow, PaymentOrderRow, VIEW, ctx, toast, view};
 use crate::{payments::OrderStatus, store::Vault};
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use crate::ui::{ModelRc, SharedString, VecModel};
 
 fn account_id(app: &AppWindow) -> Option<u32> {
     VIEW.with(|vs| vs.borrow().sepa_accounts.get(app.global::<AppState>().get_tf_account() as usize).copied())
@@ -34,12 +34,12 @@ pub fn refresh(app: &AppWindow, v: &Vault, vs: &mut view::ViewState) {
             format!("{}\n{}", i18n::tr("Keine automatische Wiederholung. Bitte den Status bei der Bank prüfen, bevor Sie einen neuen Auftrag anlegen."), o.message)
         } else { o.message.clone() };
         PaymentOrderRow {
-            id: o.id as i32, name: o.transfer.creditor_name.clone().into(), iban: o.transfer.creditor_iban.clone().into(),
-            amount: view::fmt_eur(o.transfer.amount).into(), purpose: o.transfer.purpose.clone().into(),
-            account: view::account_label(v, o.account_id).into(),
+            id: o.id as i32, name: o.transfer.creditor_name.clone(), iban: o.transfer.creditor_iban.clone(),
+            amount: view::fmt_eur(o.transfer.amount), purpose: o.transfer.purpose.clone(),
+            account: view::account_label(v, o.account_id),
             execution: o.transfer.execution_date.map(|d| i18n::tr_format!("Ausführung am {}", view::fmt_date(d)))
-                .unwrap_or_else(|| if o.transfer.instant { i18n::tr("Echtzeit") } else { i18n::tr("Standard") }.into()).into(),
-            status: status.into(), detail: detail.into(), needs_review, queued: o.status == OrderStatus::Queued,
+                .unwrap_or_else(|| if o.transfer.instant { i18n::tr("Echtzeit") } else { i18n::tr("Standard") }.into()),
+            status: status.into(), detail, needs_review, queued: o.status == OrderStatus::Queued,
         }
     }).collect();
     st.set_payment_orders(ModelRc::new(VecModel::from(rows)));
@@ -83,7 +83,7 @@ pub fn install(app: &AppWindow) {
         let c = ctx();
         let recipient = c.vault.lock().unwrap().recipients.iter().find(|r| Some(r.id) == id && Some(r.account_id) == account).cloned();
         if let Some(r) = recipient {
-            st.set_tf_name(r.name.into()); st.set_tf_iban(r.iban.into()); st.set_tf_bic(r.bic.into());
+            st.set_tf_name(r.name); st.set_tf_iban(r.iban); st.set_tf_bic(r.bic);
         } else {
             st.set_tf_name(Default::default()); st.set_tf_iban(Default::default()); st.set_tf_bic(Default::default());
         }
@@ -115,12 +115,13 @@ pub fn install(app: &AppWindow) {
 mod tests {
     use super::*;
     use crate::{bridge::Bridge, jobs::Ctx, store::VaultFile};
-    use slint::{Model, platform::{Key, WindowEvent}, LogicalSize};
+    use crate::ui::Model;
+    use egui_kittest::kittest::Queryable;
     use std::sync::{Arc, Mutex, atomic::AtomicBool};
 
     #[test]
     fn saving_with_enter_is_default_and_address_book_requires_checkbox_for_each_account() {
-        i_slint_backend_testing::init_no_event_loop();
+
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let path = std::env::temp_dir().join(format!("bankingcraft-payment-ui-{:016x}", rand::random::<u64>()));
@@ -131,19 +132,16 @@ mod tests {
         crate::CTX.with(|context| *context.borrow_mut() = Some(c.clone()));
         VIEW.with(|vs| *vs.borrow_mut() = Default::default());
         install(&app); st.set_unlocked(true); st.set_page(3);
-        app.window().set_size(LogicalSize::new(1360., 1000.));
         crate::refresh_view(&app);
         st.on_send_transfer(|| panic!("Enter must never send to the bank"));
         assert!(!st.get_tf_save_recipient());
         st.set_tf_name("First recipient".into());
         st.set_tf_iban("DE12500105170648489890".into());
         st.set_tf_amount("12,34".into());
-        app.show().unwrap();
-        let amount = i_slint_backend_testing::ElementHandle::find_by_element_id(&app, "TransferPage::transfer-amount").next().unwrap();
-        let input = amount.query_descendants().match_inherits("LineEdit").find_first().unwrap();
-        input.mock_single_click(slint::platform::PointerEventButton::Left);
-        app.window().dispatch_event(WindowEvent::KeyPressed { text: Key::Return.into() });
-        app.window().dispatch_event(WindowEvent::KeyReleased { text: Key::Return.into() });
+
+        let mut harness=crate::ui::testing::harness(&app,1360.,1000.);
+        harness.get(egui_kittest::kittest::By::new().role(egui::accesskit::Role::TextInput).value("12,34")).click(); harness.run_steps(2);
+        harness.key_press(egui::Key::Enter); harness.run_steps(3);
         assert_eq!(c.vault.lock().unwrap().payment_orders.len(), 1);
         assert!(c.vault.lock().unwrap().recipients.is_empty());
         assert_eq!(st.get_queued_order_count(), 1);
@@ -171,7 +169,7 @@ mod tests {
         let (_, reloaded) = VaultFile::open(path.clone(), "test").unwrap();
         assert_eq!(reloaded.payment_orders.len(), 3);
         assert_eq!(reloaded.recipients.len(), 2);
-        app.hide().unwrap();
+
         crate::CTX.with(|context| *context.borrow_mut() = None);
         VIEW.with(|vs| *vs.borrow_mut() = Default::default());
         std::fs::remove_file(path).unwrap();
@@ -181,24 +179,15 @@ mod tests {
 #[cfg(test)]
 mod visual_review {
     use super::*;
-    use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-    use std::rc::Rc;
 
     /// Optional offline render: cargo test -p bankingcraft render_payment_pages -- --ignored
     #[test]
     #[ignore = "writes synthetic UI screenshots for manual visual review"]
     fn render_payment_pages() {
-        struct Platform(Rc<MinimalSoftwareWindow>);
-        impl slint::platform::Platform for Platform {
-            fn create_window_adapter(&self) -> Result<Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> { Ok(self.0.clone()) }
-            fn duration_since_start(&self) -> std::time::Duration { std::time::Duration::ZERO }
-        }
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-        slint::platform::set_platform(Box::new(Platform(window.clone()))).unwrap();
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         st.set_unlocked(true);
-        app.global::<crate::Palette>().set_color_scheme(slint::language::ColorScheme::Dark);
+        st.set_theme_mode(2);
         let mut vault = Vault::default(); crate::demo::add_demo(&mut vault);
         let account = vault.accounts[0].id;
         for status in [OrderStatus::Queued, OrderStatus::Sent, OrderStatus::NeedsReview] {
@@ -206,26 +195,19 @@ mod visual_review {
             vault.payment_orders.last_mut().unwrap().status = status;
         }
         let mut vs = view::ViewState::default();
-        let dir = std::env::temp_dir().join("bankingcraft-payment-review");
+        let dir = std::env::temp_dir().join("bankingcraft-egui-payment-review");
         std::fs::create_dir_all(&dir).unwrap();
         for (code, language) in [("de", i18n::Language::German), ("fr", i18n::Language::French)] {
-            slint::select_bundled_translation(code).unwrap();
             i18n::with_language(language, || {
                 view::refresh_all(&app, &vault, &mut vs);
                 for (page, name) in [(3, "transfer"), (9, "orders"), (2, "transactions"), (4, "standing")] {
                     st.set_page(page);
                     for width in [1100, 1360] {
-                        window.set_size(slint::PhysicalSize::new(width, 860));
-                        app.show().unwrap();
-                        let mut buffer = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(width, 860);
-                        app.window().request_redraw();
-                        assert!(window.draw_if_needed(|r| { r.render(buffer.make_mut_slice(), width as usize); }));
-                        let path = dir.join(format!("{code}-{name}-{width}.png"));
-                        image::save_buffer(&path, buffer.as_bytes(), width, 860, image::ColorType::Rgb8).unwrap();
+                        crate::ui::testing::snapshot(&app, width, 860, dir.join(format!("{code}-{name}-{width}.png")));
                     }
                 }
             });
         }
-        app.hide().unwrap();
+
     }
 }

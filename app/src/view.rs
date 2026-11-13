@@ -1,4 +1,4 @@
-//! Turns the vault into Slint models.
+//! Turns the vault into UI view models.
 
 use crate::categorize::{categorize, color_of, CATEGORIES};
 use crate::store::{AccessKind, StoredTx, Vault};
@@ -6,7 +6,7 @@ use crate::{AccessRow, AccountRow, AccountGroupRow, GroupBalanceRow, AppState, A
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
 use fints::{Interval, StandingOrder};
 use rust_decimal::Decimal;
-use slint::{ComponentHandle, Color, ModelRc, SharedString, VecModel};
+use crate::ui::{Color, ModelRc, SharedString, VecModel};
 use std::collections::{BTreeMap, HashSet};
 
 mod overview;
@@ -187,7 +187,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             negative,
             last_sync: ss(a.last_sync.map(|t| i18n::tr_format!("aktualisiert {}", t.format("%d.%m.%Y %H:%M"))).unwrap_or_else(|| i18n::tr("noch nicht abgerufen").into())),
             kind: ss(kind),
-            color: Color::from_rgb_u8(c.0, c.1, c.2),
+            color: Color::from_rgb(c.0, c.1, c.2),
         });
         names.push(ss(format!("{name} · {bank}")));
         vs.account_filter.push(a.id);
@@ -608,7 +608,7 @@ pub fn next_execution(o: &StandingOrder, today: NaiveDate) -> Option<NaiveDate> 
 #[cfg(test)]
 mod amount_tests {
     use super::*;
-    use slint::Model;
+    use crate::ui::Model;
 
     #[test]
     fn monthly_analysis_excludes_pending_unknown_transfers_and_outside_dates() {
