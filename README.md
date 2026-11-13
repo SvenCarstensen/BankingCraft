@@ -43,8 +43,6 @@ Explore income and expenses by category and compare the yearly trend.
 
 ## License
 
-Copyright (C) 2026 AppCreation GmbH.
-
 BankingCraft is free software licensed under the **GNU General Public License, version 3**
 (`GPL-3.0-only`). You may use, modify and redistribute it, including for commercial purposes,
 under the terms of the [GPL v3](LICENSE). When distributing the application or modified versions,
