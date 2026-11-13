@@ -672,7 +672,7 @@ export component AccountsPage inherits ScrollView {
             title: @tr("Konten");
             subtitle: @tr("Konten nach eigenen Gruppen ordnen");
             Rectangle { }
-            PrimaryButton { text: @tr("Kontenrundruf"); icon: Icons.refresh; clicked => { AppState.refresh-all(); } }
+            PrimaryButton { text: @tr("Umsätze abrufen"); icon: Icons.refresh; clicked => { AppState.refresh-all(); } }
         }
         HorizontalLayout {
             spacing: 12px;
@@ -694,11 +694,15 @@ export component AccountsPage inherits ScrollView {
                     if g.id != 0: HorizontalLayout {
                         spacing: 8px;
                         group-title := LineEdit { text: g.name; accepted => { AppState.rename-group(g.id, self.text); } }
-                        GhostButton { text: @tr("Umbenennen"); clicked => { AppState.rename-group(g.id, group-title.text); } }
-                        GhostButton { text: @tr("Entfernen"); clicked => { AppState.delete-group(g.id); } }
                     }
                     Rectangle { horizontal-stretch: 1; }
                     Text { text: g.accounts.length + @tr(" Konten"); font-size: 12px; color: Theme.text-muted; }
+                    refresh-group-button := GhostButton {
+                        text: @tr("Umsätze aktualisieren");
+                        icon: Icons.refresh;
+                        enabled: g.accounts.length > 0 && !AppState.busy;
+                        clicked => { AppState.refresh-group(g.id); }
+                    }
                 }
                 for a in g.accounts: Rectangle {
                     height: account-details.preferred-height;
@@ -771,6 +775,15 @@ export component TransactionsPage inherits Rectangle {
     VerticalLayout {
         padding: 24px;
         spacing: 14px;
+        HorizontalLayout {
+            height: 34px;
+            back-to-accounts := GhostButton {
+                text: @tr("Zurück zu den Konten");
+                icon: Icons.back;
+                clicked => { AppState.navigate(1); }
+            }
+            Rectangle { }
+        }
         PageTitle {
             title: @tr("Umsätze");
             subtitle: AppState.tx-summary;
@@ -785,10 +798,11 @@ export component TransactionsPage inherits Rectangle {
                 icon: Icons.download;
                 clicked => { AppState.export-camt(); }
             }
-            PrimaryButton {
+            refresh-transactions-button := PrimaryButton {
                 text: @tr("Aktualisieren");
                 icon: Icons.refresh;
-                clicked => { AppState.refresh-all(); }
+                enabled: AppState.account-names.length > 1 && !AppState.busy;
+                clicked => { AppState.refresh-transactions(); }
             }
         }
         HorizontalLayout {

@@ -964,6 +964,26 @@
     "Compte introuvable",
     "Cuenta no encontrada"
   ],
+  "Konto wird aktualisiert …": [
+    "Updating account …",
+    "Actualisation du compte …",
+    "Actualizando cuenta …"
+  ],
+  "Gruppe wird aktualisiert …": [
+    "Updating group …",
+    "Actualisation du groupe …",
+    "Actualizando grupo …"
+  ],
+  "Umsätze aktualisieren": [
+    "Refresh transactions",
+    "Actualiser les opérations",
+    "Actualizar movimientos"
+  ],
+  "Zurück zu den Konten": [
+    "Back to accounts",
+    "Retour aux comptes",
+    "Volver a las cuentas"
+  ],
   "Zielkonto nicht gefunden": [
     "Target account not found",
     "Compte cible introuvable",
@@ -1513,6 +1533,11 @@
     "{}: {} accounts checked, {} new transactions.",
     "{} : {} comptes vérifiés, {} nouvelles opérations.",
     "{}: {} cuentas comprobadas, {} movimientos nuevos."
+  ],
+  "{}: Konto geprüft, {} neue Umsätze.": [
+    "{}: account checked, {} new transactions.",
+    "{} : compte vérifié, {} nouvelles opérations.",
+    "{}: cuenta comprobada, {} movimientos nuevos."
   ],
   "TAN-Verfahren: {}": [
     "TAN method: {}",

@@ -6,6 +6,41 @@ an account dashboard, transaction lists with daily balances, payment forms and f
 The application was previously called Kontor. Existing vaults are still found in their original
 location; the file format, `vault.kontor` filename and key derivation remain compatible.
 
+## Screenshots
+
+The English interface with fictional demo accounts and transactions, rendered directly from
+the application. The demo works offline; all names, account numbers and payments shown are test data.
+
+### Financial overview
+
+Balances, recent transactions, spending categories and upcoming standing orders at a glance.
+
+![Financial overview with demo balances and spending categories](docs/screenshots/overview.png)
+
+### Accounts and groups
+
+Organize accounts into groups and retrieve transactions for an individual group.
+
+![Demo accounts grouped under Personal finances](docs/screenshots/accounts.png)
+
+### Transactions
+
+Filter and search transactions, inspect pending entries and refresh the selected account.
+
+![Transaction list with filters and details for a pending payment](docs/screenshots/transactions.png)
+
+### Transfers
+
+Prepare a standard, instant or scheduled transfer with an account-specific recipient address book.
+
+![Transfer form populated with fictional recipient details](docs/screenshots/transfer.png)
+
+### Reports
+
+Explore income and expenses by category and compare the yearly trend.
+
+![Monthly spending categories and yearly income and expense chart](docs/screenshots/reports.png)
+
 ## License
 
 Copyright (C) 2026 AppCreation GmbH.
@@ -108,6 +143,10 @@ Error reports contain technical segment summaries, without free-form bank messag
    Enter the PIN/TAN user ID, or select a smart card reader and choose **Read data from card**.
 3. Choose **Retrieve transactions** on the overview page.
 
+On **Transactions**, **Refresh** retrieves only the balance and transactions of the selected
+account. It does not send queued payments. Selecting **All accounts** explicitly retains the
+full account refresh. **Back to accounts** at the top left returns to the account list.
+
 [FinTS product registration](https://www.fints.org/de/hersteller/produktregistrierung) is handled
 by the software publisher. Once assigned, BankingCraft’s product ID will be embedded in a future
 release. Product registration fields are not shown in Settings.
@@ -172,9 +211,11 @@ The bank's original product name and the account details used for banking remain
 
 ## Account groups
 
-Create and rename groups under **Accounts**. Assign an account using its group selector;
-**Ungrouped** removes the assignment. Removing a group preserves accounts, bank connections
-and transactions. Groups are encrypted along with the vault.
+Create groups under **Accounts**. To rename a group, edit its name and press Enter to save.
+Each group's **Refresh transactions** button retrieves only that group's accounts, using one
+bank dialog per connection. This also works for **Ungrouped** and does not send queued payments.
+Assign an account using its group selector; **Ungrouped** removes the assignment.
+Groups are encrypted along with the vault.
 
 The overview shows each group’s known booked balances, separately by currency. Missing balances
 are marked as missing rather than treated as zero. Drag accounts within the overview account list
@@ -238,19 +279,6 @@ AqBanking/AqHBCI and libchipcard for ZKA cards. BankingCraft reimplements part o
 
 Findings, sources, fixes and test limits: [RDH code review](docs/rdh-review.md).
 
-### Import from Bank X
-
-BankingCraft can import prepared RDH account settings from `bankx-import.json` next to the vault
-on the next unlock. This is a custom, versioned interchange format, not a parser for Bank X account
-folders or migration archives. The file contains bank connections and account details only: no PINs,
-private keys, bank keys, balances or transactions. Create it with private file permissions.
-
-The import validates IBAN, bank code and account number, adds missing accounts without overwriting
-existing connections, backs up the encrypted vault as `vault.before-bankx-import` and removes the
-import file only after saving successfully. Cards are matched by bank code and user ID; the reader
-is detected automatically when none is selected. Account permissions, types and current balances
-are updated from the bank during retrieval. The format is documented in `app/src/bankx_import.rs`.
-
 ## Verification
 
 Run the offline regression suite with `./scripts/test-business.sh`. Test cases and limitations are
@@ -272,26 +300,25 @@ fixes, the dependency scan and remaining limitations.
   languages, translated format placeholders, stable categories and unchanged account/group/form data.
 - Direct debit reversal is not implemented. Standing orders are changed by deleting and recreating them.
 
-### Empfängerprüfung (Verification of Payee)
+### Verification of Payee
 
-Überweisungen, Echtzeit- und Terminüberweisungen verwenden die von der Bank angebotene
-FinTS-Empfängerprüfung (HKVPP/HIVPP, Version 1). BankingCraft zeigt das Ergebnis zum
-übermittelten Namen und zur IBAN sowie den vollständigen Bankhinweis vor der Freigabe.
-Bei ähnlichem Namen wird die Schreibweise der Empfängerbank angezeigt und kann kopiert
-werden. Zum Korrigieren den Vorgang abbrechen und den geänderten Auftrag neu prüfen lassen.
-Bei Abweichung oder nicht möglicher Prüfung kann nach Kenntnisnahme ausdrücklich fortgefahren
-werden. Ein fehlendes Ergebnis wird niemals als Übereinstimmung dargestellt.
+Standard, instant and scheduled transfers use the bank's FinTS Verification of Payee service
+(HKVPP/HIVPP, version 1). Before authorization, BankingCraft displays the result for the submitted
+name and IBAN together with the complete bank message. For a close match, the recipient name
+reported by the receiving bank is shown and can be copied. To make a correction, cancel and check
+the revised payment again. For a mismatch or an unavailable check, continuing requires explicit
+acknowledgement. A missing result is never presented as a match.
 
-Die weitere Einreichung richtet sich nach den Bankcodes: vorhandene TAN-Freigabe bei 3091,
-sonst identischer Zahlungsauftrag mit HKVPA und der bankseitigen VOP-ID. Chipkarten benötigen
-immer die zweite Einreichung. Aufträge aus der Auftragsliste verwenden denselben Ablauf;
-es gibt keinen automatischen Zahlungsretry. Dauerauftragsanlagen verwenden die Prüfung,
-wenn die Bank sie dafür in ihren Parametern vorsieht. Bietet eine Bank keinen unterstützten
-Prüfablauf für Überweisungen an, bleibt die Freigabe gesperrt und die App verweist auf deren
-Onlinebanking. Das explizite bankseitige Ausführen ohne weitere Freigabe (3091 + 3076) wird
-als bereits ausgeführt angezeigt. Der Demo-Modus kennzeichnet die fehlende Bankprüfung.
+Further submission follows the bank's response codes: continue the existing TAN authorization
+for code 3091; otherwise resubmit the identical payment with HKVPA and the bank's VoP ID.
+Smart cards always require the second submission. Queued payment orders use the same flow;
+payments are never retried automatically. Standing order creation uses the check when the bank
+advertises support for it in its parameters. If the bank offers no supported verification flow
+for transfers, authorization remains blocked and the app directs the user to the bank's online
+banking service. Explicit execution by the bank without further authorization (3091 + 3076)
+is shown as already completed. Demo mode clearly indicates that no bank verification took place.
 
-Grundlage: [FinTS-Spezifikation, VoP V1.02 vom 19.10.2026](https://www.fints.org/de/spezifikation/aenderungen)
-und [DK Anlage 3 V3.9, Kapitel 2.2.6, pain.002.001.10](https://www.ebics.de/de/datenformate/gueltige-version).
-Die Prüfung ist mit simulierten Bankantworten getestet; ein realer Bank-/Hardwaretest ist
-kein Bestandteil der Offline-Tests.
+References: [FinTS specification, VoP V1.02 dated October 19, 2026](https://www.fints.org/de/spezifikation/aenderungen)
+and [DK Annex 3 V3.9, section 2.2.6, pain.002.001.10](https://www.ebics.de/de/datenformate/gueltige-version).
+Verification is tested with simulated bank responses; real bank and hardware tests are outside
+the scope of the offline suite.

@@ -246,9 +246,9 @@ mod visual_review {
         let mut vault = Vault::default(); crate::demo::add_demo(&mut vault);
         vault.accounts[0].account.product = "Postbank Visa Card (Kreditkarte für private Ausgaben und Reisen)".into();
         vault.accounts[1].display_name = "Meine Rücklagen für Urlaub, Familie und größere Anschaffungen".into();
+        let group = vault.create_group("Privat").unwrap();
+        vault.assign_group(vault.accounts[0].id, Some(group)).unwrap();
         let mut tall_vault = vault.clone();
-        let group = tall_vault.create_group("Privat").unwrap();
-        tall_vault.assign_group(tall_vault.accounts[0].id, Some(group)).unwrap();
         tall_vault.merge_accounts(tall_vault.accounts[0].access_id, (0..8).map(|i| fints::Account {
             account_number: format!("900{i}"), product: format!("Weiteres Demokonto {}", i + 1), ..Default::default()
         }).collect());

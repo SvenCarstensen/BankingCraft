@@ -18,6 +18,7 @@ mod export;
 mod jobs;
 mod payments;
 mod payments_ui;
+mod transactions_ui;
 mod groups;
 mod private_file;
 mod store;
@@ -25,6 +26,8 @@ mod view;
 mod window_state;
 #[cfg(test)]
 mod business_tests;
+#[cfg(test)]
+mod showcase;
 
 use bridge::{Answer, Bridge};
 use chrono::Local;
@@ -162,6 +165,7 @@ fn main() {
     appearance::install(&app);
     localization::install(&app);
     accounts_ui::install(&app);
+    transactions_ui::install(&app);
     let st = app.global::<AppState>();
     st.set_tx_period(1);
     st.set_so_first(Local::now().date_naive().format("%d.%m.%Y").to_string().into());
@@ -186,6 +190,7 @@ fn main() {
         });
     }
     st.on_refresh_all(|| ctx().run(i18n::tr("Kontenrundruf …"), jobs::sync_all));
+    st.on_refresh_group(|id| ctx().run(i18n::tr("Gruppe wird aktualisiert …"), move |c| jobs::sync_group(c, id as u32)));
     {
         let weak = app.as_weak();
         st.on_move_account(move |source, target, after| {

@@ -23,6 +23,9 @@ pub struct Ctx {
 
 pub type JobResult = Result<String, String>;
 
+#[cfg(test)]
+mod account_refresh_tests;
+
 impl Ctx {
     /// Commit a local edit only after the encrypted vault was saved successfully.
     pub fn edit_vault<T>(&self, edit: impl FnOnce(&mut Vault) -> Result<T, String>) -> Result<T, String> {
@@ -244,19 +247,93 @@ fn allowed(acc: &Account, codes: &[&str]) -> bool {
 /// Kontenrundruf for one access: accounts, balances, transactions.
 pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
     let access = ctx.vault.lock().unwrap().access(access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
+    sync_scope(ctx, access, None)
+}
+
+/// Read balances and transactions only for the selected account; never dispatch payments.
+pub fn sync_account(ctx: &Ctx, account_id: u32) -> JobResult {
+    let (account, access) = account_and_access(ctx, account_id)?;
+    sync_scope(ctx, access, Some(vec![(account, account_id)]))
+}
+
+type AccountBatch = Vec<(Account, u32)>;
+struct GroupTarget { access: BankAccess, accounts: AccountBatch }
+
+fn group_targets(ctx: &Ctx, group_id: u32) -> Result<Vec<GroupTarget>, String> {
+    let ids = {
+        let v = ctx.vault.lock().unwrap();
+        let group = if group_id == 0 { None } else {
+            Some(v.groups.iter().find(|g| g.id == group_id).ok_or(i18n::tr("Gruppe nicht gefunden"))?)
+        };
+        v.accounts.iter().filter(|a| match group {
+            Some(g) => g.account_ids.contains(&a.id),
+            None => !v.groups.iter().any(|g| g.account_ids.contains(&a.id)),
+        }).map(|a| a.id).collect::<Vec<_>>()
+    };
+    if ids.is_empty() { return Err(i18n::tr("Keine Konten").into()); }
+    let mut targets: Vec<GroupTarget> = Vec::new();
+    for id in ids {
+        let (account, access) = account_and_access(ctx, id)?;
+        if let Some(target) = targets.iter_mut().find(|target| target.access.id == access.id) {
+            target.accounts.push((account, id));
+        } else {
+            targets.push(GroupTarget { access, accounts: vec![(account, id)] });
+        }
+    }
+    Ok(targets)
+}
+
+/// Refresh only a group's accounts, sharing one dialog per access and never sending payments.
+pub fn sync_group(ctx: &Ctx, group_id: u32) -> JobResult {
+    let targets = group_targets(ctx, group_id)?;
+    let mut messages = Vec::new();
+    let mut failed = false;
+    for target in targets {
+        match sync_scope(ctx, target.access, Some(target.accounts)) {
+            Ok(message) => messages.push(message),
+            Err(error) if ctx.bridge.cancelled.load(Ordering::Acquire) => return Err(error),
+            Err(error) => { failed = true; messages.push(error); },
+        }
+    }
+    if failed { Err(messages.join("\n")) } else { Ok(messages.join("\n")) }
+}
+
+fn scope_name(ctx: &Ctx, access: &BankAccess, selected: Option<&AccountBatch>) -> String {
+    match selected {
+        Some(accounts) if accounts.len() == 1 => view::account_label(&ctx.vault.lock().unwrap(), accounts[0].1),
+        _ => access.name.clone(),
+    }
+}
+
+fn sync_scope(ctx: &Ctx, access: BankAccess, selected: Option<AccountBatch>) -> JobResult {
+    let access_id = access.id;
     if access.kind == AccessKind::Demo {
-        let sent = dispatch_queued(ctx, access_id)?;
-        let mut message = i18n::tr_format!("{}: Demo-Daten sind aktuell.", access.name);
+        let sent = if selected.is_none() { dispatch_queued(ctx, access_id)? } else { 0 };
+        let name = scope_name(ctx, &access, selected.as_ref());
+        let mut message = i18n::tr_format!("{}: Demo-Daten sind aktuell.", name);
         if sent > 0 { message.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)); }
         return Ok(message);
     }
     let bridge = ctx.bridge.clone();
-    let mut client = make_client(ctx, &access, &bridge).map_err(|e| format!("{}:\n{e}", access.name))?;
+    let client = make_client(ctx, &access, &bridge).map_err(|e| format!("{}:\n{e}", access.name))?;
+    sync_with_client(ctx, &access, selected, client)
+}
+
+fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatch>, mut client: Client) -> JobResult {
+    let access_id = access.id;
+    let scoped = selected.is_some();
+    let single_account = selected.as_ref().is_some_and(|accounts| accounts.len() == 1);
+    let name = scope_name(ctx, access, selected.as_ref());
     let mut warnings: Vec<String> = Vec::new();
     let mut new_tx = 0usize;
     let result: Result<usize, Error> = (|| {
-        let accounts = client.accounts()?;
-        let ids = ctx.vault.lock().unwrap().merge_accounts(access_id, accounts.clone());
+        let (accounts, ids): (Vec<_>, Vec<_>) = if let Some(accounts) = selected {
+            accounts.into_iter().unzip()
+        } else {
+            let accounts = client.accounts()?;
+            let ids = ctx.vault.lock().unwrap().merge_accounts(access_id, accounts.clone());
+            (accounts, ids)
+        };
         for (acc, id) in accounts.iter().zip(ids) {
             let warnings_before = warnings.len();
             let mut fetched = false;
@@ -314,12 +391,18 @@ pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
         }
         Ok(accounts.len())
     })();
-    let count = conclude(ctx, access_id, client, result).map_err(|e| format!("{}:\n{e}", access.name))?;
-    let mut msg = i18n::tr_format!("{}: {} Konten geprüft, {} neue Umsätze.", access.name, count, new_tx);
-    match dispatch_queued(ctx, access_id) {
-        Ok(sent) if sent > 0 => msg.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)),
-        Ok(_) => {},
-        Err(e) => warnings.push(e),
+    let count = conclude(ctx, access_id, client, result).map_err(|e| format!("{name}:\n{e}"))?;
+    let mut msg = if single_account {
+        i18n::tr_format!("{}: Konto geprüft, {} neue Umsätze.", name, new_tx)
+    } else {
+        i18n::tr_format!("{}: {} Konten geprüft, {} neue Umsätze.", name, count, new_tx)
+    };
+    if !scoped {
+        match dispatch_queued(ctx, access_id) {
+            Ok(sent) if sent > 0 => msg.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)),
+            Ok(_) => {},
+            Err(e) => warnings.push(e),
+        }
     }
     if !warnings.is_empty() {
         msg.push('\n');

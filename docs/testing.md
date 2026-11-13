@@ -18,6 +18,9 @@ Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnu
 | Giro-Umsätze | MT940/MT942, CAMT, mehrere Seiten, vorgemerkte Daten, leeres Ergebnis gegenüber fehlenden Daten, fehlender/wiederholter Aufsetzpunkt | `client::business_flow_tests`, `business_data_tests` |
 | Kreditkarten-Umsätze | HKKKU/DKKKU, Feldpositionen, Buchungs-/Valutadatum, Vorzeichen, Referenzen, vorgemerkt, Saldo im Bericht, mehrere Seiten, beschädigte/unvollständige Antworten | `credit_card::tests`, `client::credit_card_regressions` |
 | Lokales Zusammenführen | Wiederholte und überlappende Abrufe, legitime gleiche Buchungen, vorgemerkt zu gebucht, kontenbezogenes Ersetzen, manuelle Kategorien erhalten | `business_tests` |
+| Einzelkonto aktualisieren | Saldo-/Umsatzanfragen nur für das ausgewählte Konto, keine Kontoermittlung oder Zahlungsübermittlung, andere Konten/Zugänge/Aufträge unverändert, Demo und ungültige Konto-ID | `jobs::account_refresh_tests` |
+| Gruppenabruf | Nur Konten der gewählten Gruppe, ein Dialog pro Bankzugang, getrennte Banken, „Ohne Gruppe“, leere/ungültige Gruppen, unveränderte Zahlungsaufträge | `jobs::account_refresh_tests` |
+| Umsatznavigation | Aktualisieren verwendet die aktuelle Auswahl und stabile Konto-ID; ungültige Auswahl löst keinen Rundruf aus; Zurück führt zur Kontenliste | `transactions_ui::tests` |
 | Überweisung | Betrags-, IBAN- und Textvalidierung, normale und Echtzeitüberweisung, kein Rückfall auf normale Überweisung, keine automatische Wiederholung bei Bankfehler/Antwortverlust | `client::business_flow_tests`, `business_data_tests`, `regression_tests` |
 | Auftragsliste | Verschlüsselte Persistenz und Neustart, Versand nur für den synchronisierten Zugang, einzelner Sofortversand, persistente Markierung vor Versand, keine Doppelüberweisung bei Antwortverlust/Absturz/Schreibfehler, Abbruch und abgelaufene Termine | `jobs::outgoing_order_tests`, `payments::tests` |
 | Empfängeradressbuch | Ausschließlich per Checkbox speichern/aktualisieren, gleiche IBAN je Konto getrennt, Namens-/IBAN-Prüfung, unabhängige Auftragssnapshots, Auswahl und Kontowechsel, Rücksetzen der Checkbox, alte Tresore und Entfernen eines Zugangs | `payments::tests`, `payments_ui::tests` |
@@ -83,6 +86,22 @@ Der Export umfasst außerdem die DDV- und RDH-Bankzugangsformulare. Die Controls
 für Kartenleser, Karteneintrag und Kartenabruf sind bei beiden Fensterbreiten
 vertikal zentriert und überlappen sich nicht; Hinweistexte haben eine eigene Zeile.
 
+## Englische Demo-Screenshots
+
+Die fünf README-Ansichten werden mit den echten Slint-Seiten und ausschließlich synthetischen,
+englisch beschrifteten Demo-Daten gerendert:
+
+```sh
+cargo test -p bankingcraft --locked export_english_showcase -- --ignored
+```
+
+Der Export schreibt Übersicht, Konten, Umsätze, Überweisung und Auswertungen als PNG nach
+`docs/screenshots`. Er öffnet keinen vorhandenen Tresor, liest keine lokale Produkt-ID und
+kontaktiert keine Bank. Optional erzeugen `BANKINGCRAFT_DEMO_VAULT` (ein neuer Pfad außerhalb
+des Repositorys) und `BANKINGCRAFT_DEMO_PASSWORD` einen separaten verschlüsselten Demo-Tresor.
+Vorhandene Dateien werden niemals überschrieben. Ohne diese Variablen werden nur die Bilder
+neu erzeugt; die Daten verwenden Datumswerte relativ zum Ausführungstag.
+
 ## Grenzen und Sichtprüfung
 
 Für eine reproduzierbare Offline-Sichtprüfung von Überweisungsformular und Auftragsliste:
@@ -91,7 +110,8 @@ Für eine reproduzierbare Offline-Sichtprüfung von Überweisungsformular und Au
 cargo test -p bankingcraft --locked render_payment_pages -- --ignored
 ```
 
-Der Test umfasst auch den VoP-Ergebnisdialog mit langen Bankhinweisen und schmalem Fenster.
+Der Test umfasst auch die Umsatzansicht mit dem Zurück-Button zur Kontenliste sowie
+den VoP-Ergebnisdialog mit langen Bankhinweisen und schmalem Fenster.
 Der Test rendert ausschließlich synthetische Demo-Daten als PNG-Dateien nach
 `bankingcraft-payment-review` im temporären Systemverzeichnis. Geprüft werden Deutsch
 und Französisch bei 1100 und 1360 Pixel Breite. Die reguläre Testsuite überspringt
