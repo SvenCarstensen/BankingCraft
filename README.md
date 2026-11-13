@@ -3,6 +3,49 @@
 BankingCraft is a Rust desktop banking application using **egui 0.36** and **eframe 0.36**: a navigation sidebar,
 an account dashboard, transaction lists with daily balances, payment forms and financial reports.
 
+> [!WARNING]
+> **Early alpha — intended for evaluation and development.**
+> BankingCraft has limited real-world validation and is not yet validated for general
+> production banking or real payment submission. The implemented features below do not
+> imply that every bank, security method or payment workflow has been tested successfully.
+
+## Development status and known limitations
+
+**So far, only Postbank access via PIN/TAN and VR Bank Nord access via an RDH smart card
+have been tested successfully with real bank accounts. These retrieval flows work in the
+tested setups.**
+
+| Bank and access method | Confirmed working scope |
+|---|---|
+| Postbank — FinTS PIN/TAN | Account, balance and transaction retrieval, including credit card balances and transactions; confirmed on November 12, 2026 |
+| VR Bank Nord — RDH-7 smart card | Account retrieval through the real bank/card connection; successful retrieval confirmed by the user on November 13, 2026 |
+
+Other banks, RDH-9/10, DDV and other card/reader combinations have **not** been confirmed
+through successful real-world tests. Simulator tests and protocol implementations do not
+establish compatibility with untested banks or hardware.
+
+- **FinTS product registration is pending.** BankingCraft does not yet have its own registered
+  product ID. Normal builds without a configured ID send an unregistered placeholder and may
+  be rejected by banks. The local test ID used during development is neither included in the
+  repository nor embedded in builds. See [Build](#build) for the separation of local test settings.
+- **Real payments remain untested.** Transfers, instant and scheduled transfers, standing order
+  changes and Verification of Payee have not been validated by submitting real payment orders.
+  Their automated tests use simulated bank responses.
+- **The interface has just migrated to egui/eframe 0.36.** Automated UI tests and a native macOS
+  startup check have passed, but broad hands-on validation is still pending. Some font rendering
+  and spacing differ from the previous interface.
+- **Platform validation is limited to macOS.** Windows and Linux are intended targets; the
+  current application has not yet been validated on those platforms. Automated GitHub checks
+  across all three platforms are still to be added.
+- **Security testing is limited.** Passing tests and dependency scans are not an independent
+  security audit or banking certification. A `SECURITY.md` and a documented confidential
+  vulnerability-reporting channel are still to be added. Do not post credentials or bank data
+  in public issues.
+- **Publication documentation is still being completed.** Full third-party license and
+  attribution notices, particularly for the LGPL-2.1 bank directory, remain to be assembled.
+  Earlier security-review sections describe the previous Slint version and must be read with
+  their dates; the current UI verification is documented in [docs/testing.md](docs/testing.md).
+
 The application was previously called Kontor. Existing vaults are still found in their original
 location; the file format, `vault.kontor` filename and key derivation remain compatible.
 
@@ -266,7 +309,7 @@ Message structure and dialog flow follow AqBanking, the FinTS library used by Gn
 
 ### RDH smart cards compared with AqBanking/GnuCash
 
-**Review dated November 12, 2026: equivalence has not been established.** GnuCash uses
+**Review updated November 13, 2026: full equivalence has not been established.** GnuCash uses
 AqBanking/AqHBCI and libchipcard for ZKA cards. BankingCraft reimplements part of this functionality in Rust.
 
 | Area | BankingCraft after review |
@@ -276,7 +319,7 @@ AqBanking/AqHBCI and libchipcard for ZKA cards. BankingCraft reimplements part o
 | Card access | ZKA/SECCOS notepad, private keys, fresh signature counter and PIN pad; corrected EF_KEYD descriptors and extended APDU lengths |
 | Trust | Bank keys checked against the card hash or explicitly verified by the user; no automatic acceptance of unverified keys |
 | Scope | Previously initialized RDH smart cards; no software key files, initial INI setup, key changes/revocation or certificate workflows |
-| Real-world validation | No confirmed successful end-to-end retrieval with a real bank and smart card yet |
+| Real-world validation | Successful VR Bank Nord retrieval using an RDH-7 smart card, confirmed by the user on November 13, 2026; other profiles and card/reader combinations remain unverified |
 
 Findings, sources, fixes and test limits: [RDH code review](docs/rdh-review.md).
 
@@ -294,8 +337,10 @@ fixes, the dependency scan and remaining limitations.
   such as the notepad, EF_KEYD and PIN formats use test fixtures.
 - **Postbank PIN/TAN:** real account, balance and transaction retrieval succeeded on November 12, 2026
   after the camt fix; credit card balances and transactions were also retrieved successfully.
-- **RDH:** successful operation against a real bank/card has not been confirmed. The latest checks
-  cover PIN format handling and prevention of automatic retries after a failed attempt.
+- **VR Bank Nord RDH-7:** the user confirmed successful retrieval with the real bank/card
+  connection on November 13, 2026. This does not validate other banks, RDH-9/10 or other
+  card/reader combinations.
+- **Only these two bank/access combinations have been confirmed working with real bank accounts.**
 - No real payment orders have been submitted for testing.
 - Language tests cover first-start detection, English fallback, persistence, all four bundled UI
   languages, translated format placeholders, stable categories and unchanged account/group/form data.
