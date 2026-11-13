@@ -6,6 +6,14 @@ an account dashboard, transaction lists with daily balances, payment forms and f
 The application was previously called Kontor. Existing vaults are still found in their original
 location; the file format, `vault.kontor` filename and key derivation remain compatible.
 
+## Privacy and data transmission
+
+BankingCraft does not collect or transmit telemetry or usage analytics. Personal and financial
+data stays on your device and is not sent to the developers or other third parties. The only
+exception is the data exchanged with your configured bank, including its banking service provider,
+to authenticate, retrieve account information and submit banking orders. Banking data is stored
+locally in the encrypted vault. Exports are saved locally; sharing an exported file is your choice.
+
 ## Features
 
 | Area | Implementation |
