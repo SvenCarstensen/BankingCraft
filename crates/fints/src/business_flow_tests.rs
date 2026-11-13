@@ -238,7 +238,10 @@ fn giro_transactions_page_mt940_and_keep_mt942_pending_separate() {
 #[test]
 fn accounts_fill_missing_bank_code_without_network_when_upd_is_complete() {
     let ui = Ui::default(); let (mut c, requests) = setup(&ui, vec![]); c.state.upd.accounts = vec![account()];
-    let accounts = c.accounts().unwrap(); assert_eq!(accounts[0].blz, "12345678"); assert!(requests.lock().unwrap().is_empty());
+    let accounts = c.accounts().unwrap(); assert_eq!(accounts[0].blz, "37040044");
+    c.state.upd.accounts[0].iban.clear();
+    assert_eq!(c.accounts().unwrap()[0].blz, "12345678");
+    assert!(requests.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -451,13 +454,138 @@ fn chip_card_vop_always_resubmits_identical_payment_with_execution_id_after_conf
 
 
 #[test]
-fn upgrading_an_existing_bank_access_refreshes_vop_parameters_once() {
+fn upgrading_an_existing_bank_access_refreshes_new_parameters_once() {
     let ui = Ui::default(); let config = Config { url: "https://bank.invalid".into(), ..Default::default() };
     let mut state = State::default(); state.bpd.version = 42;
     let client = Client::new(config.clone(), state.clone(), Medium::PinTan, &ui).unwrap();
     assert_eq!(client.state.bpd.version, 0);
     state.bpd.vop_parameters_known = true;
+    let client = Client::new(config.clone(), state.clone(), Medium::PinTan, &ui).unwrap();
+    assert_eq!(client.state.bpd.version, 0);
+    state.bpd.statement_parameters_known = true;
     let client = Client::new(config, state, Medium::PinTan, &ui).unwrap(); assert_eq!(client.state.bpd.version, 42);
+}
+
+#[test]
+fn bank_profiles_negotiate_formats_using_current_bpd_and_account_permissions() {
+    use crate::bank_profile::StatementFormat;
+    for url in ["https://fints.dkb.de/fints", "https://fints.comdirect.de/fints", "https://fints.commerzbank.de/fints",
+        "https://fints2.atruvia.de/cgi-bin/hbciservlet", "https://banking-sh1.s-fints-pt-sh.de/fints30",
+        "https://fints.apobank.de/FinTs30PinTanHttpGate", "https://fints.norisbank.de/", "https://fints.deutsche-bank.de/"] {
+        for (preference, offer_camt, allow_mt940, expected) in [
+            (StatementFormat::Auto, true, true, "HKCAZ"),
+            (StatementFormat::Auto, false, true, "HKKAZ"),
+            (StatementFormat::Mt940, true, true, "HKKAZ"),
+            (StatementFormat::Mt940, true, false, "HKCAZ"),
+        ] {
+            let ui = Ui::default();
+            let (mut client, requests) = setup(&ui, vec![Box::new(move |request| {
+                assert!(request.iter().any(|s| s.code == expected));
+                assert_eq!(request.iter().filter(|s| s.code == "HKCAZ" || s.code == "HKKAZ").count(), 1);
+                Ok(vec![status("3010")])
+            })]);
+            client.cfg.url = url.into(); client.cfg.statement_format = preference;
+            if offer_camt { client.state.bpd.camt_formats = vec!["urn:iso:std:iso:20022:tech:xsd:camt.052.001.08".into()]; }
+            let mut acc = account();
+            if !allow_mt940 { acc.allowed = vec!["HKCAZ".into()]; }
+            assert!(client.transaction_report(&acc, chrono::Local::now().date_naive(), None).is_ok(), "{url}");
+            assert_eq!(requests.lock().unwrap().len(), 1);
+        }
+    }
+}
+
+#[test]
+fn ing_rejects_all_payment_variants_before_contacting_the_bank() {
+    let ui = Ui::default(); let (mut client, requests) = setup(&ui, vec![]);
+    client.cfg.url = "https://fints.ing.de/fints/".into(); client.in_dialog = false;
+    assert!(matches!(client.transfer(&account(), &transfer()), Err(Error::NotSupported(_))));
+    let mut instant = transfer(); instant.instant = true;
+    assert!(matches!(client.transfer(&account(), &instant), Err(Error::NotSupported(_))));
+    assert!(matches!(client.scheduled_transfer(&account(), &transfer()), Err(Error::NotSupported(_))));
+    assert!(matches!(client.create_standing_order(&account(), &standing()), Err(Error::NotSupported(_))));
+    assert!(matches!(client.delete_standing_order(&account(), &standing()), Err(Error::NotSupported(_))));
+    assert!(requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn retention_limits_are_reported_and_never_silently_return_an_empty_old_period() {
+    let today = chrono::Local::now().date_naive();
+    for (url, bpd_days, expected_days) in [
+        ("https://fints.ing.de/fints", None, 90),
+        ("https://fints.ing.de/fints", Some(30), 30),
+        ("https://fints.dkb.de/fints", Some(180), 180),
+    ] {
+        let ui = Ui::default(); let earliest = today - chrono::Duration::days(expected_days - 1);
+        let (mut client, requests) = setup(&ui, vec![Box::new(move |r| {
+            assert_eq!(segment(r, "HKKAZ").text_or_empty(3, 0), earliest.format("%Y%m%d").to_string());
+            Ok(vec![status("3010")])
+        })]);
+        client.cfg.url = url.into();
+        if let Some(days) = bpd_days { client.state.bpd.statement_days.insert("HKKAZ".into(), days); }
+        let from = today - chrono::Duration::days(365);
+        let report = client.transaction_report(&account(), from, None).unwrap();
+        assert_eq!(report.warnings.len(), 1);
+        assert!(report.warnings[0].contains(&earliest.to_string()));
+        assert!(client.transaction_report(&account(), from, Some(from)).is_err());
+        assert_eq!(requests.lock().unwrap().len(), 1);
+    }
+}
+
+#[test]
+fn deutsche_bank_history_is_not_artificially_limited_to_ninety_days() {
+    let ui = Ui::default(); let start = NaiveDate::from_ymd_opt(2024, 9, 1).unwrap();
+    let (mut client, _) = setup(&ui, vec![Box::new(move |r| {
+        assert_eq!(segment(r, "HKKAZ").text_or_empty(3, 0), "20240901"); Ok(vec![status("3010")])
+    })]);
+    client.cfg.url = "https://fints.deutsche-bank.de/".into();
+    assert!(client.transaction_report(&account(), start, None).unwrap().warnings.is_empty());
+}
+
+#[test]
+fn fresh_bpd_remove_retired_jobs_and_tan_methods_and_reload_retention() {
+    let mut bpd = Bpd::default(); bpd.versions.insert("HKKAZ".into(), vec![7]);
+    bpd.tan_methods = vec![method("900")]; bpd.hktan_version = 7;
+    bpd.tan_required.insert("HKKAZ".into(), true); bpd.statement_days.insert("HKKAZ".into(), 90);
+    let response = Response::new(crate::syntax::parse_segments(b"HIBPA:1:3+2+280:12345678+Fixture bank'\
+        HICAZS:2:1+1+1+1+180:J:N:urn?:iso?:std?:iso?:20022?:tech?:xsd?:camt.052.001.08'").unwrap());
+    bpd.update_from(&response);
+    assert!(!bpd.supports("HKKAZ")); assert!(bpd.tan_methods.is_empty()); assert!(!bpd.needs_tan("HKKAZ"));
+    assert_eq!(bpd.statement_days.get("HKCAZ"), Some(&180)); assert!(!bpd.statement_days.contains_key("HKKAZ"));
+    assert!(bpd.statement_parameters_known && bpd.vop_parameters_known);
+}
+
+#[test]
+fn sepa_metadata_is_order_independent_and_does_not_cross_assign_bics() {
+    let spa = "HISPA:1:1+J:DE89370400440532013000:COBADEFFXXX:532013000::280:37040044'";
+    let upd = "HIUPD:2:6+532013000::280:37040044+DE89370400440532013000+fixture+1+EUR+Fixture++Account'";
+    for raw in [format!("{spa}{upd}"), format!("{upd}{spa}")] {
+        let mut data = Upd::default();
+        data.update_from(&Response::new(crate::syntax::parse_segments(raw.as_bytes()).unwrap()));
+        assert_eq!(data.accounts[0].bic, "COBADEFFXXX");
+        let wrong = "HISPA:1:1+J:DE12500105170648489890:INGDDEFFXXX:532013000::280:37040044'";
+        data.update_from(&Response::new(crate::syntax::parse_segments(wrong.as_bytes()).unwrap()));
+        assert_eq!(data.accounts[0].bic, "COBADEFFXXX");
+        let empty_bic = spa.replace("COBADEFFXXX", "");
+        data.update_from(&Response::new(crate::syntax::parse_segments(empty_bic.as_bytes()).unwrap()));
+        assert_eq!(data.accounts[0].bic, "COBADEFFXXX");
+    }
+}
+
+#[test]
+fn deutsche_bank_phototan_omits_an_optional_stale_medium_but_best_sign_keeps_it() {
+    for (url, name, required, expected) in [
+        ("https://fints.deutsche-bank.de/", "photoTAN", false, ""),
+        ("https://fints.deutsche-bank.de/", "photoTAN", true, "Test device"),
+        ("https://fints.deutsche-bank.de/", "BestSign", false, "Test device"),
+        ("https://hbci.postbank.de/banking/hbci.do", "photoTAN", false, "Test device"),
+    ] {
+        let ui = Ui::default(); let (mut client, _) = setup(&ui, vec![Box::new(move |r| {
+            assert_eq!(segment(r, "HKTAN").text_or_empty(11, 0), expected); Ok(vec![status("3076")])
+        })]);
+        client.cfg.url = url.into(); client.state.tan_medium = Some("Test device".into());
+        client.state.bpd.tan_methods[0].name = name.into(); client.state.bpd.tan_methods[0].needs_medium = required;
+        assert!(client.exchange_sca(client.init_segments(false), "HKIDN", false).is_ok());
+    }
 }
 
 

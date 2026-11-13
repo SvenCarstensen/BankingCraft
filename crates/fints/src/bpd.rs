@@ -21,6 +21,10 @@ pub struct Bpd {
     pub standing_pain001_formats: Vec<String>,
     pub camt_formats: Vec<String>,
     #[serde(default)]
+    pub statement_days: HashMap<String, u32>,
+    #[serde(default)]
+    pub statement_parameters_known: bool,
+    #[serde(default)]
     pub vop_jobs: Vec<String>,
     #[serde(default)]
     pub vop_formats: Vec<String>,
@@ -44,9 +48,7 @@ impl Bpd {
     pub fn update_from(&mut self, resp: &Response) {
         if resp.first("HIBPA").is_some() {
             // A fresh BPD must also remove capabilities withdrawn by the bank.
-            self.vop_parameters_known = true;
-            self.vop_jobs.clear(); self.vop_formats.clear(); self.vop_structured_notice = false;
-            self.versions.remove("HKVPP"); self.versions.remove("HKVPA");
+            *self = Self { vop_parameters_known: true, statement_parameters_known: true, ..Self::default() };
         }
         for s in &resp.segments {
             match s.code.as_str() {
@@ -69,6 +71,11 @@ impl Bpd {
                 }
                 "HICAZS" => {
                     self.camt_formats = collect_urns(s, "camt.052");
+                    self.parse_statement_days(s, "HKCAZ");
+                    self.add_version(s);
+                }
+                "HIKAZS" => {
+                    self.parse_statement_days(s, "HKKAZ");
                     self.add_version(s);
                 }
                 "HICDBS" => {
@@ -89,6 +96,15 @@ impl Bpd {
         if !v.contains(&s.version) {
             v.push(s.version);
             v.sort_unstable();
+        }
+    }
+
+    fn parse_statement_days(&mut self, s: &Segment, job: &str) {
+        // BPDJob header is fields 1–3; StoreDays starts the parameter DEG (4).
+        if let Ok(days) = s.text_or_empty(4, 0).parse::<u32>() {
+            if days > 0 && days <= 9999 {
+                self.statement_days.entry(job.into()).and_modify(|old| *old = (*old).min(days)).or_insert(days);
+            }
         }
     }
 
@@ -227,22 +243,6 @@ impl Upd {
                         found.push(a);
                     }
                 }
-                "HISPA" => {
-                    // J:IBAN:BIC:account:sub:280:blz (repeated)
-                    for i in 1..=s.de_count() {
-                        let iban = s.text_or_empty(i, 1);
-                        let bic = s.text_or_empty(i, 2);
-                        let acc = s.text_or_empty(i, 3);
-                        for a in self.accounts.iter_mut().chain(found.iter_mut()) {
-                            if (!iban.is_empty() && a.iban == iban) || (!acc.is_empty() && a.account_number == acc) {
-                                if a.iban.is_empty() {
-                                    a.iban = iban.clone();
-                                }
-                                a.bic = bic.clone();
-                            }
-                        }
-                    }
-                }
                 _ => {}
             }
         }
@@ -256,6 +256,29 @@ impl Upd {
                 }
             }
             self.accounts = found;
+        }
+        // Process after HIUPD regardless of response ordering. Account numbers
+        // alone are not unique across branches/subaccounts.
+        for s in resp.find("HISPA") {
+            for i in 1..=s.de_count() {
+                if s.text_or_empty(i, 0) != "J" { continue; }
+                let iban = s.text_or_empty(i, 1);
+                let bic = s.text_or_empty(i, 2);
+                let number = s.text_or_empty(i, 3);
+                let sub = s.text_or_empty(i, 4);
+                let blz = s.text_or_empty(i, 6);
+                for a in &mut self.accounts {
+                    let same = if !iban.is_empty() && !a.iban.is_empty() { a.iban == iban } else {
+                        !number.is_empty() && a.account_number == number && a.sub_account == sub
+                            && (a.blz.is_empty() || blz.is_empty() || a.blz == blz)
+                    };
+                    if same {
+                        if a.iban.is_empty() { a.iban = iban.clone(); }
+                        if a.blz.is_empty() { a.blz = blz.clone(); }
+                        if !bic.is_empty() { a.bic = bic.clone(); }
+                    }
+                }
+            }
         }
     }
 }

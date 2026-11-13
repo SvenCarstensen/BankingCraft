@@ -8,6 +8,7 @@
 //!   instant and scheduled transfers, standing orders
 
 pub mod bpd;
+pub mod bank_profile;
 pub mod camt;
 pub mod client;
 mod credit_card;

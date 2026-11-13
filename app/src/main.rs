@@ -473,6 +473,7 @@ fn main() {
             st.set_af_blz(SharedString::default());
             st.set_af_user(SharedString::default());
             st.set_af_customer(SharedString::default());
+            st.set_af_statement_format(0);
             st.set_af_url(SharedString::default());
             st.set_af_record("1".into());
             st.set_bank_query(SharedString::default());
@@ -519,7 +520,7 @@ fn main() {
                 AUTO_NAME.with(|n| *n.borrow_mut() = b.name.to_string());
             }
             st.set_bank_query(b.name.into());
-            let hint = banks::login_hint(b);
+            let hint = if chip { None } else { banks::login_hint(b) };
             st.set_bank_picked(i18n::tr_format!("✓ {} · BLZ {} übernommen{}", b.name, b.blz, hint.map(|h| format!(" – {h}")).unwrap_or_default()));
             st.set_bank_results(ModelRc::new(VecModel::from(Vec::<BankRow>::new())));
         });
@@ -641,6 +642,11 @@ fn main() {
                         blz,
                         user_id: user,
                         customer_id: st.get_af_customer().trim().to_string(),
+                        statement_format: match st.get_af_statement_format() {
+                            1 => fints::bank_profile::StatementFormat::Camt,
+                            2 => fints::bank_profile::StatementFormat::Mt940,
+                            _ => fints::bank_profile::StatementFormat::Auto,
+                        },
                         url,
                         ..Default::default()
                     },

@@ -3678,5 +3678,115 @@
     "Close",
     "Fermer",
     "Cerrar"
+  ],
+  "Der gewählte Zeitraum liegt außerhalb der abrufbaren Umsatzhistorie oder ist ungültig.": [
+    "The selected period is outside the available transaction history or is invalid.",
+    "La période choisie est hors de l’historique disponible ou non valide.",
+    "El período seleccionado está fuera del historial disponible o no es válido."
+  ],
+  "Die Bank stellt Umsätze erst ab {} bereit. Ältere lokale Umsätze bleiben erhalten.": [
+    "The bank provides transactions from {} onwards. Older local transactions are retained.",
+    "La banque fournit les opérations à partir du {}. Les anciennes opérations locales sont conservées.",
+    "El banco ofrece movimientos a partir de {}. Se conservan los movimientos locales anteriores."
+  ],
+  "ING unterstützt über FinTS nur Lesezugriffe. Bitte Zahlungen und Daueraufträge im Onlinebanking der Bank verwalten.": [
+    "ING only supports read access via FinTS. Manage payments and standing orders in the bank’s online banking.",
+    "ING permet uniquement la lecture via FinTS. Gérez les paiements et virements permanents dans la banque en ligne.",
+    "ING solo permite consultas mediante FinTS. Gestione los pagos y órdenes permanentes en la banca en línea."
+  ],
+  "Umsatzformat": [
+    "Transaction format",
+    "Format des opérations",
+    "Formato de movimientos"
+  ],
+  "Automatisch (CAMT bevorzugen)": [
+    "Automatic (prefer CAMT)",
+    "Automatique (préférer CAMT)",
+    "Automático (preferir CAMT)"
+  ],
+  "CAMT bevorzugen": [
+    "Prefer CAMT",
+    "Préférer CAMT",
+    "Preferir CAMT"
+  ],
+  "MT940 bevorzugen (ältere Zugänge)": [
+    "Prefer MT940 (legacy connections)",
+    "Préférer MT940 (anciens accès)",
+    "Preferir MT940 (conexiones antiguas)"
+  ],
+  "Die Auswahl gilt nur für Formate, die Ihre Bank für das Konto anbietet.": [
+    "The preference only applies to formats offered by your bank for this account.",
+    "La préférence ne concerne que les formats proposés par la banque pour ce compte.",
+    "La preferencia solo se aplica a los formatos que el banco ofrece para esta cuenta."
+  ],
+  "Deutsche Bank: Deutsche Bank ID oder Filial- und Kontonummer, dazu Onlinebanking-Passwort. Nach dem Banking-Upgrade neue Zugangsdaten verwenden; Freigabe per photoTAN oder BestSign.": [
+    "Deutsche Bank: Deutsche Bank ID or branch and account number, plus online banking password. Use updated credentials after the banking upgrade; approve via photoTAN or BestSign.",
+    "Deutsche Bank : Deutsche Bank ID ou numéro d’agence et de compte, avec le mot de passe bancaire. Après la migration, utilisez les nouveaux identifiants ; validation par photoTAN ou BestSign.",
+    "Deutsche Bank: Deutsche Bank ID o número de sucursal y cuenta, y contraseña bancaria. Tras la migración, use las nuevas credenciales; autorice mediante photoTAN o BestSign."
+  ],
+  "ING: Benutzername oder Zugangsnummer und Onlinebanking-Passwort; Kunden-ID leer lassen. Nur Lesezugriff, Girokonto-Umsätze bis 90 Tage. Alle 90 Tage im ING-Onlinebanking anmelden.": [
+    "ING: username or access number and online banking password; leave customer ID blank. Read access only, current-account history up to 90 days. Log in to ING online banking every 90 days.",
+    "ING : nom d’utilisateur ou numéro d’accès et mot de passe bancaire ; laisser l’ID client vide. Lecture seule, historique du compte courant limité à 90 jours. Connexion à la banque en ligne ING tous les 90 jours.",
+    "ING: usuario o número de acceso y contraseña bancaria; deje vacío el ID de cliente. Solo consultas, historial de cuenta corriente de hasta 90 días. Acceda a la banca en línea ING cada 90 días."
+  ],
+  "DKB: Anmeldename wie im Onlinebanking; Kunden-ID leer lassen. Freigabe über DKB-App, chipTAN manuell oder chipTAN QR.": [
+    "DKB: online banking username; leave customer ID blank. Approve using the DKB app, manual chipTAN or chipTAN QR.",
+    "DKB : identifiant de banque en ligne ; laisser l’ID client vide. Validation par l’application DKB, chipTAN manuel ou chipTAN QR.",
+    "DKB: usuario de banca en línea; deje vacío el ID de cliente. Autorice con la app DKB, chipTAN manual o chipTAN QR."
+  ],
+  "comdirect: 8-stellige Zugangsnummer und Onlinebanking-PIN. Umsatzformat automatisch wählen; MT940 nur bei einem älteren Zugang mit entsprechender Bankfreigabe bevorzugen.": [
+    "comdirect: 8-digit access number and online banking PIN. Select the transaction format automatically; prefer MT940 only for a legacy connection where the bank still offers it.",
+    "comdirect : numéro d’accès à 8 chiffres et PIN bancaire. Choix automatique du format ; préférer MT940 uniquement pour un ancien accès si la banque le propose encore.",
+    "comdirect: número de acceso de 8 dígitos y PIN bancario. Seleccione el formato automáticamente; prefiera MT940 solo para conexiones antiguas si el banco aún lo ofrece."
+  ],
+  "Commerzbank: Teilnehmernummer oder Benutzername. FinTS mit photoTAN muss separat bei der Bank freigeschaltet sein. Umsätze werden bevorzugt als CAMT abgerufen.": [
+    "Commerzbank: participant number or username. FinTS with photoTAN must be enabled separately by the bank. Transactions are preferably retrieved as CAMT.",
+    "Commerzbank : numéro de participant ou identifiant. La banque doit activer séparément FinTS avec photoTAN. Les opérations sont récupérées de préférence en CAMT.",
+    "Commerzbank: número de participante o usuario. El banco debe activar FinTS con photoTAN por separado. Se prefiere CAMT para consultar movimientos."
+  ],
+  "Sparkasse: Anmeldename oder Legitimations-ID und Onlinebanking-PIN. Die Bank liefert die verfügbaren pushTAN- und chipTAN-Verfahren.": [
+    "Sparkasse: username or identification ID and online banking PIN. The bank supplies the available pushTAN and chipTAN methods.",
+    "Sparkasse : identifiant ou ID de légitimation et PIN bancaire. La banque fournit les méthodes pushTAN et chipTAN disponibles.",
+    "Sparkasse: usuario o ID de identificación y PIN bancario. El banco indica los métodos pushTAN y chipTAN disponibles."
+  ],
+  "Sparda: Aktuellen Sparda-NetKey oder Alias und die neue Online-PIN verwenden. Nach einer IT-Umstellung zuerst im Onlinebanking anmelden und das Freigabeverfahren aktivieren.": [
+    "Sparda: use your current Sparda-NetKey or alias and new online PIN. After a system migration, first log in to online banking and activate your approval method.",
+    "Sparda : utilisez le Sparda-NetKey ou alias actuel et le nouveau PIN. Après une migration, connectez-vous d’abord à la banque en ligne pour activer la méthode de validation.",
+    "Sparda: use su Sparda-NetKey o alias actual y el nuevo PIN. Tras una migración, acceda primero a la banca en línea y active el método de autorización."
+  ],
+  "VR-/PSD-/Atruvia-Zugang: NetKey oder Alias und Onlinebanking-PIN verwenden; abweichende Kennungen Ihrer Bank beachten. SecureGo plus und Smart-TAN werden aus den Bankparametern ermittelt.": [
+    "VR/PSD/Atruvia connection: use your NetKey or alias and online banking PIN; follow any different bank-specific credentials. SecureGo plus and Smart-TAN are read from the bank parameters.",
+    "Accès VR/PSD/Atruvia : utilisez votre NetKey ou alias et PIN bancaire ; suivez les éventuelles instructions propres à votre banque. SecureGo plus et Smart-TAN proviennent des paramètres bancaires.",
+    "Conexión VR/PSD/Atruvia: use NetKey o alias y PIN bancario; respete las credenciales específicas de su banco. SecureGo plus y Smart-TAN se obtienen de los parámetros bancarios."
+  ],
+  "Sparda: FinTS-Zugangsdaten Ihrer regionalen Bank verwenden. Server und TAN-Verfahren unterscheiden sich zwischen den Sparda-Banken.": [
+    "Sparda: use the FinTS credentials from your regional bank. Servers and TAN methods differ between Sparda banks.",
+    "Sparda : utilisez les identifiants FinTS de votre banque régionale. Les serveurs et méthodes TAN varient selon la banque Sparda.",
+    "Sparda: use las credenciales FinTS de su banco regional. Los servidores y métodos TAN varían entre bancos Sparda."
+  ],
+  "apoBank: apoKennung oder Alias verwenden. Verfügbare TAN-Verfahren werden von der Bank geladen; der frühere Atruvia-Zugang ist veraltet.": [
+    "apoBank: use your apoKennung or alias. Available TAN methods are loaded from the bank; the former Atruvia connection is obsolete.",
+    "apoBank : utilisez votre apoKennung ou alias. Les méthodes TAN sont chargées depuis la banque ; l’ancien accès Atruvia est obsolète.",
+    "apoBank: use su apoKennung o alias. Los métodos TAN se cargan desde el banco; la antigua conexión Atruvia está obsoleta."
+  ],
+  "norisbank: Neue norisbank ID oder Filial- und Kontonummer sowie aktuelles Passwort verwenden. Kunden-ID leer lassen oder identisch eintragen. Freigabe per photoTAN oder BestSign.": [
+    "norisbank: use your new norisbank ID or branch and account number and current password. Leave customer ID blank or enter the same identifier. Approve via photoTAN or BestSign.",
+    "norisbank : utilisez votre nouvelle norisbank ID ou numéro d’agence et de compte, et le mot de passe actuel. Laisser l’ID client vide ou identique. Validation par photoTAN ou BestSign.",
+    "norisbank: use su nueva norisbank ID o número de sucursal y cuenta, y contraseña actual. Deje vacío el ID de cliente o repita el identificador. Autorice mediante photoTAN o BestSign."
+  ],
+  "Consorsbank: Kontonummer gefolgt von der dreistelligen Berechtigtennummer als Benutzerkennung. Die Bank verlangt eine TAN beim Login. FinTS 4.x wird derzeit nicht unterstützt.": [
+    "Consorsbank: account number followed by the three-digit authorised-user number. The bank requests a TAN at login. FinTS 4.x is currently unsupported.",
+    "Consorsbank : numéro de compte suivi des trois chiffres du numéro de titulaire autorisé. La banque demande une TAN à la connexion. FinTS 4.x n’est pas pris en charge actuellement.",
+    "Consorsbank: número de cuenta seguido del número de autorizado de tres dígitos. El banco solicita una TAN al iniciar sesión. FinTS 4.x no está admitido actualmente."
+  ],
+  "HypoVereinsbank: 10-stellige Direct-Banking-Nummer und den freigeschalteten FinTS-Zugang verwenden. Für PIN/TAN die zentrale BLZ 70020270 wählen.": [
+    "HypoVereinsbank: use your 10-digit Direct Banking number and an activated FinTS connection. Select central bank code 70020270 for PIN/TAN.",
+    "HypoVereinsbank : utilisez votre numéro Direct Banking à 10 chiffres et un accès FinTS activé. Choisissez le code bancaire central 70020270 pour PIN/TAN.",
+    "HypoVereinsbank: use su número Direct Banking de 10 dígitos y un acceso FinTS activado. Seleccione el código bancario central 70020270 para PIN/TAN."
+  ],
+  "1822direkt: FinTS-Zugang mit BLZ 50050222 verwenden. Benutzerkennung und freigeschaltetes TAN-Verfahren den Bankunterlagen entnehmen.": [
+    "1822direkt: use a FinTS connection with bank code 50050222. Refer to the bank documents for your user ID and enabled TAN method.",
+    "1822direkt : utilisez un accès FinTS avec le code bancaire 50050222. Consultez les documents bancaires pour l’identifiant et la méthode TAN activée.",
+    "1822direkt: use una conexión FinTS con código bancario 50050222. Consulte los documentos del banco para el identificador y método TAN activado."
   ]
 }

@@ -1,5 +1,5 @@
 # BLZ	Name	Ort	BIC	HBCI-Host	PIN/TAN-URL
-# Quelle: hbci4java blz.properties (LGPL-2.1), Stand Oktober 2026; Atruvia/Commerzbank-Adressen aktualisiert
+# Quelle: hbci4java blz.properties (LGPL-2.1), Stand Oktober 2026; gezielte Korrekturen 2026-11-13, siehe docs/bank-compatibility.md (kein vollständiger Aktualitätsnachweis)
 28030300	"Oldenburgische Landesbank AG (vormals W. Fortmann & Söhne)"	Oldenburg (Oldb)	FORTDEH4XXX		https://hbci.olb.de
 50050222	1822direkt (PIN/TAN)	Frankfurt am Main	HELADEF1822		https://fints.1822direkt.com/fints/hbci
 39060180	Aachener Bank eG	Aachen	GENODED1AAC	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet
@@ -373,7 +373,7 @@
 60069842	Darmsheimer Bank	Sindelfingen	GENODES1DHB	fints2.atruvia.de	https://fints2.atruvia.de/cgi-bin/hbciservlet
 50010700	Degussa Bank AG	Frankfurt am Main	DEGUDEFFXXX		https://fints.degussa-bank.de
 60069387	Dettinger Bank	Dettingen an der Erms	GENODES1DBE	fints2.atruvia.de	https://fints2.atruvia.de/cgi-bin/hbciservlet
-30060601	Deutsche Apotheker- und Ärztebank eG	Düsseldorf	DAAEDEDDXXX	fints1.atruvia.de	https://fints.apobank.de/FinTs30PinTanHttpGate
+30060601	Deutsche Apotheker- und Ärztebank eG	Düsseldorf	DAAEDEDDXXX		https://fints.apobank.de/FinTs30PinTanHttpGate
 39070020	Deutsche Bank	Aachen	DEUTDEDK390	193.150.167.7	https://fints.deutsche-bank.de/
 65370075	Deutsche Bank	Albstadt, Württ	DEUTDESS653	193.150.167.7	https://fints.deutsche-bank.de/
 25971071	Deutsche Bank	Alfeld (Leine)	DEUTDE2H253	193.150.167.7	https://fints.deutsche-bank.de/
@@ -661,7 +661,7 @@
 70070024	Deutsche Bank Privat- und Geschäftskunden	München	DEUTDEDBMUC	193.150.167.8	https://fints.deutsche-bank.de/
 60670024	Deutsche Bank Privat- und Geschäftskunden	Stuttgart	DEUTDEDB659		https://fints.deutsche-bank.de/
 20090400	Deutsche Genossenschafts-Hypothekenbank AG	Hamburg	DGHYDEH1XXX	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet
-12030000	Deutsche Kreditbank Berlin	Berlin	BYLADEM1001	i111.by.s-hbci.de	https://fints.dkb.de/fints
+12030000	Deutsche Kreditbank Berlin	Berlin	BYLADEM1001		https://fints.dkb.de/fints
 83065410	Deutsche Skatbank Zndl VR Bank Altenburger Land	Altenburg, Thür	GENODEF1ALT	fints2.atruvia.de	https://fints2.atruvia.de/cgi-bin/hbciservlet
 29050101	Die Sparkasse Bremen	Bremen	SBREDE22XXX	i070.hb.s-hbci.de	https://banking-hb6.s-fints-pt-hb.de/fints30
 21890022	Dithmarscher Volks- und Raiffeisenbank eG	Heide, Holst	GENODEF1DVR	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet
@@ -1568,12 +1568,12 @@
 25090500	Sparda-Bank Hannover eG	Hannover	GENODEF1S09		https://fints2.atruvia.de/cgi-bin/hbciservlet
 50090500	Sparda-Bank Hessen eG	Frankfurt am Main	GENODEF1S12		https://fints2.atruvia.de/cgi-bin/hbciservlet
 70090500	Sparda-Bank München eG	München	GENODEF1S04		https://fints2.atruvia.de/cgi-bin/hbciservlet
-40060560	Sparda-Bank Münster	Münster, Westf	GENODEF1S08		https://fints.bankingonline.de/fints/FinTs30PinTanHttpGate
+40060560	Sparda-Bank West	Münster, Westf	GENODEF1S08		https://fints2.atruvia.de/cgi-bin/hbciservlet
 76090500	Sparda-Bank Nürnberg eG	Nürnberg, Mittelfr	GENODEF1S06		https://fints2.atruvia.de/cgi-bin/hbciservlet
 75090500	Sparda-Bank Ostbayern eG	Regensburg	GENODEF1S05		https://fints2.atruvia.de/cgi-bin/hbciservlet
 55090500	Sparda-Bank Südwest eG	Mainz a Rhein	GENODEF1S01		https://fints2.atruvia.de/cgi-bin/hbciservlet
-36060591	Sparda-Bank West	Düsseldorf	GENODED1SPE		https://fints.bankingonline.de/fints/FinTs30PinTanHttpGate
-33060592	Sparda-Bank West	Wuppertal	GENODED1SPW		https://fints.bankingonline.de/fints/FinTs30PinTanHttpGate
+36060591	Sparda-Bank West	Düsseldorf	GENODED1SPE		https://fints2.atruvia.de/cgi-bin/hbciservlet
+33060592	Sparda-Bank West	Wuppertal	GENODED1SPW		https://fints2.atruvia.de/cgi-bin/hbciservlet
 37060590	Sparda-Bank West eG	Köln	GENODED1SPK		https://fints2.atruvia.de/cgi-bin/hbciservlet
 39050000	Sparkasse Aachen	Aachen	AACSDE33XXX	i007.rl.s-hbci.de	https://banking-rl3.s-fints-pt-rl.de/fints30
 73350000	Sparkasse Allgäu	Kempten (Allgäu)	BYLADEM1ALG	i064.by.s-hbci.de	https://banking-by5.s-fints-pt-by.de/fints30

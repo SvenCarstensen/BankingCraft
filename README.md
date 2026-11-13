@@ -24,6 +24,13 @@ Other banks, RDH-9/10, DDV and other card/reader combinations have **not** been 
 through successful real-world tests. Simulator tests and protocol implementations do not
 establish compatibility with untested banks or hardware.
 
+Bank profiles were compared with AqBanking and current bank publications on
+**November 13, 2026**. Setup hints, selected outdated endpoints, statement-format
+negotiation and account-data handling have been updated. See the
+[bank compatibility review](docs/bank-compatibility.md) for the per-bank sources,
+remaining uncertainties (including Consorsbank's documented FinTS version) and
+offline test coverage. **This does not expand the live-tested bank list above.**
+
 - **FinTS product registration is pending.** BankingCraft does not yet have its own registered
   product ID. Normal builds without a configured ID send an unregistered placeholder and may
   be rejected by banks. The local test ID used during development is neither included in the

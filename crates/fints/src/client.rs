@@ -30,6 +30,9 @@ pub struct Config {
     /// FinTS product registration number (Deutsche Kreditwirtschaft).
     pub product_id: String,
     pub product_version: String,
+    /// Statement format preference; account permissions and BPD remain authoritative.
+    #[serde(default)]
+    pub statement_format: crate::bank_profile::StatementFormat,
 }
 
 /// Data learned from the bank that should be persisted between sessions.
@@ -112,10 +115,17 @@ impl<'a> Client<'a> {
         if matches!(medium, Medium::PinTan) {
             crate::transport::validate_https_url(&cfg.url)?;
         }
-        // Old vaults did not store HIVPPS details. Request BPD once even if its
-        // bank-side version has not changed since the app was upgraded.
-        if !state.bpd.vop_parameters_known { state.bpd.version = 0; }
+        // Old vaults did not store HIVPPS details or statement retention limits.
+        // Request BPD once even if its bank-side version has not changed.
+        if !state.bpd.vop_parameters_known || !state.bpd.statement_parameters_known { state.bpd.version = 0; }
         let mut cfg = cfg;
+        if matches!(medium, Medium::PinTan) {
+            if let Some(url) = crate::bank_profile::migrated_endpoint(&cfg.url) {
+                cfg.url = url.into();
+                state.bpd.version = 0;
+                state.upd.version = 0;
+            }
+        }
         let mut ddv = None;
         if let Medium::Ddv(card) = &mut medium {
             let bank = card.bank_data(1)?;
@@ -199,6 +209,13 @@ impl<'a> Client<'a> {
 
     fn is_pintan(&self) -> bool {
         matches!(self.medium, Medium::PinTan)
+    }
+
+    fn ensure_payments_available(&self) -> Result<()> {
+        if self.is_pintan() && crate::bank_profile::BankProfile::for_endpoint(&self.cfg.url).read_only() {
+            return Err(Error::NotSupported(i18n::tr("ING unterstützt über FinTS nur Lesezugriffe. Bitte Zahlungen und Daueraufträge im Onlinebanking der Bank verwalten.").into()));
+        }
+        Ok(())
     }
 
     /// Replace the transport (tests, simulators).
@@ -431,8 +448,14 @@ impl<'a> Client<'a> {
         self.current_method().map(|m| m.needs_medium).unwrap_or(false)
     }
 
-    /// TAN medium for HKTAN field 11: always sent when known (as AqBanking does).
+    /// TAN medium for HKTAN field 11, with the documented Deutsche Bank exception.
     fn medium_val(&self) -> Val {
+        // Deutsche Bank's current FinTS FAQ explicitly rejects a medium name
+        // for photoTAN. Respect a mandatory BPD medium if the bank changes this.
+        if crate::bank_profile::BankProfile::for_endpoint(&self.cfg.url) == crate::bank_profile::BankProfile::DeutscheBank
+            && self.current_method().is_some_and(|m| !m.needs_medium && format!("{} {} {}", m.name, m.dk_id, m.technical_id).to_lowercase().contains("phototan")) {
+            return Val::Empty;
+        }
         Val::from(self.state.tan_medium.clone())
     }
 
@@ -936,7 +959,10 @@ impl<'a> Client<'a> {
         let mut accounts = self.state.upd.accounts.clone();
         for a in &mut accounts {
             if a.blz.is_empty() {
-                a.blz = self.cfg.blz.clone();
+                // The access BLZ can differ from the account BLZ (e.g. 1822direkt).
+                a.blz = if a.iban.starts_with("DE") && a.iban.len() == 22 && pain::iban_valid(&a.iban) {
+                    a.iban[4..12].into()
+                } else { self.cfg.blz.clone() };
             }
         }
         Ok(accounts)
@@ -991,8 +1017,27 @@ impl<'a> Client<'a> {
             return self.credit_card_report(a, code, version, from, to);
         }
         let camt_fmt = self.state.bpd.preferred_camt();
-        let use_camt = a.allows("HKCAZ") && camt_fmt.is_some() && self.state.bpd.version_for("HKCAZ", &[1]).is_some() && a.is_sepa();
+        let camt_available = a.allows("HKCAZ") && camt_fmt.is_some() && self.state.bpd.version_for("HKCAZ", &[1]).is_some() && a.is_sepa();
+        let mt940_available = a.allows("HKKAZ") && self.state.bpd.version_for("HKKAZ", KAZ_VERSIONS).is_some();
+        let use_camt = self.cfg.statement_format.use_camt(camt_available, mt940_available);
         if !use_camt && !a.allows("HKKAZ") { return Err(Error::NotSupported(i18n::tr("Umsätze für dieses Konto").into())); }
+        let job = if use_camt { "HKCAZ" } else { "HKKAZ" };
+        let profile = crate::bank_profile::BankProfile::for_endpoint(&self.cfg.url);
+        let days = self.state.bpd.statement_days.get(job).copied().filter(|d| *d > 0);
+        let fallback_days = profile.statement_history_days().filter(|_| a.kind <= 9);
+        let days = match (days, fallback_days) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        let earliest = days.map(|d| chrono::Local::now().date_naive() - chrono::Duration::days(i64::from(d.saturating_sub(1))));
+        if to.is_some_and(|end| end < from || earliest.is_some_and(|start| end < start)) {
+            return Err(Error::Other(i18n::tr("Der gewählte Zeitraum liegt außerhalb der abrufbaren Umsatzhistorie oder ist ungültig.").into()));
+        }
+        let mut warnings = Vec::new();
+        let from = if let Some(start) = earliest.filter(|start| from < *start) {
+            warnings.push(i18n::tr_format!("Die Bank stellt Umsätze erst ab {} bereit. Ältere lokale Umsätze bleiben erhalten.", start));
+            start
+        } else { from };
         self.ui.progress(&i18n::tr_format!("Umsätze {} …", display_account(a)));
         let mut out = Vec::new();
         let mut touchdown: Option<String> = None;
@@ -1059,7 +1104,7 @@ impl<'a> Client<'a> {
         if touchdown.is_some() {
             return Err(Error::Other(i18n::tr("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt").into()));
         }
-        Ok(TransactionReport { transactions: out, balance: None })
+        Ok(TransactionReport { transactions: out, balance: None, warnings })
     }
 
     fn card_job(&self, a: &Account, standard: &'static str, standard_version: u32, legacy: &'static str, legacy_version: u32) -> Result<Option<(&'static str, u32)>> {
@@ -1209,6 +1254,7 @@ impl<'a> Client<'a> {
     }
 
     pub fn transfer(&mut self, a: &Account, t: &SepaTransfer) -> Result<String> {
+        self.ensure_payments_available()?;
         pain::validate_transfer(t)?;
         validate_debtor(a, t)?;
         self.open()?;
@@ -1228,6 +1274,7 @@ impl<'a> Client<'a> {
     }
 
     pub fn scheduled_transfer(&mut self, a: &Account, t: &SepaTransfer) -> Result<String> {
+        self.ensure_payments_available()?;
         pain::validate_transfer(t)?;
         validate_debtor(a, t)?;
         if !t.execution_date.map(|d| d > chrono::Local::now().date_naive()).unwrap_or(false) {
@@ -1256,6 +1303,7 @@ impl<'a> Client<'a> {
     }
 
     pub fn create_standing_order(&mut self, a: &Account, so: &StandingOrder) -> Result<String> {
+        self.ensure_payments_available()?;
         pain::validate_transfer(&so.transfer)?;
         validate_debtor(a, &so.transfer)?;
         pain::validate_standing_schedule(so)?;
@@ -1345,6 +1393,7 @@ impl<'a> Client<'a> {
     }
 
     pub fn delete_standing_order(&mut self, a: &Account, so: &StandingOrder) -> Result<String> {
+        self.ensure_payments_available()?;
         self.open()?;
         if !self.state.bpd.supports("HKCDL") {
             return Err(Error::NotSupported(i18n::tr("Dauerauftrag löschen (HKCDL)").into()));

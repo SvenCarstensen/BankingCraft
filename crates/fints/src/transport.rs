@@ -53,22 +53,50 @@ impl Transport for HttpsTransport {
             .set("Content-Type", "text/plain")
             .send_string(&body)
             .map_err(|_| Error::Transport(i18n::tr("HTTPS-Anfrage an die Bank fehlgeschlagen").into()))?;
-        let mut text = String::new();
+        let mut body = Vec::new();
         let limit = MAX_MESSAGE_SIZE * 2;
-        resp.into_reader().take((limit + 1) as u64).read_to_string(&mut text)
+        resp.into_reader().take((limit + 1) as u64).read_to_end(&mut body)
             .map_err(|e| Error::Transport(e.to_string()))?;
-        if text.len() > limit {
-            return Err(Error::Transport(i18n::tr("Antwort der Bank überschreitet die Größenbegrenzung").into()));
-        }
-        let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-        let raw = base64::engine::general_purpose::STANDARD
-            .decode(cleaned)
-            .map_err(|e| Error::Transport(i18n::tr_format!("Ungültige Base64-Antwort: {e}")))?;
-        if raw.len() > MAX_MESSAGE_SIZE {
-            return Err(Error::Transport(i18n::tr("Antwort der Bank überschreitet die Größenbegrenzung").into()));
-        }
+        let raw = decode_https_body(&body)?;
         log::debug!("FinTS << {} bytes", raw.len());
         Ok(raw)
+    }
+}
+
+/// AqBanking accepts both base64 and raw FinTS HTTP responses. Keep raw binary
+/// fields byte-exact; envelope/authentication checks still run in open_message.
+fn decode_https_body(body: &[u8]) -> Result<Vec<u8>> {
+    if body.len() > MAX_MESSAGE_SIZE * 2 {
+        return Err(Error::Transport(i18n::tr("Antwort der Bank überschreitet die Größenbegrenzung").into()));
+    }
+    let raw = if body.starts_with(b"HNHBK:") {
+        body.to_vec()
+    } else {
+        let cleaned: Vec<u8> = body.iter().copied().filter(|c| !c.is_ascii_whitespace()).collect();
+        base64::engine::general_purpose::STANDARD.decode(cleaned)
+            .map_err(|e| Error::Transport(i18n::tr_format!("Ungültige Base64-Antwort: {e}")))?
+    };
+    if raw.len() > MAX_MESSAGE_SIZE {
+        return Err(Error::Transport(i18n::tr("Antwort der Bank überschreitet die Größenbegrenzung").into()));
+    }
+    if !raw.starts_with(b"HNHBK:") {
+        return Err(Error::Transport(i18n::tr("Ungültiger Nachrichtenkopf").into()));
+    }
+    Ok(raw)
+}
+
+#[cfg(test)]
+mod https_body_tests {
+    use super::*;
+    #[test]
+    fn preserves_binary_and_latin1_in_raw_and_base64_responses() {
+        let raw = b"HNHBK:1:3+@8@\xe4\xff \n\r\t?'";
+        assert_eq!(decode_https_body(raw).unwrap(), raw);
+        let base64 = base64::engine::general_purpose::STANDARD.encode(raw);
+        assert_eq!(decode_https_body(format!("\r\n{base64}\r\n").as_bytes()).unwrap(), raw);
+        for data in [b"<html>HNHBK:fake</html>".as_slice(), b"aGVsbG8=", b"", b" \nHNHBK:fake"] {
+            assert!(decode_https_body(data).is_err());
+        }
     }
 }
 

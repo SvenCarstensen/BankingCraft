@@ -330,7 +330,8 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
         let (accounts, ids): (Vec<_>, Vec<_>) = if let Some(accounts) = selected {
             accounts.into_iter().unzip()
         } else {
-            let accounts = client.accounts()?;
+            let mut accounts = client.accounts()?;
+            for account in &mut accounts { crate::banks::complete_account(account); }
             let ids = ctx.vault.lock().unwrap().merge_accounts(access_id, accounts.clone());
             (accounts, ids)
         };
@@ -366,6 +367,7 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
                 match client.transaction_report(acc, from, None) {
                     Ok(report) => {
                         fetched = true;
+                        warnings.extend(report.warnings);
                         let mut v = ctx.vault.lock().unwrap();
                         if let Some(balance) = report.balance {
                             if let Some(stored) = v.accounts.iter_mut().find(|s| s.id == id) { stored.balance = Some(balance); }
@@ -448,6 +450,7 @@ fn account_and_access(ctx: &Ctx, account_id: u32) -> Result<(Account, BankAccess
     let a = v.account(account_id).ok_or(i18n::tr("Konto nicht gefunden"))?;
     let access = v.access(a.access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
     let mut acc = a.account.clone();
+    crate::banks::complete_account(&mut acc);
     if acc.blz.is_empty() {
         acc.blz = access.config.blz.clone();
     }

@@ -31,6 +31,8 @@ impl Account {
 #[derive(Debug, Default)]
 pub struct TransactionReport {
     pub transactions: Vec<Transaction>,
+    /// Retrieval limitations to surface to the user, without discarding local history.
+    pub warnings: Vec<String>,
     /// Credit-card statement responses can also include the current booked balance.
     pub balance: Option<Balance>,
 }

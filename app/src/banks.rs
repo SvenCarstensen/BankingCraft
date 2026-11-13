@@ -111,12 +111,38 @@ pub fn search(query: &str, chip_card: bool, limit: usize) -> Vec<&'static Bank> 
 
 /// Bank specific hints for the login name.
 pub fn login_hint(b: &Bank) -> Option<&'static str> {
-    if b.bic.starts_with("PBNK") {
-        Some(i18n::tr("Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); TAN per BestSign oder photoTAN"))
-    } else if b.bic.starts_with("DEUT") {
-        Some(i18n::tr("Anmeldename: Filiale + Konto + Unterkonto (10-stellig), TAN per BestSign oder photoTAN"))
-    } else {
-        None
+    use fints::bank_profile::BankProfile;
+    Some(i18n::tr(match BankProfile::for_endpoint(b.url) {
+        BankProfile::Postbank => "Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); TAN per BestSign oder photoTAN",
+        BankProfile::DeutscheBank => "Deutsche Bank: Deutsche Bank ID oder Filial- und Kontonummer, dazu Onlinebanking-Passwort. Nach dem Banking-Upgrade neue Zugangsdaten verwenden; Freigabe per photoTAN oder BestSign.",
+        BankProfile::Ing => "ING: Benutzername oder Zugangsnummer und Onlinebanking-Passwort; Kunden-ID leer lassen. Nur Lesezugriff, Girokonto-Umsätze bis 90 Tage. Alle 90 Tage im ING-Onlinebanking anmelden.",
+        BankProfile::Dkb => "DKB: Anmeldename wie im Onlinebanking; Kunden-ID leer lassen. Freigabe über DKB-App, chipTAN manuell oder chipTAN QR.",
+        BankProfile::Comdirect => "comdirect: 8-stellige Zugangsnummer und Onlinebanking-PIN. Umsatzformat automatisch wählen; MT940 nur bei einem älteren Zugang mit entsprechender Bankfreigabe bevorzugen.",
+        BankProfile::Commerzbank => "Commerzbank: Teilnehmernummer oder Benutzername. FinTS mit photoTAN muss separat bei der Bank freigeschaltet sein. Umsätze werden bevorzugt als CAMT abgerufen.",
+        BankProfile::Sparkasse => "Sparkasse: Anmeldename oder Legitimations-ID und Onlinebanking-PIN. Die Bank liefert die verfügbaren pushTAN- und chipTAN-Verfahren.",
+        BankProfile::Atruvia if b.name.contains("Sparda") => "Sparda: Aktuellen Sparda-NetKey oder Alias und die neue Online-PIN verwenden. Nach einer IT-Umstellung zuerst im Onlinebanking anmelden und das Freigabeverfahren aktivieren.",
+        BankProfile::Atruvia => "VR-/PSD-/Atruvia-Zugang: NetKey oder Alias und Onlinebanking-PIN verwenden; abweichende Kennungen Ihrer Bank beachten. SecureGo plus und Smart-TAN werden aus den Bankparametern ermittelt.",
+        BankProfile::Sparda => "Sparda: FinTS-Zugangsdaten Ihrer regionalen Bank verwenden. Server und TAN-Verfahren unterscheiden sich zwischen den Sparda-Banken.",
+        BankProfile::ApoBank => "apoBank: apoKennung oder Alias verwenden. Verfügbare TAN-Verfahren werden von der Bank geladen; der frühere Atruvia-Zugang ist veraltet.",
+        BankProfile::Norisbank => "norisbank: Neue norisbank ID oder Filial- und Kontonummer sowie aktuelles Passwort verwenden. Kunden-ID leer lassen oder identisch eintragen. Freigabe per photoTAN oder BestSign.",
+        BankProfile::Consorsbank => "Consorsbank: Kontonummer gefolgt von der dreistelligen Berechtigtennummer als Benutzerkennung. Die Bank verlangt eine TAN beim Login. FinTS 4.x wird derzeit nicht unterstützt.",
+        BankProfile::Hypovereinsbank => "HypoVereinsbank: 10-stellige Direct-Banking-Nummer und den freigeschalteten FinTS-Zugang verwenden. Für PIN/TAN die zentrale BLZ 70020270 wählen.",
+        BankProfile::Direkt1822 => "1822direkt: FinTS-Zugang mit BLZ 50050222 verwenden. Benutzerkennung und freigeschaltetes TAN-Verfahren den Bankunterlagen entnehmen.",
+        BankProfile::Generic => return None,
+    }))
+}
+
+/// HIUPD often has an IBAN but no BIC; some banks omit HKSPA entirely. Use the
+/// exact German account BLZ from a checksum-valid IBAN, never the login's BIC or
+/// a name match. Bank-supplied data always take precedence.
+pub fn complete_account(account: &mut fints::Account) {
+    if !account.iban.starts_with("DE")
+        || account.iban.len() != 22 || !fints::pain::iban_valid(&account.iban) { return; }
+    let Some(blz) = account.iban.get(4..12) else { return };
+    if !account.blz.is_empty() && account.blz != blz { return; }
+    account.blz = blz.into();
+    if account.bic.is_empty() {
+        if let Some(bank) = by_blz(blz) { account.bic = bank.bic.into(); }
     }
 }
 
@@ -134,5 +160,41 @@ mod tests {
         let blz = search("12030000", false, 5);
         assert_eq!(blz[0].name, "Deutsche Kreditbank Berlin");
         assert!(by_blz("21661719").unwrap().url.contains("atruvia"));
+    }
+
+    #[test]
+    fn old_vault_configuration_defaults_to_automatic_statement_format() {
+        let cfg = fints::Config { statement_format: fints::bank_profile::StatementFormat::Mt940, ..Default::default() };
+        let mut old = serde_json::to_value(cfg).unwrap(); old.as_object_mut().unwrap().remove("statement_format");
+        assert_eq!(serde_json::from_value::<fints::Config>(old).unwrap().statement_format, fints::bank_profile::StatementFormat::Auto);
+    }
+
+    #[test]
+    fn verified_sparda_west_branches_use_the_new_server() {
+        for blz in ["33060592", "36060591", "37060590", "40060560"] {
+            let bank = by_blz(blz).unwrap();
+            assert_eq!(bank.url, "https://fints2.atruvia.de/cgi-bin/hbciservlet");
+            assert!(bank.name.contains("West"));
+            assert!(login_hint(bank).is_some());
+        }
+        for blz in ["12030000", "30060601"] { assert!(by_blz(blz).unwrap().host.is_empty()); }
+    }
+
+    #[test]
+    fn bic_fallback_uses_the_account_bank_and_preserves_explicit_data() {
+        // Generated fixture IBAN: account number 1, no customer data.
+        for (blz, bic) in [("12030000", "BYLADEM1001"), ("30520037", "RCIDDE3NPAY"), ("50050201", "HELADEF1822")] {
+            let digits = format!("{blz}0000000001131400");
+            let rem = digits.bytes().fold(0u32, |acc, b| (acc * 10 + u32::from(b - b'0')) % 97);
+            let mut account = fints::Account { iban: format!("DE{:02}{blz}0000000001", 98 - rem), ..Default::default() };
+            complete_account(&mut account);
+            assert_eq!(account.bic, bic); assert_eq!(account.blz, blz);
+            account.bic = "BANKSUPPLIED".into(); complete_account(&mut account); assert_eq!(account.bic, "BANKSUPPLIED");
+            account.bic.clear(); account.blz = "99999999".into(); complete_account(&mut account); assert!(account.bic.is_empty());
+        }
+        for iban in ["DE00120300000000000001", "GB82WEST12345698765432", "DE😃", ""] {
+            let mut account = fints::Account { iban: iban.into(), ..Default::default() };
+            complete_account(&mut account); assert!(account.bic.is_empty());
+        }
     }
 }

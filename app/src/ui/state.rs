@@ -222,6 +222,7 @@ pub struct Data {
     pub accesses: ModelRc<AccessRow>,
     pub af_open: bool,
     pub af_kind: i32,
+    pub af_statement_format: i32,
     pub af_name: SharedString,
     pub af_blz: SharedString,
     pub af_user: SharedString,
@@ -365,6 +366,7 @@ impl Default for Data {
             accesses: Default::default(),
             af_open: Default::default(),
             af_kind: Default::default(),
+            af_statement_format: Default::default(),
             af_name: Default::default(),
             af_blz: Default::default(),
             af_user: Default::default(),
@@ -750,6 +752,9 @@ impl AppState {
         }
         if before.af_kind != after.af_kind {
             data.af_kind = after.af_kind;
+        }
+        if before.af_statement_format != after.af_statement_format {
+            data.af_statement_format = after.af_statement_format;
         }
         if before.af_name != after.af_name {
             data.af_name = after.af_name.clone();
@@ -1399,6 +1404,12 @@ impl AppState {
     }
     pub fn get_af_kind(&self) -> i32 {
         self.data.borrow().af_kind
+    }
+    pub fn get_af_statement_format(&self) -> i32 {
+        self.data.borrow().af_statement_format
+    }
+    pub fn set_af_statement_format(&self, value: i32) {
+        self.data.borrow_mut().af_statement_format = value;
     }
     pub fn set_af_kind(&self, value: i32) {
         self.data.borrow_mut().af_kind = value;

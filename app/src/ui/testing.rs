@@ -22,6 +22,19 @@ pub fn snapshot(app: &AppWindow, width: u32, height: u32, path: impl AsRef<std::
 }
 
 #[test]
+fn bank_setup_statement_preference_survives_ui_state_merge() {
+    use egui_kittest::kittest::Queryable;
+    i18n::with_language(i18n::Language::German, || {
+        let app = AppWindow::new().unwrap(); let st = app.global::<crate::AppState>();
+        st.set_unlocked(true); st.set_page(6); st.set_af_open(true);
+        let mut harness = harness(&app, 1360., 1100.);
+        harness.get_by_role(egui::accesskit::Role::ComboBox).click(); harness.run();
+        harness.get_by_label("MT940 bevorzugen (ältere Zugänge)").click(); harness.run();
+        assert_eq!(st.get_af_statement_format(), 2);
+    });
+}
+
+#[test]
 fn standing_schedule_controls_stay_aligned_at_both_desktop_widths_in_all_languages() {
     use egui::accesskit::Role;
     use egui_kittest::kittest::Queryable;
