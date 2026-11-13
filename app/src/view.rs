@@ -52,19 +52,23 @@ const WEEKDAYS: [&str; 7] = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Fr
 fn day_label(d: NaiveDate) -> String {
     let today = Local::now().date_naive();
     let prefix = if d == today {
-        "Heute, ".to_string()
+        i18n::tr("Heute, ").to_string()
     } else if d == today - Duration::days(1) {
-        "Gestern, ".to_string()
+        i18n::tr("Gestern, ").to_string()
     } else {
-        format!("{}, ", WEEKDAYS[d.weekday().num_days_from_monday() as usize])
+        format!("{}, ", i18n::tr(WEEKDAYS[d.weekday().num_days_from_monday() as usize]))
     };
-    format!("{prefix}{}. {} {}", d.day(), MONTHS[d.month0() as usize], d.year())
+    i18n::tr_format!("{prefix}{}. {} {}", d.day(), i18n::tr(MONTHS[d.month0() as usize]), d.year())
 }
 
 const ACCOUNT_COLORS: [(u8, u8, u8); 6] = [(0x1e, 0x6f, 0xd9), (0x0c, 0x85, 0x99), (0xe8, 0x59, 0x0c), (0x5f, 0x3d, 0xc4), (0x2f, 0x9e, 0x44), (0xc2, 0x25, 0x5c)];
 
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(v))
+}
+
+pub fn category_label(name: &str) -> &str {
+    if CATEGORIES.iter().any(|c| c.name == name) { i18n::tr(name) } else { name }
 }
 
 fn ss(s: impl AsRef<str>) -> SharedString {
@@ -109,13 +113,13 @@ fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> Accou
         }
     }
     let note = if rows.is_empty() {
-        "Keine Konten".to_string()
+        i18n::tr("Keine Konten").to_string()
     } else if known == 0 {
-        "Noch keine Salden abgerufen".to_string()
+        i18n::tr("Noch keine Salden abgerufen").to_string()
     } else if known < rows.len() {
-        format!("Teilsaldo · {known} von {} Kontosalden verfügbar", rows.len())
+        i18n::tr_format!("Teilsaldo · {known} von {} Kontosalden verfügbar", rows.len())
     } else {
-        format!("{} {}", rows.len(), if rows.len() == 1 { "Konto" } else { "Konten" })
+        format!("{} {}", rows.len(), if rows.len() == 1 { i18n::tr("Konto") } else { i18n::tr("Konten") })
     };
     let balances = totals.into_iter().map(|(currency, amount)| GroupBalanceRow {
         amount: ss(fmt_money(amount, &currency)), negative: amount.is_sign_negative(),
@@ -132,7 +136,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     // accounts
     let mut rows = Vec::new();
     let mut total = Decimal::ZERO;
-    let mut names = vec![ss("Alle Konten")];
+    let mut names = vec![ss(i18n::tr("Alle Konten"))];
     vs.account_filter.clear();
     vs.sepa_accounts.clear();
     let mut sepa_names = Vec::new();
@@ -147,19 +151,19 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             None => ("–".into(), false, String::new()),
         };
         let kind = match a.account.kind {
-            1..=9 => "Girokonto",
-            10..=19 => "Sparkonto",
-            20..=29 => "Festgeld",
-            30..=39 => "Depot",
-            40..=49 => "Darlehen",
-            50..=59 => "Kreditkarte",
-            _ => "Konto",
+            1..=9 => i18n::tr("Girokonto"),
+            10..=19 => i18n::tr("Sparkonto"),
+            20..=29 => i18n::tr("Festgeld"),
+            30..=39 => i18n::tr("Depot"),
+            40..=49 => i18n::tr("Darlehen"),
+            50..=59 => i18n::tr("Kreditkarte"),
+            _ => i18n::tr("Konto"),
         };
         let name = if a.account.product.is_empty() { kind.to_string() } else { a.account.product.clone() };
         rows.push(AccountRow {
             id: a.id as i32,
             group_index: v.groups.iter().position(|g| g.account_ids.contains(&a.id)).map(|i| i as i32 + 1).unwrap_or(0),
-            group_name: ss(v.groups.iter().find(|g| g.account_ids.contains(&a.id)).map(|g| g.name.as_str()).unwrap_or("Ohne Gruppe")),
+            group_name: ss(v.groups.iter().find(|g| g.account_ids.contains(&a.id)).map(|g| g.name.as_str()).unwrap_or(i18n::tr("Ohne Gruppe"))),
             name: ss(&name),
             bank: ss(&bank),
             iban: ss(if a.account.iban.is_empty() { a.account.account_number.clone() } else { short_iban(&a.account.iban) }),
@@ -167,7 +171,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             balance: ss(balance),
             available: ss(available),
             negative,
-            last_sync: ss(a.last_sync.map(|t| format!("aktualisiert {}", t.format("%d.%m.%Y %H:%M"))).unwrap_or_else(|| "noch nicht abgerufen".into())),
+            last_sync: ss(a.last_sync.map(|t| i18n::tr_format!("aktualisiert {}", t.format("%d.%m.%Y %H:%M"))).unwrap_or_else(|| i18n::tr("noch nicht abgerufen").into())),
             kind: ss(kind),
             color: Color::from_rgb_u8(c.0, c.1, c.2),
         });
@@ -184,10 +188,10 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     }
     let ungrouped: Vec<_> = rows.iter().filter(|r| r.group_index == 0).cloned().collect();
     if !ungrouped.is_empty() || grouped.is_empty() {
-        grouped.push(account_group(v, 0, "Ohne Gruppe", ungrouped));
+        grouped.push(account_group(v, 0, i18n::tr("Ohne Gruppe"), ungrouped));
     }
     st.set_account_groups(model(grouped));
-    st.set_group_names(model(std::iter::once(ss("Ohne Gruppe")).chain(v.groups.iter().map(|g| ss(&g.name))).collect()));
+    st.set_group_names(model(std::iter::once(ss(i18n::tr("Ohne Gruppe"))).chain(v.groups.iter().map(|g| ss(&g.name))).collect()));
     st.set_accounts(model(rows));
     st.set_account_names(model(names));
     st.set_sepa_accounts(model(sepa_names));
@@ -203,19 +207,20 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     st.set_total_balance(ss(fmt_eur(total)));
     st.set_total_negative(total.is_sign_negative());
     if let Some(t) = v.accounts.iter().filter_map(|a| a.last_sync).max() {
-        st.set_last_sync(ss(format!("Letzter Kontenrundruf: {}", t.format("%d.%m.%Y um %H:%M Uhr"))));
+        st.set_last_sync(ss(i18n::tr_format!("Letzter Kontenrundruf: {}", t.format(i18n::tr("%d.%m.%Y um %H:%M Uhr")))));
     } else {
-        st.set_last_sync(ss("Willkommen – richten Sie einen Bankzugang ein oder laden Sie die Demo-Daten."));
+        st.set_last_sync(ss(i18n::tr("Willkommen – richten Sie einen Bankzugang ein oder laden Sie die Demo-Daten.")));
     }
 
     // categories
     st.set_categories(model(CATEGORIES.iter().map(|c| ss(c.name)).collect()));
+    st.set_category_labels(model(CATEGORIES.iter().map(|c| ss(i18n::tr(c.name))).collect()));
     st.set_category_colors(model(CATEGORIES.iter().map(|c| color_of(c.name)).collect()));
 
     // overview month figures
     let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
     let (inc, exp, cats) = month_stats(v, month_start);
-    st.set_month_label(ss(format!("{} {}", MONTHS[today.month0() as usize], today.year())));
+    st.set_month_label(ss(format!("{} {}", i18n::tr(MONTHS[today.month0() as usize]), today.year())));
     st.set_month_income(ss(fmt_eur(inc)));
     st.set_month_expense(ss(fmt_eur(-exp)));
     st.set_category_stats(model(bar_stats(&cats, 6)));
@@ -239,8 +244,8 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             iban: ss(short_iban(&s.order.transfer.creditor_iban)),
             amount: ss(fmt_eur(-s.order.transfer.amount)),
             purpose: ss(&s.order.transfer.purpose),
-            schedule: ss(format!("{}{}", schedule_text(&s.order), s.order.execution_time.map(|t| format!(" · {} Uhr", t.format("%H:%M"))).unwrap_or_default())),
-            next: ss(next.map(|d| format!("nächste Ausführung {}", fmt_date(d))).unwrap_or_else(|| "beendet".into())),
+            schedule: ss(format!("{}{}", schedule_text(&s.order), s.order.execution_time.map(|t| i18n::tr_format!(" · {} Uhr", t.format("%H:%M"))).unwrap_or_default())),
+            next: ss(next.map(|d| i18n::tr_format!("nächste Ausführung {}", fmt_date(d))).unwrap_or_else(|| i18n::tr("beendet").into())),
             account: ss(account_label(v, s.account_id)),
         };
         if let Some(n) = next {
@@ -259,21 +264,21 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
         .iter()
         .map(|a| {
             let (kind, detail) = match &a.kind {
-                AccessKind::PinTan => ("PIN/TAN", format!("BLZ {} · {}", a.config.blz, a.config.user_id)),
-                AccessKind::ChipCard { reader, record } => ("HBCI-Chipkarte", format!("BLZ {} · Eintrag {record} · {reader}", a.config.blz)),
-                AccessKind::RdhCard { reader, record } => ("RDH-Chipkarte", format!("BLZ {} · {} · Eintrag {record} · {reader}", a.config.blz, a.config.user_id)),
-                AccessKind::Demo => ("Demo", "lokale Beispieldaten".to_string()),
+                AccessKind::PinTan => ("PIN/TAN", i18n::tr_format!("BLZ {} · {}", a.config.blz, a.config.user_id)),
+                AccessKind::ChipCard { reader, record } => (i18n::tr("HBCI-Chipkarte"), i18n::tr_format!("BLZ {} · Eintrag {record} · {reader}", a.config.blz)),
+                AccessKind::RdhCard { reader, record } => (i18n::tr("RDH-Chipkarte"), i18n::tr_format!("BLZ {} · {} · Eintrag {record} · {reader}", a.config.blz, a.config.user_id)),
+                AccessKind::Demo => ("Demo", i18n::tr("lokale Beispieldaten").to_string()),
             };
             let method = match &a.kind {
-                AccessKind::ChipCard { .. } => "Signatur mit Chipkarte".to_string(),
-                AccessKind::RdhCard { .. } => "RSA-Signatur mit Chipkarte (RDH)".to_string(),
-                AccessKind::Demo => "chipTAN (Demo)".to_string(),
+                AccessKind::ChipCard { .. } => i18n::tr("Signatur mit Chipkarte").to_string(),
+                AccessKind::RdhCard { .. } => i18n::tr("RSA-Signatur mit Chipkarte (RDH)").to_string(),
+                AccessKind::Demo => i18n::tr("chipTAN (Demo)").to_string(),
                 AccessKind::PinTan => a
                     .state
                     .tan_method
                     .as_ref()
                     .map(|sf| a.state.bpd.tan_methods.iter().find(|m| &m.security_function == sf).map(|m| m.name.clone()).unwrap_or(sf.clone()))
-                    .unwrap_or_else(|| "noch nicht gewählt".into()),
+                    .unwrap_or_else(|| i18n::tr("noch nicht gewählt").into()),
             };
             AccessRow {
                 id: a.id as i32,
@@ -284,6 +289,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
                 accounts: v.accounts.iter().filter(|x| x.access_id == a.id).count() as i32,
                 demo: a.kind == AccessKind::Demo,
                 pin_saved: a.saved_pin.is_some(),
+                card_based: matches!(a.kind, AccessKind::ChipCard { .. } | AccessKind::RdhCard { .. }),
             }
         })
         .collect();
@@ -323,7 +329,7 @@ fn bar_stats(cats: &BTreeMap<String, Decimal>, limit: usize) -> Vec<BarStat> {
     list.into_iter()
         .take(limit)
         .map(|(name, amount)| BarStat {
-            label: ss(name),
+            label: ss(category_label(name)),
             value: ss(fmt_eur(*amount)),
             ratio: if max.is_zero() { 0.0 } else { (*amount / max).to_string().parse::<f32>().unwrap_or(0.0) },
             color: color_of(name),
@@ -341,7 +347,7 @@ fn month_series(v: &Vault, last_month_start: NaiveDate, count: u32) -> Vec<Month
     let max = data.iter().map(|x| x.1.max(x.2)).max().unwrap_or(Decimal::ONE).max(Decimal::ONE);
     data.into_iter()
         .map(|(s, inc, exp)| MonthStat {
-            label: ss(format!("{} {:02}", MONTHS_SHORT[s.month0() as usize], s.year() % 100)),
+            label: ss(format!("{} {:02}", i18n::tr(MONTHS_SHORT[s.month0() as usize]), s.year() % 100)),
             income: (inc / max).to_string().parse().unwrap_or(0.0),
             expense: (exp / max).to_string().parse().unwrap_or(0.0),
             income_text: ss(fmt_eur(inc)),
@@ -356,7 +362,7 @@ pub fn refresh_analysis(app: &AppWindow, v: &Vault) {
     let offset = st.get_analysis_offset();
     let base = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
     let start = if offset < 0 { base - Months::new((-offset) as u32) } else { base + Months::new(offset as u32) };
-    st.set_analysis_label(ss(format!("{} {}", MONTHS[start.month0() as usize], start.year())));
+    st.set_analysis_label(ss(format!("{} {}", i18n::tr(MONTHS[start.month0() as usize]), start.year())));
     let (_, _, cats) = month_stats(v, start);
     st.set_analysis_categories(model(bar_stats(&cats, 15)));
     // income by category
@@ -385,13 +391,13 @@ pub fn tx_row(v: &Vault, i: usize, with_account: bool) -> TxRow {
         day_balance: SharedString::default(),
         index: i as i32,
         initial: ss(name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into())),
-        name: ss(if name.is_empty() { "Umsatz".into() } else { name }),
+        name: ss(if name.is_empty() { i18n::tr("Umsatz").into() } else { name }),
         purpose: ss(purpose.replace('\n', " ")),
         amount: ss(fmt_money(t.tx.amount, &t.tx.currency)),
         negative: t.tx.amount.is_sign_negative(),
         pending: t.tx.pending,
         cat_color: color_of(&cat),
-        category: ss(cat),
+        category: ss(category_label(&cat)),
         account: ss(if with_account { account_label(v, t.account_id) } else { String::new() }),
     }
 }
@@ -471,15 +477,15 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
             day_sum += v.transactions[idx[j]].tx.amount;
             j += 1;
         }
-        let label = if pending { "Vorgemerkte Umsätze".to_string() } else if unknown { "Buchungsdatum nicht geliefert".to_string() } else { day_label(date) };
+        let label = if pending { i18n::tr("Vorgemerkte Umsätze").to_string() } else if unknown { i18n::tr("Buchungsdatum nicht geliefert").to_string() } else { day_label(date) };
         let balance_text = if pending {
             String::new()
         } else if let Some(r) = running {
-            let s = format!("Tagessaldo {}", fmt_eur(r));
+            let s = i18n::tr_format!("Tagessaldo {}", fmt_eur(r));
             running = Some(r - day_sum);
             s
         } else {
-            format!("Tagessumme {}", fmt_eur(day_sum))
+            i18n::tr_format!("Tagessumme {}", fmt_eur(day_sum))
         };
         rows.push(TxRow {
             is_header: true,
@@ -500,7 +506,7 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
         }
         i = j;
     }
-    st.set_tx_summary(ss(format!(
+    st.set_tx_summary(ss(i18n::tr_format!(
         "{} Umsätze · Einnahmen {} · Ausgaben {}",
         idx.len(),
         fmt_eur(sum_in),
@@ -523,14 +529,14 @@ pub fn show_detail(app: &AppWindow, v: &Vault, i: usize) {
         bic: ss(&t.tx.counterparty_bic),
         amount: ss(fmt_money(t.tx.amount, &t.tx.currency)),
         negative: t.tx.amount.is_sign_negative(),
-        booking_date: ss(if t.tx.date_unknown { "nicht geliefert".into() } else { fmt_date(t.tx.booking_date) }),
-        value_date: ss(if t.tx.date_unknown { "nicht geliefert".into() } else { fmt_date(t.tx.value_date) }),
+        booking_date: ss(if t.tx.date_unknown { i18n::tr("nicht geliefert").into() } else { fmt_date(t.tx.booking_date) }),
+        value_date: ss(if t.tx.date_unknown { i18n::tr("nicht geliefert").into() } else { fmt_date(t.tx.value_date) }),
         purpose: ss(&t.tx.purpose),
         posting_text: ss(&t.tx.posting_text),
         eref: ss(&t.tx.end_to_end_id),
         mref: ss(&t.tx.mandate_id),
         creditor_id: ss(&t.tx.creditor_id),
-        category: ss(categorize(t, &v.rules)),
+        category: ss(category_label(&categorize(t, &v.rules))),
         account: ss(account_label(v, t.account_id)),
         pending: t.tx.pending,
     });
@@ -538,20 +544,20 @@ pub fn show_detail(app: &AppWindow, v: &Vault, i: usize) {
 
 pub fn schedule_text(o: &StandingOrder) -> String {
     let base = match (o.interval, o.every) {
-        (Interval::Weekly, 1) => "wöchentlich".to_string(),
-        (Interval::Weekly, n) => format!("alle {n} Wochen"),
-        (Interval::Monthly, 1) => "monatlich".to_string(),
-        (Interval::Monthly, 3) => "vierteljährlich".to_string(),
-        (Interval::Monthly, 6) => "halbjährlich".to_string(),
-        (Interval::Monthly, 12) => "jährlich".to_string(),
-        (Interval::Monthly, n) => format!("alle {n} Monate"),
+        (Interval::Weekly, 1) => i18n::tr("wöchentlich").to_string(),
+        (Interval::Weekly, n) => i18n::tr_format!("alle {n} Wochen"),
+        (Interval::Monthly, 1) => i18n::tr("monatlich").to_string(),
+        (Interval::Monthly, 3) => i18n::tr("vierteljährlich").to_string(),
+        (Interval::Monthly, 6) => i18n::tr("halbjährlich").to_string(),
+        (Interval::Monthly, 12) => i18n::tr("jährlich").to_string(),
+        (Interval::Monthly, n) => i18n::tr_format!("alle {n} Monate"),
     };
     let day = match (o.interval, o.day) {
-        (Interval::Monthly, 97) => " zwei Tage vor Ultimo".to_string(),
-        (Interval::Monthly, 98) => " einen Tag vor Ultimo".to_string(),
-        (Interval::Monthly, 99) => " zum Ultimo".to_string(),
-        (Interval::Monthly, d) => format!(" zum {d}."),
-        (Interval::Weekly, d) if (1..=7).contains(&d) => format!(" am {}", WEEKDAYS[d as usize - 1]),
+        (Interval::Monthly, 97) => i18n::tr(" zwei Tage vor Ultimo").to_string(),
+        (Interval::Monthly, 98) => i18n::tr(" einen Tag vor Ultimo").to_string(),
+        (Interval::Monthly, 99) => i18n::tr(" zum Ultimo").to_string(),
+        (Interval::Monthly, d) => i18n::tr_format!(" zum {d}."),
+        (Interval::Weekly, d) if (1..=7).contains(&d) => i18n::tr_format!(" am {}", i18n::tr(WEEKDAYS[d as usize - 1])),
         _ => String::new(),
     };
     format!("{base}{day}")

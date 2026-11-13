@@ -42,19 +42,19 @@ pub fn msg_id() -> String {
 /// Reject invalid payment data before opening a bank dialog or rounding amounts.
 pub fn validate_transfer(t: &SepaTransfer) -> crate::Result<()> {
     if !iban_valid(&t.debtor_iban) || !iban_valid(&t.creditor_iban) {
-        return Err(crate::Error::Other("Ungültige Auftraggeber- oder Empfänger-IBAN".into()));
+        return Err(crate::Error::Other(i18n::tr("Ungültige Auftraggeber- oder Empfänger-IBAN").into()));
     }
     if t.amount <= rust_decimal::Decimal::ZERO || t.amount.normalize().scale() > 2 {
-        return Err(crate::Error::Other("Betrag muss positiv sein und darf höchstens zwei Nachkommastellen haben".into()));
+        return Err(crate::Error::Other(i18n::tr("Betrag muss positiv sein und darf höchstens zwei Nachkommastellen haben").into()));
     }
     for name in [&t.debtor_name, &t.creditor_name] {
         let converted = sepa_charset(name);
         if converted.trim().is_empty() || converted.chars().count() > 70 {
-            return Err(crate::Error::Other("Auftraggeber und Empfänger benötigen einen Namen mit höchstens 70 SEPA-Zeichen".into()));
+            return Err(crate::Error::Other(i18n::tr("Auftraggeber und Empfänger benötigen einen Namen mit höchstens 70 SEPA-Zeichen").into()));
         }
     }
     if sepa_charset(&t.purpose).chars().count() > 140 || sepa_charset(&t.end_to_end_id).chars().count() > 35 {
-        return Err(crate::Error::Other("Verwendungszweck oder Ende-zu-Ende-Referenz ist zu lang".into()));
+        return Err(crate::Error::Other(i18n::tr("Verwendungszweck oder Ende-zu-Ende-Referenz ist zu lang").into()));
     }
     Ok(())
 }
@@ -67,7 +67,7 @@ pub fn validate_standing_schedule(so: &crate::model::StandingOrder) -> crate::Re
     if !day_valid || so.every == 0 || so.first_date < Local::now().date_naive()
         || so.last_date.map(|last| last < so.first_date).unwrap_or(false)
     {
-        return Err(crate::Error::Other("Ungültiger Ausführungsrhythmus oder Zeitraum des Dauerauftrags".into()));
+        return Err(crate::Error::Other(i18n::tr("Ungültiger Ausführungsrhythmus oder Zeitraum des Dauerauftrags").into()));
     }
     Ok(())
 }

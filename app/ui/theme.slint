@@ -1,36 +1,62 @@
-// BankingCraft design tokens. Layout follows the classic German banking-software
-// pattern (dark navigation rail, tile overview, dense transaction list) with
-// an own visual identity.
+import { Palette } from "std-widgets.slint";
+
+// One resolved palette for custom controls and the standard Slint widgets.
 
 export global Theme {
+    // With "unknown" the public palette resolves the OS setting internally.
+    // Inspect its resolved background so custom controls follow that same choice.
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark
+        || (Palette.color-scheme == ColorScheme.unknown && Palette.background.to-oklch().lightness < 0.5);
     // brand
-    out property <color> nav-bg: #13233a;
+    out property <color> nav-bg: dark ? #101a2b : #13233a;
     out property <color> nav-bg-hover: #1d3352;
     out property <color> nav-active: #24508a;
     out property <color> nav-text: #c9d6e8;
-    out property <color> nav-text-muted: #7f93ae;
-    out property <color> accent: #1e6fd9;
-    out property <color> accent-hover: #185bb3;
-    out property <color> accent-soft: #e6f0fc;
+    out property <color> nav-text-muted: dark ? #91a6c2 : #7f93ae;
+    out property <color> accent: dark ? #8bbcff : #1e6fd9;
+    out property <color> accent-hover: dark ? #3479d7 : #185bb3;
+    out property <color> accent-soft: dark ? #203959 : #e6f0fc;
+    out property <color> button-bg: dark ? #286bc7 : #1e6fd9;
+    out property <color> button-disabled: dark ? #3b4e68 : #9fb4cf;
+    out property <color> danger-button: dark ? #b93342 : #c8323b;
+    out property <color> danger-hover: #a8262e;
 
     // surfaces
-    out property <color> page-bg: #f2f5f9;
-    out property <color> card-bg: #ffffff;
-    out property <color> card-border: #e2e8f0;
-    out property <color> row-hover: #f6f9fd;
-    out property <color> row-selected: #e8f1fc;
-    out property <color> header-bg: #f7f9fc;
+    out property <color> page-bg: dark ? #121b29 : #f2f5f9;
+    out property <color> card-bg: dark ? #1c293b : #ffffff;
+    out property <color> card-border: dark ? #35465c : #e2e8f0;
+    out property <color> row-hover: dark ? #24354b : #f6f9fd;
+    out property <color> row-selected: dark ? #2a4364 : #e8f1fc;
+    out property <color> header-bg: dark ? #202f43 : #f7f9fc;
+    out property <color> track-bg: dark ? #304158 : #edf1f6;
+    out property <color> segmented-bg: dark ? #111e30 : #e9eef5;
+    out property <color> shadow: dark ? #00000030 : #0f1e3510;
+    out property <color> tooltip-bg: #13233a;
+    out property <color> tooltip-text: #ffffff;
 
     // text
-    out property <color> text: #1b2635;
-    out property <color> text-muted: #66758a;
-    out property <color> text-faint: #97a3b4;
+    out property <color> text: dark ? #edf3fc : #1b2635;
+    out property <color> text-muted: dark ? #b0c0d6 : #66758a;
+    out property <color> text-faint: dark ? #97abc6 : #97a3b4;
 
     // semantic
-    out property <color> positive: #13834a;
-    out property <color> negative: #c8323b;
-    out property <color> warning: #b7791f;
-    out property <color> pending-bg: #fff7e6;
+    out property <color> positive: dark ? #6cdaa3 : #13834a;
+    out property <color> negative: dark ? #ff8791 : #c8323b;
+    out property <color> warning: dark ? #edc475 : #b7791f;
+    out property <color> pending-bg: dark ? #322c21 : #fff7e6;
+    out property <color> pending-chip: dark ? #514027 : #ffe7b8;
+    out property <color> success-bg: dark ? #203c32 : #eaf6ef;
+    out property <color> success-border: dark ? #395f50 : #bfe3cc;
+    out property <color> success-text: dark ? #a2e2be : #1f5d3a;
+
+    // Keep category hues while giving labels enough lightness on dark surfaces.
+    public pure function tag-color(tint: color) -> color {
+        if (dark) {
+            let c = tint.to-oklch();
+            return oklch(max(0.8, c.lightness), c.chroma, c.hue);
+        }
+        return tint.darker(0.25);
+    }
 
     out property <length> radius: 10px;
     out property <length> radius-small: 6px;

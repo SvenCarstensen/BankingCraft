@@ -35,7 +35,7 @@ fn date_at(n: Node, names: &[&str]) -> Result<Option<NaiveDate>, String> {
     let Some(s) = s.filter(|s| !s.trim().is_empty()) else { return Ok(None) };
     let s = s.trim();
     s.get(..10).and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-        .map(Some).ok_or_else(|| "Ungültiges camt-Datum".into())
+        .map(Some).ok_or_else(|| i18n::tr("Ungültiges camt-Datum").into())
 }
 
 pub fn parse(xml: &[u8]) -> Result<Report, String> {
@@ -50,10 +50,10 @@ pub fn parse_pending(xml: &[u8]) -> Result<Report, String> {
 fn parse_context(xml: &[u8], pending: bool) -> Result<Report, String> {
     let s = String::from_utf8_lossy(xml);
     let doc = Document::parse_with_options(&s, roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: 250_000 })
-        .map_err(|_| "Ungültiges oder zu umfangreiches camt-Dokument".to_string())?;
+        .map_err(|_| i18n::tr("Ungültiges oder zu umfangreiches camt-Dokument").to_string())?;
     let mut report = Report::default();
     if !doc.descendants().any(|n| n.is_element() && matches!(n.tag_name().name(), "Rpt" | "Stmt")) {
-        return Err("camt enthält keinen Kontoauszug".into());
+        return Err(i18n::tr("camt enthält keinen Kontoauszug").into());
     }
     for rpt in doc.descendants().filter(|n| n.is_element() && (n.tag_name().name() == "Rpt" || n.tag_name().name() == "Stmt")) {
         // Both entry dates are optional in camt. Never invent a displayed booking date:
@@ -64,7 +64,7 @@ fn parse_context(xml: &[u8], pending: bool) -> Result<Report, String> {
         for bal in rpt.children().filter(|c| c.is_element() && c.tag_name().name() == "Bal") {
             let code = text_at(bal, &["Tp", "CdOrPrtry", "Cd"]);
             if code == "CLBD" || code == "ITBD" {
-                let amount: Decimal = text_at(bal, &["Amt"]).parse().map_err(|_| "Ungültiger camt-Saldo")?;
+                let amount: Decimal = text_at(bal, &["Amt"]).parse().map_err(|_| i18n::tr("Ungültiger camt-Saldo"))?;
                 let sign = if text_at(bal, &["CdtDbtInd"]) == "DBIT" { -Decimal::ONE } else { Decimal::ONE };
                 if let Some(d) = date_at(bal, &["Dt"])? {
                     report.closing_booked = Some((amount * sign, d));
@@ -80,12 +80,12 @@ fn parse_context(xml: &[u8], pending: bool) -> Result<Report, String> {
 
 fn parse_entry(ntry: Node, report_date: NaiveDate, force_pending: bool) -> Result<Transaction, String> {
     let amount_node = child(ntry, "Amt");
-    let amount: Decimal = amount_node.and_then(|n| n.text()).ok_or("camt-Betrag fehlt")?.trim().parse().map_err(|_| "Ungültiger camt-Betrag")?;
+    let amount: Decimal = amount_node.and_then(|n| n.text()).ok_or(i18n::tr("camt-Betrag fehlt"))?.trim().parse().map_err(|_| i18n::tr("Ungültiger camt-Betrag"))?;
     let currency = amount_node.and_then(|n| n.attribute("Ccy")).unwrap_or("EUR").to_string();
     let credit = match text_at(ntry, &["CdtDbtInd"]).as_str() {
         "CRDT" => true,
         "DBIT" => false,
-        _ => return Err("Ungültiges camt-Soll/Haben-Kennzeichen".into()),
+        _ => return Err(i18n::tr("Ungültiges camt-Soll/Haben-Kennzeichen").into()),
     };
     let status = {
         let s = text_at(ntry, &["Sts"]);

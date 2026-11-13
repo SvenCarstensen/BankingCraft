@@ -278,7 +278,7 @@ pub(crate) fn tdes_encrypt(key: &[u8; 16], data: &[u8]) -> Vec<u8> {
 pub(crate) fn tdes_decrypt(key: &[u8; 16], data: &[u8]) -> Result<Vec<u8>> {
     let dec = TdesDec::new(&long_key(key).into(), &[0u8; 8].into());
     dec.decrypt_padded_vec_mut::<cbc::cipher::block_padding::NoPadding>(data)
-        .map_err(|_| Error::Security("decryption failed".into()))
+        .map_err(|_| Error::Security(i18n::tr("Entschlüsselung fehlgeschlagen").into()))
 }
 
 /// How to unwrap the HNVSD contents of a response.
@@ -304,7 +304,7 @@ pub fn open_message(raw: &[u8], opener: Opener) -> Result<Vec<Segment>> {
             || heads[0].text_or_empty(1, 0) != "DDV"
             || heads[0].bin(6, 3).is_none_or(|k| k.len() != 16)
             || bodies[0].bin(1, 0).is_none_or(|p| p.is_empty() || p.len() % 8 != 0) {
-            return Err(Error::Security("DDV-Antwort ist nicht vollständig verschlüsselt".into()));
+            return Err(Error::Security(i18n::tr("DDV-Antwort ist nicht vollständig verschlüsselt").into()));
         }
     }
     let mut result = Vec::with_capacity(outer.len() + 8);
@@ -326,7 +326,7 @@ pub fn open_message(raw: &[u8], opener: Opener) -> Result<Vec<Segment>> {
                         let mut p = tdes_decrypt(&session, &payload)?;
                         let pl = *p.last().unwrap_or(&0) as usize;
                         if pl == 0 || pl > 8 || pl > p.len() || p[p.len() - pl..p.len() - 1].iter().any(|b| *b != 0) {
-                            return Err(Error::Security("Ungültiges DDV-Padding".into()));
+                            return Err(Error::Security(i18n::tr("Ungültiges DDV-Padding").into()));
                         }
                         p.truncate(p.len() - pl);
                         p
@@ -350,7 +350,7 @@ fn open_rdh_message(raw: &[u8], card: &mut dyn RdhCard, key: Option<&BankKey>) -
     if heads.len() != 1 || bodies.len() != 1
         || outer.iter().any(|s| !matches!(s.code.as_str(), "HNHBK" | "HNVSK" | "HNVSD" | "HNHBS"))
     {
-        return Err(Error::Security("RDH-Antwort ist nicht vollständig verschlüsselt – Antwort verworfen".into()));
+        return Err(Error::Security(i18n::tr("RDH-Antwort ist nicht vollständig verschlüsselt – Antwort verworfen").into()));
     }
     let head = heads[0];
     let profile = head.text_or_empty(1, 1);
@@ -359,22 +359,22 @@ fn open_rdh_message(raw: &[u8], card: &mut dyn RdhCard, key: Option<&BankKey>) -
         || head.text_or_empty(6, 0) != "2" || head.text_or_empty(6, 1) != expected_mode
         || head.text_or_empty(6, 2) != "13"
     {
-        return Err(Error::Security("Unerwartetes RDH-Verschlüsselungsverfahren".into()));
+        return Err(Error::Security(i18n::tr("Unerwartetes RDH-Verschlüsselungsverfahren").into()));
     }
-    let encrypted_key = head.bin(6, 3).ok_or_else(|| Error::Security("RDH-Nachrichtenschlüssel fehlt".into()))?;
-    let payload = bodies[0].bin(1, 0).ok_or_else(|| Error::Security("RDH-Nachrichteninhalt fehlt".into()))?;
+    let encrypted_key = head.bin(6, 3).ok_or_else(|| Error::Security(i18n::tr("RDH-Nachrichtenschlüssel fehlt").into()))?;
+    let payload = bodies[0].bin(1, 0).ok_or_else(|| Error::Security(i18n::tr("RDH-Nachrichteninhalt fehlt").into()))?;
     let plain = crate::rdh::decrypt(card, encrypted_key, payload)?;
     match crate::rdh::verify(&plain, key)? {
         crate::rdh::SignatureCheck::Valid => {},
-        crate::rdh::SignatureCheck::NotSigned => return Err(Error::Security("Die RDH-Antwort enthält keine Banksignatur – Antwort verworfen".into())),
-        crate::rdh::SignatureCheck::NoKey => return Err(Error::Security("Der geprüfte Signaturschlüssel der Bank fehlt – Antwort verworfen".into())),
+        crate::rdh::SignatureCheck::NotSigned => return Err(Error::Security(i18n::tr("Die RDH-Antwort enthält keine Banksignatur – Antwort verworfen").into())),
+        crate::rdh::SignatureCheck::NoKey => return Err(Error::Security(i18n::tr("Der geprüfte Signaturschlüssel der Bank fehlt – Antwort verworfen").into())),
     }
     let inner = parse_segments(&plain)?;
     if inner.iter().any(|s| {
         matches!(s.code.as_str(), "HNHBK" | "HNHBS" | "HNVSK" | "HNVSD")
             || (s.code == "HNSHK" && s.text_or_empty(1, 1) != profile)
     }) {
-        return Err(Error::Security("Widersprüchlicher RDH-Nachrichtenaufbau".into()));
+        return Err(Error::Security(i18n::tr("Widersprüchlicher RDH-Nachrichtenaufbau").into()));
     }
     let mut result = Vec::new();
     for s in outer {

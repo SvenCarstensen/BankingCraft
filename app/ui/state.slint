@@ -36,6 +36,7 @@ export global AppState {
     in-out property <string> tx-summary;
     in-out property <TxDetail> tx-detail;
     in-out property <[string]> categories;
+    in-out property <[string]> category-labels;
     in-out property <[color]> category-colors;
 
     // ---- payments
@@ -85,6 +86,7 @@ export global AppState {
     in-out property <int> tan-reader;
 
     // ---- settings
+    in-out property <int> theme-mode; // 0 = system, 1 = light, 2 = dark
     in-out property <string> product-id;
     in-out property <string> product-version;
     in-out property <string> data-path;
@@ -95,7 +97,7 @@ export global AppState {
     in-out property <bool> show-pin;
     in-out property <string> pin-title;
     in-out property <string> pin-value;
-    in-out property <string> pin-heading: "PIN-Eingabe";
+    in-out property <string> pin-heading: @tr("PIN-Eingabe");
     in-out property <bool> pin-masked: true;
     in-out property <bool> pin-offer-save;
     in-out property <bool> pin-save;
@@ -162,6 +164,9 @@ export global AppState {
     callback reader-refresh();
     callback reader-diagnose();
     callback save-settings();
+    callback change-theme(int);
+    in-out property <int> language-mode: 0;
+    callback change-language(int);
     callback load-demo();
     callback change-password();
     callback analysis-shift(int);

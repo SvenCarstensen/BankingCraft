@@ -6,7 +6,7 @@ Ausführen im Projektverzeichnis:
 ./scripts/test-business.sh
 ```
 
-Das Skript führt die Tests aller drei Rust-Pakete und anschließend Clippy mit Warnungen als Fehler aus. Es verändert keinen produktiven Tresor, stellt keine Bankverbindung her und benötigt keinen angeschlossenen Kartenleser. Die Tests verwenden erfundene Konten, eigene temporäre Tresore und einen simulierten FinTS-Transport. Ein unerwarteter weiterer Bankaufruf lässt die Ablaufprüfung fehlschlagen.
+Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnungen als Fehler aus. Es verändert keinen produktiven Tresor, stellt keine Bankverbindung her und benötigt keinen angeschlossenen Kartenleser. Die Tests verwenden erfundene Konten, eigene temporäre Tresore und einen simulierten FinTS-Transport. Ein unerwarteter weiterer Bankaufruf lässt die Ablaufprüfung fehlschlagen.
 
 ## Abgedeckte Teilprozesse
 
@@ -39,9 +39,43 @@ Das Skript führt die Tests aller drei Rust-Pakete und anschließend Clippy mit 
 | Bankensuche | Bekannte Banken und Suchbegriffe | `banks::tests` |
 | Sicherheit | Offene TAN-Freigabe, Auftraggeberkonto, HTTPS-Ziele, Parser-/XML-/Bildlimits, Bankschlüssel, DDV-Umschlag/Padding, RDH-10-Vektor, CSV-Formeln, private Dateien und Symlinks | `security_tests`, `client::business_flow_tests`, `rdh::tests`, `bridge::image_security_tests`, `private_file::tests`, `business_tests` |
 | Fenster wiederherstellen | Position und logische Größe, erneutes Speichern, ungültige/zu große Einstellungsdatei, negative Bildschirmkoordinaten, Retina-Skalierung, abgezogener Monitor | `window_state::tests` |
+| Erscheinungsbild | Systemstandard beim ersten Start, fehlende/ungültige/zu große Einstellungsdatei, wiederholter Wechsel und Persistenz aller drei Modi, Schreibfehler, Aufheben der Widget- und Fensterdesign-Vorgaben | `appearance::tests` |
+| RDH-Karten-PIN | ASCII-PC/SC-Referenzvektor ohne Füllzeichen, exakte Software-PIN-Länge, FPIN2-Längennibble/Füllung, Auswahl nur der Zugriffs-PIN, unbekannte/fehlende Metadaten, kein zweiter Versuch bei Fehler/Abbruch/Transportverlust, Erfolgs-Cache, Fehlversuchszähler und Leserantworten | `cardreader::rdh::tests` |
+
+## Lokalisierung
+
+Die Sprachtests prüfen Deutsch, Englisch, Französisch und Spanisch, regionale Systemsprachen,
+Englisch als Rückfall bei unbekannter Sprache, fehlende/fehlerhafte Einstellungsdateien,
+Speicherung und Wiederherstellung sowie Schreibfehler. Alle Katalogeinträge müssen die
+Formatplatzhalter unverändert erhalten. Formatierungstests decken Unicode, benannte und
+positionale Werte sowie sprachunabhängige Abbruchsteuerung ab.
+
+Ein Slint-Test lädt alle vier eingebetteten Übersetzungen und aktualisiert die Ansichtsmodelle.
+Dabei bleiben Kategorien-IDs, Filter, Kontonamen, Gruppen, Buchungstexte und Formularentwürfe
+unverändert. Die Tests verwenden synthetische Daten und ändern keine produktiven Einstellungen.
 
 ## Grenzen und Sichtprüfung
 
 Die Tests prüfen fachliches Verhalten und Protokollabläufe, nicht jede Codezeile. Eine erfolgreiche Bankantwort im Simulator ersetzt weder Bankzertifizierung noch einen Hardwaretest. Reale Zahlungen werden für diese Tests nicht ausgelöst. Der Test mit einem echten Kartenleser bleibt auf Benutzerwunsch ausgesetzt.
 
 Zusätzlich wird die gebaute macOS-Anwendung geprüft: Tresor entsperren, Umsatzansicht mit vorgemerktem Umsatz, Kategoriechips, Kategorieauswahl und kompakte Umsatzzeilen. Status- und Kategoriechip müssen ihre Mitte auf derselben horizontalen Linie haben; Beschriftungen müssen innerhalb des Chips vertikal zentriert sein. Die tatsächliche Bankkommunikation der Postbank-Kreditkarte wurde separat lesend geprüft.
+
+Am 13.11.2026 wurde das Erscheinungsbild in der installierten macOS-App geprüft:
+ohne Einstellungsdatei das vorhandene dunkle Systemdesign übernommen, zwischen
+Hell und Dunkel gewechselt, Hell trotz dunklem Systemdesign nach vollständigem
+Beenden wiederhergestellt (einschließlich Entsperrbildschirm und Titelleiste) und
+anschließend auf Systemeinstellung zurückgestellt. Finanzübersicht, Umsatzliste
+mit vorgemerkten Umsätzen und Kategoriechips, Überweisungsformular sowie
+Einstellungen wurden im dunklen Design visuell geprüft. Die Systemeinstellung
+von macOS selbst wurde für diese Prüfung nicht geändert.
+
+Am 13.11.2026 wurde die Lokalisierung in der neu gebauten und installierten
+macOS-App geprüft: Ohne Sprachdatei erschien die deutsche Systemsprache.
+Der Wechsel auf Französisch, Spanisch und Englisch wurde sofort angewendet.
+Einstellungen und französisches Überweisungsformular wurden visuell auf
+abgeschnittene Beschriftungen geprüft; die spanische Umsatzliste zeigte
+übersetzte Kategorien, Datumsüberschriften und Vormerkungsstatus bei unveränderten
+Banktexten. Nach vollständigem Beenden und Neustart blieb Englisch bereits auf
+dem Entsperrbildschirm und anschließend in der Finanzübersicht erhalten.
+Abschließend wurde die Sprache wieder auf Systemeinstellung (Deutsch) gesetzt.
+Diese Sichtprüfung löste weder einen Bankabruf noch eine Zahlung aus.

@@ -35,9 +35,9 @@ struct Account {
 }
 
 fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
-    let import: Import = serde_json::from_slice(bytes).map_err(|_| "Ungültige Bank-X-Importdatei")?;
+    let import: Import = serde_json::from_slice(bytes).map_err(|_| i18n::tr("Ungültige Bank-X-Importdatei"))?;
     if import.version != 1 || import.accesses.is_empty() || import.accesses.len() > 100 {
-        return Err("Nicht unterstütztes Bank-X-Importformat".into());
+        return Err(i18n::tr("Nicht unterstütztes Bank-X-Importformat").into());
     }
     let mut candidate = vault.clone();
     let mut accesses = 0;
@@ -48,7 +48,7 @@ fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
             || a.host.is_empty() || !a.host.bytes().all(|c| c.is_ascii_alphanumeric() || b".-".contains(&c))
             || a.accounts.is_empty() || a.accounts.len() > 1000
         {
-            return Err("Unvollständiger RDH-Bankzugang in der Importdatei".into());
+            return Err(i18n::tr("Unvollständiger RDH-Bankzugang in der Importdatei").into());
         }
         let existing = candidate.accesses.iter().find(|old| {
             matches!(old.kind, AccessKind::RdhCard { .. })
@@ -79,7 +79,7 @@ fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
                 || (iban.starts_with("DE") && (iban.len() != 22 || iban[4..12] != a.blz
                     || iban[12..].trim_start_matches('0') != account.number.trim_start_matches('0')))
             {
-                return Err("Ungültige oder widersprüchliche Kontoverbindung in der Importdatei".into());
+                return Err(i18n::tr("Ungültige oder widersprüchliche Kontoverbindung in der Importdatei").into());
             }
             if candidate.accounts.iter().any(|old| old.access_id == access_id
                 && (old.account.iban == iban || (old.account.account_number.trim_start_matches('0') == account.number.trim_start_matches('0')
@@ -111,7 +111,7 @@ fn import_file(vault: &mut Vault, file: &VaultFile, path: &Path) -> Result<Strin
     let input = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut bytes = zeroize::Zeroizing::new(Vec::new());
     input.take(1_048_577).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-    if bytes.len() > 1_048_576 { return Err("Bank-X-Importdatei ist zu groß".into()); }
+    if bytes.len() > 1_048_576 { return Err(i18n::tr("Bank-X-Importdatei ist zu groß").into()); }
     let (candidate, accesses, accounts) = merge(vault, &bytes)?;
     let backup = file.path().with_extension("before-bankx-import");
     let mut options = std::fs::OpenOptions::new();
@@ -126,13 +126,13 @@ fn import_file(vault: &mut Vault, file: &VaultFile, path: &Path) -> Result<Strin
             backup.sync_all().map_err(|e| e.to_string())?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {},
-        Err(e) => return Err(format!("Sicherung vor Import fehlgeschlagen: {e}")),
+        Err(e) => return Err(i18n::tr_format!("Sicherung vor Import fehlgeschlagen: {e}")),
     }
     file.save(&candidate)?;
     *vault = candidate;
-    let mut message = format!("Bank X: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.");
+    let mut message = i18n::tr_format!("Bank X: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.");
     if std::fs::remove_file(path).is_err() {
-        message.push_str(" Die temporäre Importdatei konnte nicht entfernt werden.");
+        message.push_str(i18n::tr(" Die temporäre Importdatei konnte nicht entfernt werden."));
     }
     log::info!("Bank-X-Import gespeichert: {accesses} Zugänge, {accounts} Konten");
     Ok(message)

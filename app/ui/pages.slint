@@ -62,9 +62,9 @@ component TxLine inherits Rectangle {
         if item.pending: Rectangle {
             width: 70px;
             Chip {
-                text: "vorgemerkt";
+                text: @tr("vorgemerkt");
                 tint: Theme.warning;
-                background: #ffe7b8;
+                background: Theme.pending-chip;
                 height: 18px;
                 label-size: 11px;
                 width: parent.width;
@@ -123,7 +123,7 @@ component BarList inherits VerticalLayout {
         Rectangle {
             height: 8px;
             border-radius: 4px;
-            background: #edf1f6;
+            background: Theme.track-bg;
             Rectangle {
                 x: 0;
                 width: parent.width * max(0.02, s.ratio);
@@ -134,7 +134,7 @@ component BarList inherits VerticalLayout {
         }
     }
     if stats.length == 0: Text {
-        text: "Noch keine Daten in diesem Zeitraum.";
+        text: @tr("Noch keine Daten in diesem Zeitraum.");
         color: Theme.text-faint;
         font-size: 13px;
     }
@@ -153,7 +153,7 @@ component MonthChart inherits VerticalLayout {
             y: 3px;
         }
         Text {
-            text: "Einnahmen";
+            text: @tr("Einnahmen");
             font-size: 12px;
             color: Theme.text-muted;
         }
@@ -165,7 +165,7 @@ component MonthChart inherits VerticalLayout {
             y: 3px;
         }
         Text {
-            text: "Ausgaben";
+            text: @tr("Ausgaben");
             font-size: 12px;
             color: Theme.text-muted;
         }
@@ -206,19 +206,19 @@ component MonthChart inherits VerticalLayout {
                     height: 40px;
                     width: 120px;
                     x: (parent.width - self.width) / 2;
-                    background: Theme.text;
+                    background: Theme.tooltip-bg;
                     border-radius: 6px;
                     VerticalLayout {
                         padding: 5px;
                         Text {
                             text: "+ " + m.income-text;
-                            color: #ffffff;
+                            color: Theme.tooltip-text;
                             font-size: 11px;
                             horizontal-alignment: center;
                         }
                         Text {
                             text: "− " + m.expense-text;
-                            color: #ffffff;
+                            color: Theme.tooltip-text;
                             font-size: 11px;
                             horizontal-alignment: center;
                         }
@@ -272,7 +272,7 @@ export component OverviewPage inherits ScrollView {
         padding: 24px;
         spacing: 18px;
         PageTitle {
-            title: "Finanzübersicht";
+            title: @tr("Finanzübersicht");
             subtitle: AppState.last-sync;
         }
         HorizontalLayout {
@@ -287,7 +287,7 @@ export component OverviewPage inherits ScrollView {
                     padding: 22px;
                     spacing: 6px;
                     Text {
-                        text: "Gesamtsaldo aller Konten";
+                        text: @tr("Gesamtsaldo aller Konten");
                         color: #c9d9f2;
                         font-size: 13px;
                     }
@@ -307,7 +307,7 @@ export component OverviewPage inherits ScrollView {
                         spacing: 28px;
                         VerticalLayout {
                             Text {
-                                text: "Einnahmen";
+                                text: @tr("Einnahmen");
                                 color: #a8c2e8;
                                 font-size: 12px;
                             }
@@ -320,7 +320,7 @@ export component OverviewPage inherits ScrollView {
                         }
                         VerticalLayout {
                             Text {
-                                text: "Ausgaben";
+                                text: @tr("Ausgaben");
                                 color: #a8c2e8;
                                 font-size: 12px;
                             }
@@ -337,7 +337,7 @@ export component OverviewPage inherits ScrollView {
                         padding-top: 20px;
                         spacing: 10px;
                         Text {
-                            text: "Gruppensalden";
+                            text: @tr("Gruppensalden");
                             color: #c9d9f2;
                             font-size: 12px;
                         }
@@ -392,7 +392,7 @@ export component OverviewPage inherits ScrollView {
                             border-radius: 16px;
                             background: rta.has-hover ? #ffffff33 : #ffffff22;
                             rt := Text {
-                                text: "Umsätze abrufen";
+                                text: @tr("Umsätze abrufen");
                                 color: #ffffff;
                                 font-weight: 600;
                                 horizontal-alignment: center;
@@ -413,17 +413,17 @@ export component OverviewPage inherits ScrollView {
                     padding: 18px;
                     spacing: 4px;
                     CardHeader {
-                        title: "Konten";
-                        subtitle: AppState.accounts.length + " Konten · Zum Sortieren ziehen";
+                        title: @tr("Konten");
+                        subtitle: AppState.accounts.length + @tr(" Konten · Zum Sortieren ziehen");
                         GhostButton {
-                            text: "Alle anzeigen";
+                            text: @tr("Alle anzeigen");
                             clicked => { AppState.navigate(1); }
                         }
                     }
                     for a[index] in AppState.accounts: account-row := Rectangle {
                         height: 46px;
                         border-radius: 6px;
-                        background: root.drag-active && root.drag-target == index ? #e5efff : root.drag-active && root.drag-source == a.id ? #eef3fa : at.has-hover ? Theme.row-hover : transparent;
+                        background: root.drag-active && root.drag-target == index ? Theme.row-selected : root.drag-active && root.drag-source == a.id ? Theme.header-bg : at.has-hover ? Theme.row-hover : transparent;
                         HorizontalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
@@ -514,19 +514,19 @@ export component OverviewPage inherits ScrollView {
                     if AppState.accounts.length == 0: VerticalLayout {
                         spacing: 10px;
                         Text {
-                            text: "Noch kein Bankzugang eingerichtet.";
+                            text: @tr("Noch kein Bankzugang eingerichtet.");
                             color: Theme.text-muted;
                         }
                         HorizontalLayout {
                             alignment: start;
                             spacing: 10px;
                             PrimaryButton {
-                                text: "Bankzugang einrichten";
+                                text: @tr("Bankzugang einrichten");
                                 icon: Icons.plus;
                                 clicked => { AppState.navigate(6); AppState.new-access(); }
                             }
                             GhostButton {
-                                text: "Demo-Daten laden";
+                                text: @tr("Demo-Daten laden");
                                 clicked => { AppState.load-demo(); }
                             }
                         }
@@ -545,9 +545,9 @@ export component OverviewPage inherits ScrollView {
                     CardHeader {
                         padding-left: 18px;
                         padding-right: 18px;
-                        title: "Letzte Umsätze";
+                        title: @tr("Letzte Umsätze");
                         GhostButton {
-                            text: "Umsatzliste";
+                            text: @tr("Umsatzliste");
                             clicked => { AppState.navigate(2); }
                         }
                     }
@@ -558,7 +558,7 @@ export component OverviewPage inherits ScrollView {
                     }
                     if AppState.recent.length == 0: Text {
                         x: 18px;
-                        text: "Keine Umsätze vorhanden.";
+                        text: @tr("Keine Umsätze vorhanden.");
                         color: Theme.text-faint;
                     }
                     Rectangle { vertical-stretch: 1; }
@@ -569,7 +569,7 @@ export component OverviewPage inherits ScrollView {
                 VerticalLayout {
                     padding: 18px;
                     CardHeader {
-                        title: "Ausgaben nach Kategorie";
+                        title: @tr("Ausgaben nach Kategorie");
                         subtitle: AppState.month-label;
                     }
                     BarList { stats: AppState.category-stats; }
@@ -584,8 +584,8 @@ export component OverviewPage inherits ScrollView {
                 VerticalLayout {
                     padding: 18px;
                     CardHeader {
-                        title: "Einnahmen & Ausgaben";
-                        subtitle: "Letzte 6 Monate, alle Konten";
+                        title: @tr("Einnahmen & Ausgaben");
+                        subtitle: @tr("Letzte 6 Monate, alle Konten");
                     }
                     MonthChart { months: AppState.months; }
                 }
@@ -596,9 +596,9 @@ export component OverviewPage inherits ScrollView {
                     padding: 18px;
                     spacing: 6px;
                     CardHeader {
-                        title: "Anstehende Daueraufträge";
+                        title: @tr("Anstehende Daueraufträge");
                         GhostButton {
-                            text: "Verwalten";
+                            text: @tr("Verwalten");
                             clicked => { AppState.navigate(4); }
                         }
                     }
@@ -633,7 +633,7 @@ export component OverviewPage inherits ScrollView {
                         }
                     }
                     if AppState.upcoming.length == 0: Text {
-                        text: "Keine Daueraufträge bekannt. Unter Zahlungsverkehr → Daueraufträge abrufen.";
+                        text: @tr("Keine Daueraufträge bekannt. Unter Zahlungsverkehr → Daueraufträge abrufen.");
                         wrap: word-wrap;
                         color: Theme.text-faint;
                         font-size: 13px;
@@ -652,19 +652,19 @@ export component AccountsPage inherits ScrollView {
         padding: 24px;
         spacing: 18px;
         PageTitle {
-            title: "Konten";
-            subtitle: "Konten nach eigenen Gruppen ordnen";
+            title: @tr("Konten");
+            subtitle: @tr("Konten nach eigenen Gruppen ordnen");
             Rectangle { }
-            PrimaryButton { text: "Kontenrundruf"; icon: Icons.refresh; clicked => { AppState.refresh-all(); } }
+            PrimaryButton { text: @tr("Kontenrundruf"); icon: Icons.refresh; clicked => { AppState.refresh-all(); } }
         }
         HorizontalLayout {
             spacing: 12px;
             LineEdit {
                 text <=> AppState.new-group-name;
-                placeholder-text: "Neue Gruppe, z. B. Privat";
+                placeholder-text: @tr("Neue Gruppe, z. B. Privat");
                 accepted => { AppState.create-group(self.text); }
             }
-            PrimaryButton { text: "Gruppe anlegen"; clicked => { AppState.create-group(AppState.new-group-name); } }
+            PrimaryButton { text: @tr("Gruppe anlegen"); clicked => { AppState.create-group(AppState.new-group-name); } }
         }
         for g in AppState.account-groups: Card {
             VerticalLayout {
@@ -676,11 +676,11 @@ export component AccountsPage inherits ScrollView {
                     if g.id != 0: HorizontalLayout {
                         spacing: 8px;
                         group-title := LineEdit { text: g.name; accepted => { AppState.rename-group(g.id, self.text); } }
-                        GhostButton { text: "Umbenennen"; clicked => { AppState.rename-group(g.id, group-title.text); } }
-                        GhostButton { text: "Entfernen"; clicked => { AppState.delete-group(g.id); } }
+                        GhostButton { text: @tr("Umbenennen"); clicked => { AppState.rename-group(g.id, group-title.text); } }
+                        GhostButton { text: @tr("Entfernen"); clicked => { AppState.delete-group(g.id); } }
                     }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: g.accounts.length + " Konten"; font-size: 12px; color: Theme.text-muted; }
+                    Text { text: g.accounts.length + @tr(" Konten"); font-size: 12px; color: Theme.text-muted; }
                 }
                 for a in g.accounts: Rectangle {
                     height: 86px;
@@ -701,7 +701,7 @@ export component AccountsPage inherits ScrollView {
                         VerticalLayout {
                             width: 155px;
                             alignment: center;
-                            Text { text: "Gruppe"; font-size: 11px; color: Theme.text-muted; }
+                            Text { text: @tr("Gruppe"); font-size: 11px; color: Theme.text-muted; }
                             ComboBox {
                                 model: AppState.group-names;
                                 current-index: a.group-index;
@@ -709,11 +709,11 @@ export component AccountsPage inherits ScrollView {
                             }
                         }
                         Text { text: a.balance; width: 120px; horizontal-alignment: right; vertical-alignment: center; font-weight: 700; color: a.negative ? Theme.negative : Theme.text; }
-                        GhostButton { text: "Umsätze"; clicked => { AppState.open-account(a.id); } }
+                        GhostButton { text: @tr("Umsätze"); clicked => { AppState.open-account(a.id); } }
                     }
                 }
                 if g.accounts.length == 0: Text {
-                    text: "Noch keine Konten in dieser Gruppe. Wählen Sie die Gruppe direkt am gewünschten Konto.";
+                    text: @tr("Noch keine Konten in dieser Gruppe. Wählen Sie die Gruppe direkt am gewünschten Konto.");
                     color: Theme.text-muted;
                     wrap: word-wrap;
                 }
@@ -744,12 +744,12 @@ component DetailLine inherits VerticalLayout {
 // ------------------------------------------------------------------ transactions
 
 export component TransactionsPage inherits Rectangle {
-    property <[string]> periods: ["30 Tage", "90 Tage", "Dieses Jahr", "Alle"];
+    property <[string]> periods: [@tr("30 Tage"), @tr("90 Tage"), @tr("Dieses Jahr"), @tr("Alle")];
     VerticalLayout {
         padding: 24px;
         spacing: 14px;
         PageTitle {
-            title: "Umsätze";
+            title: @tr("Umsätze");
             subtitle: AppState.tx-summary;
             Rectangle { }
             GhostButton {
@@ -763,7 +763,7 @@ export component TransactionsPage inherits Rectangle {
                 clicked => { AppState.export-camt(); }
             }
             PrimaryButton {
-                text: "Aktualisieren";
+                text: @tr("Aktualisieren");
                 icon: Icons.refresh;
                 clicked => { AppState.refresh-all(); }
             }
@@ -783,7 +783,7 @@ export component TransactionsPage inherits Rectangle {
                 changed => { AppState.tx-filter-changed(); }
             }
             LineEdit {
-                placeholder-text: "Suche nach Name, Zweck, IBAN oder Betrag …";
+                placeholder-text: @tr("Suche nach Name, Zweck, IBAN oder Betrag …");
                 text <=> AppState.tx-search;
                 edited => { AppState.tx-filter-changed(); }
             }
@@ -797,13 +797,13 @@ export component TransactionsPage inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 spacing: 6px;
             Chip {
-                text: "Alle Kategorien";
+                text: @tr("Alle Kategorien");
                 tint: Theme.accent;
                 selected: AppState.tx-category == "";
                 clicked => { AppState.tx-category = ""; AppState.tx-filter-changed(); }
             }
             for c[i] in AppState.categories: Chip {
-                text: c;
+                text: AppState.category-labels[i];
                 tint: AppState.category-colors[i];
                 selected: AppState.tx-category == c;
                 clicked => {
@@ -827,7 +827,7 @@ export component TransactionsPage inherits Rectangle {
                     }
                 }
                 if AppState.tx-rows.length == 0: Text {
-                    text: "Keine Umsätze für diese Auswahl.";
+                    text: @tr("Keine Umsätze für diese Auswahl.");
                     color: Theme.text-faint;
                 }
             }
@@ -837,7 +837,7 @@ export component TransactionsPage inherits Rectangle {
                     alignment: center;
                     padding: 24px;
                     Text {
-                        text: "Wählen Sie einen Umsatz aus, um Details zu sehen und die Kategorie zu ändern.";
+                        text: @tr("Wählen Sie einen Umsatz aus, um Details zu sehen und die Kategorie zu ändern.");
                         wrap: word-wrap;
                         horizontal-alignment: center;
                         color: Theme.text-faint;
@@ -861,35 +861,35 @@ export component TransactionsPage inherits Rectangle {
                             color: Theme.text;
                         }
                         if AppState.tx-detail.pending: Text {
-                            text: "Vorgemerkter Umsatz – noch nicht gebucht";
+                            text: @tr("Vorgemerkter Umsatz – noch nicht gebucht");
                             color: Theme.warning;
                             font-size: 12px;
                         }
                         Separator { }
-                        DetailLine { label: "Konto"; value: AppState.tx-detail.account; }
-                        DetailLine { label: "Buchungstag"; value: AppState.tx-detail.booking-date; }
-                        DetailLine { label: "Wertstellung"; value: AppState.tx-detail.value-date; }
+                        DetailLine { label: @tr("Konto"); value: AppState.tx-detail.account; }
+                        DetailLine { label: @tr("Buchungstag"); value: AppState.tx-detail.booking-date; }
+                        DetailLine { label: @tr("Wertstellung"); value: AppState.tx-detail.value-date; }
                         DetailLine { label: "IBAN"; value: AppState.tx-detail.iban; }
                         DetailLine { label: "BIC"; value: AppState.tx-detail.bic; }
-                        DetailLine { label: "Verwendungszweck"; value: AppState.tx-detail.purpose; }
-                        DetailLine { label: "Buchungstext"; value: AppState.tx-detail.posting-text; }
-                        DetailLine { label: "End-to-End-Referenz"; value: AppState.tx-detail.eref; }
-                        DetailLine { label: "Mandatsreferenz"; value: AppState.tx-detail.mref; }
-                        DetailLine { label: "Gläubiger-ID"; value: AppState.tx-detail.creditor-id; }
+                        DetailLine { label: @tr("Verwendungszweck"); value: AppState.tx-detail.purpose; }
+                        DetailLine { label: @tr("Buchungstext"); value: AppState.tx-detail.posting-text; }
+                        DetailLine { label: @tr("End-to-End-Referenz"); value: AppState.tx-detail.eref; }
+                        DetailLine { label: @tr("Mandatsreferenz"); value: AppState.tx-detail.mref; }
+                        DetailLine { label: @tr("Gläubiger-ID"); value: AppState.tx-detail.creditor-id; }
                         Separator { }
                         Text {
-                            text: "Kategorie";
+                            text: @tr("Kategorie");
                             font-size: 12px;
                             font-weight: 600;
                             color: Theme.text-muted;
                         }
                         ComboBox {
-                            model: AppState.categories;
+                            model: AppState.category-labels;
                             current-value: AppState.tx-detail.category;
-                            selected(v) => { AppState.set-category(AppState.tx-detail.index, v); }
+                            selected(v) => { AppState.set-category(AppState.tx-detail.index, AppState.categories[self.current-index]); }
                         }
                         Text {
-                            text: "Gleiche Gegenparteien werden künftig automatisch so kategorisiert.";
+                            text: @tr("Gleiche Gegenparteien werden künftig automatisch so kategorisiert.");
                             font-size: 11px;
                             wrap: word-wrap;
                             color: Theme.text-faint;
@@ -909,23 +909,23 @@ export component TransferPage inherits ScrollView {
         spacing: 18px;
         alignment: start;
         PageTitle {
-            title: "Überweisung";
-            subtitle: "SEPA-Überweisung, Echtzeitüberweisung oder Terminüberweisung";
+            title: @tr("Überweisung");
+            subtitle: @tr("SEPA-Überweisung, Echtzeitüberweisung oder Terminüberweisung");
         }
         Card {
             horizontal-stretch: 1;
             VerticalLayout {
                 padding: 22px;
                 spacing: 14px;
-                Text { text: "Auftraggeberkonto"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                Text { text: @tr("Auftraggeberkonto"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
                 ComboBox {
                     model: AppState.sepa-accounts;
                     current-index <=> AppState.tf-account;
                 }
                 Separator { }
                 LabeledField {
-                    label: "Empfänger";
-                    placeholder: "Name des Empfängers";
+                    label: @tr("Empfänger");
+                    placeholder: @tr("Name des Empfängers");
                     text <=> AppState.tf-name;
                 }
                 HorizontalLayout {
@@ -941,8 +941,8 @@ export component TransferPage inherits ScrollView {
                     }
                     LabeledField {
                         width: 200px;
-                        label: "BIC (optional)";
-                        placeholder: "optional";
+                        label: @tr("BIC (optional)");
+                        placeholder: @tr("optional");
                         text <=> AppState.tf-bic;
                     }
                 }
@@ -950,29 +950,29 @@ export component TransferPage inherits ScrollView {
                     spacing: 12px;
                     LabeledField {
                         width: 180px;
-                        label: "Betrag (EUR)";
+                        label: @tr("Betrag (EUR)");
                         placeholder: "0,00";
                         text <=> AppState.tf-amount;
                     }
                     LabeledField {
-                        label: "Verwendungszweck";
-                        placeholder: "max. 140 Zeichen";
+                        label: @tr("Verwendungszweck");
+                        placeholder: @tr("max. 140 Zeichen");
                         text <=> AppState.tf-purpose;
                         hint: AppState.tf-purpose.character-count + " / 140";
                         error: AppState.tf-purpose.character-count > 140;
                     }
                 }
-                Text { text: "Ausführung"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                Text { text: @tr("Ausführung"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
                 HorizontalLayout {
                     spacing: 12px;
                     SegmentedControl {
                         width: 420px;
-                        options: ["Standard", "Echtzeit", "Terminüberweisung"];
+                        options: [@tr("Standard"), @tr("Echtzeit"), @tr("Terminüberweisung")];
                         selected <=> AppState.tf-mode;
                     }
                     if AppState.tf-mode == 2: LineEdit {
                         width: 150px;
-                        placeholder-text: "TT.MM.JJJJ";
+                        placeholder-text: @tr("TT.MM.JJJJ");
                         text <=> AppState.tf-date;
                     }
                 }
@@ -980,7 +980,7 @@ export component TransferPage inherits ScrollView {
                     alignment: end;
                     padding-top: 6px;
                     PrimaryButton {
-                        text: "Überweisung senden";
+                        text: @tr("Überweisung senden");
                         icon: Icons.transfer;
                         enabled: !AppState.busy;
                         clicked => { AppState.send-transfer(); }
@@ -999,11 +999,11 @@ export component StandingPage inherits ScrollView {
         spacing: 18px;
         alignment: start;
         PageTitle {
-            title: "Daueraufträge";
-            subtitle: "Bestand abrufen, neue Daueraufträge anlegen, bestehende löschen";
+            title: @tr("Daueraufträge");
+            subtitle: @tr("Bestand abrufen, neue Daueraufträge anlegen, bestehende löschen");
             Rectangle { }
             PrimaryButton {
-                text: "Bestand abrufen";
+                text: @tr("Bestand abrufen");
                 icon: Icons.refresh;
                 clicked => { AppState.fetch-standing(); }
             }
@@ -1048,7 +1048,7 @@ export component StandingPage inherits ScrollView {
                     x: 18px;
                     height: 40px;
                     vertical-alignment: center;
-                    text: "Noch keine Daueraufträge geladen.";
+                    text: @tr("Noch keine Daueraufträge geladen.");
                     color: Theme.text-faint;
                 }
             }
@@ -1057,15 +1057,15 @@ export component StandingPage inherits ScrollView {
             VerticalLayout {
                 padding: 22px;
                 spacing: 14px;
-                CardHeader { title: "Neuer Dauerauftrag"; subtitle: "Empfänger, Betrag und Zweck werden aus dem Überweisungsformular übernommen."; }
-                Text { text: "Auftraggeberkonto"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                CardHeader { title: @tr("Neuer Dauerauftrag"); subtitle: @tr("Empfänger, Betrag und Zweck werden aus dem Überweisungsformular übernommen."); }
+                Text { text: @tr("Auftraggeberkonto"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
                 ComboBox {
                     model: AppState.sepa-accounts;
                     current-index <=> AppState.tf-account;
                 }
                 HorizontalLayout {
                     spacing: 12px;
-                    LabeledField { label: "Empfänger"; text <=> AppState.tf-name; placeholder: "Name"; }
+                    LabeledField { label: @tr("Empfänger"); text <=> AppState.tf-name; placeholder: @tr("Name"); }
                     LabeledField {
                         label: "IBAN";
                         text <=> AppState.tf-iban;
@@ -1074,29 +1074,29 @@ export component StandingPage inherits ScrollView {
                         error: AppState.tf-iban-error;
                         edited(t) => { AppState.check-iban(t); }
                     }
-                    LabeledField { width: 140px; label: "Betrag (EUR)"; text <=> AppState.tf-amount; placeholder: "0,00"; }
+                    LabeledField { width: 140px; label: @tr("Betrag (EUR)"); text <=> AppState.tf-amount; placeholder: "0,00"; }
                 }
-                LabeledField { label: "Verwendungszweck"; text <=> AppState.tf-purpose; placeholder: "z. B. Miete"; }
+                LabeledField { label: @tr("Verwendungszweck"); text <=> AppState.tf-purpose; placeholder: @tr("z. B. Miete"); }
                 HorizontalLayout {
                     spacing: 12px;
                     VerticalLayout {
                         spacing: 4px;
-                        Text { text: "Turnus"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                        Text { text: @tr("Turnus"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
                         ComboBox {
                             width: 200px;
-                            model: ["monatlich", "vierteljährlich", "halbjährlich", "jährlich", "wöchentlich"];
+                            model: [@tr("monatlich"), @tr("vierteljährlich"), @tr("halbjährlich"), @tr("jährlich"), @tr("wöchentlich")];
                             current-index <=> AppState.so-interval;
                         }
                     }
-                    LabeledField { width: 150px; label: "Erste Ausführung"; text <=> AppState.so-first; placeholder: "TT.MM.JJJJ"; }
-                    LabeledField { width: 120px; label: "Ausführungstag"; text <=> AppState.so-day; placeholder: "1–31 / 99 = Ultimo"; }
-                    LabeledField { width: 150px; label: "Letzte Ausführung"; text <=> AppState.so-last; placeholder: "optional"; }
+                    LabeledField { width: 150px; label: @tr("Erste Ausführung"); text <=> AppState.so-first; placeholder: @tr("TT.MM.JJJJ"); }
+                    LabeledField { width: 120px; label: @tr("Ausführungstag"); text <=> AppState.so-day; placeholder: @tr("1–31 / 99 = Ultimo"); }
+                    LabeledField { width: 150px; label: @tr("Letzte Ausführung"); text <=> AppState.so-last; placeholder: @tr("optional"); }
                     Rectangle { }
                 }
                 HorizontalLayout {
                     alignment: end;
                     PrimaryButton {
-                        text: "Dauerauftrag anlegen";
+                        text: @tr("Dauerauftrag anlegen");
                         icon: Icons.plus;
                         enabled: !AppState.busy;
                         clicked => { AppState.send-standing(); }
@@ -1115,8 +1115,8 @@ export component AnalysisPage inherits ScrollView {
         spacing: 18px;
         alignment: start;
         PageTitle {
-            title: "Auswertungen";
-            subtitle: "Einnahmen und Ausgaben nach Kategorien";
+            title: @tr("Auswertungen");
+            subtitle: @tr("Einnahmen und Ausgaben nach Kategorien");
             Rectangle { }
             GhostButton {
                 text: "‹";
@@ -1140,14 +1140,14 @@ export component AnalysisPage inherits ScrollView {
             Card {
                 VerticalLayout {
                     padding: 20px;
-                    CardHeader { title: "Ausgaben"; subtitle: AppState.analysis-label; }
+                    CardHeader { title: @tr("Ausgaben"); subtitle: AppState.analysis-label; }
                     BarList { stats: AppState.analysis-categories; }
                 }
             }
             Card {
                 VerticalLayout {
                     padding: 20px;
-                    CardHeader { title: "Einnahmen"; subtitle: AppState.analysis-label; }
+                    CardHeader { title: @tr("Einnahmen"); subtitle: AppState.analysis-label; }
                     BarList { stats: AppState.analysis-income; }
                     Rectangle { vertical-stretch: 1; }
                 }
@@ -1156,7 +1156,7 @@ export component AnalysisPage inherits ScrollView {
         Card {
             VerticalLayout {
                 padding: 20px;
-                CardHeader { title: "Jahresverlauf"; subtitle: "12 Monate bis " + AppState.analysis-label; }
+                CardHeader { title: @tr("Jahresverlauf"); subtitle: @tr("12 Monate bis ") + AppState.analysis-label; }
                 MonthChart { months: AppState.analysis-months; }
             }
         }
@@ -1171,11 +1171,11 @@ export component AccessesPage inherits ScrollView {
         spacing: 18px;
         alignment: start;
         PageTitle {
-            title: "Bankzugänge";
-            subtitle: "FinTS PIN/TAN oder HBCI-Chipkarte";
+            title: @tr("Bankzugänge");
+            subtitle: @tr("FinTS PIN/TAN oder HBCI-Chipkarte");
             Rectangle { }
             PrimaryButton {
-                text: "Neuer Bankzugang";
+                text: @tr("Neuer Bankzugang");
                 icon: Icons.plus;
                 clicked => { AppState.new-access(); }
             }
@@ -1190,7 +1190,7 @@ export component AccessesPage inherits ScrollView {
                     border-radius: 21px;
                     background: Theme.accent-soft;
                     Icon {
-                        name: a.kind == "HBCI-Chipkarte" ? Icons.reader : Icons.key;
+                        name: a.card-based ? Icons.reader : Icons.key;
                         color: Theme.accent;
                     }
                 }
@@ -1199,12 +1199,12 @@ export component AccessesPage inherits ScrollView {
                     spacing: 2px;
                     Text { text: a.name; font-weight: 650; font-size: 15px; color: Theme.text; }
                     Text { text: a.kind + "  ·  " + a.detail; font-size: 12px; color: Theme.text-muted; }
-                    Text { text: "TAN-Verfahren: " + a.tan-method + "  ·  " + a.accounts + " Konten" + (a.pin-saved ? "  ·  PIN gespeichert (verschlüsselt)" : ""); font-size: 12px; color: Theme.text-muted; }
+                    Text { text: @tr("TAN-Verfahren: ") + a.tan-method + "  ·  " + a.accounts + @tr(" Konten") + (a.pin-saved ? @tr("  ·  PIN gespeichert (verschlüsselt)") : ""); font-size: 12px; color: Theme.text-muted; }
                 }
                 Rectangle { }
-                GhostButton { text: "Synchronisieren"; icon: Icons.refresh; y: 12px; clicked => { AppState.sync-access(a.id); } }
-                if a.kind == "PIN/TAN": GhostButton { text: "TAN-Verfahren wählen"; y: 12px; clicked => { AppState.reset-tan(a.id); } }
-                if a.pin-saved: GhostButton { text: "PIN vergessen"; icon: Icons.lock; y: 12px; clicked => { AppState.forget-pin(a.id); } }
+                GhostButton { text: @tr("Synchronisieren"); icon: Icons.refresh; y: 12px; clicked => { AppState.sync-access(a.id); } }
+                if a.kind == "PIN/TAN": GhostButton { text: @tr("TAN-Verfahren wählen"); y: 12px; clicked => { AppState.reset-tan(a.id); } }
+                if a.pin-saved: GhostButton { text: @tr("PIN vergessen"); icon: Icons.lock; y: 12px; clicked => { AppState.forget-pin(a.id); } }
                 GhostButton { icon: Icons.trash; y: 12px; clicked => { AppState.delete-access(a.id); } }
             }
         }
@@ -1212,18 +1212,18 @@ export component AccessesPage inherits ScrollView {
             VerticalLayout {
                 padding: 22px;
                 spacing: 14px;
-                CardHeader { title: "Bankzugang einrichten"; }
+                CardHeader { title: @tr("Bankzugang einrichten"); }
                 SegmentedControl {
                     width: 560px;
-                    options: ["PIN/TAN (FinTS)", "HBCI-Chipkarte (DDV)", "RDH-Chipkarte (VR-NetWorld-Card)"];
+                    options: ["PIN/TAN (FinTS)", @tr("HBCI-Chipkarte (DDV)"), @tr("RDH-Chipkarte (VR-NetWorld-Card)")];
                     selected <=> AppState.af-kind;
                     changed => { AppState.bank-search(AppState.bank-query); }
                 }
                 VerticalLayout {
                     spacing: 4px;
-                    Text { text: "Bank suchen"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                    Text { text: @tr("Bank suchen"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
                     LineEdit {
-                        placeholder-text: "Name, Ort, BLZ oder BIC – z. B. „Förde Sparkasse“, „ING“, „Volksbank Kiel“";
+                        placeholder-text: @tr("Name, Ort, BLZ oder BIC – z. B. „Förde Sparkasse“, „ING“, „Volksbank Kiel“");
                         text <=> AppState.bank-query;
                         edited(t) => { AppState.bank-search(t); }
                     }
@@ -1270,20 +1270,20 @@ export component AccessesPage inherits ScrollView {
                         }
                     }
                 }
-                LabeledField { label: "Bezeichnung"; text <=> AppState.af-name; placeholder: "z. B. Förde Sparkasse – privat"; }
+                LabeledField { label: @tr("Bezeichnung"); text <=> AppState.af-name; placeholder: @tr("z. B. Förde Sparkasse – privat"); }
                 if AppState.af-kind == 0: VerticalLayout {
                     spacing: 14px;
                     HorizontalLayout {
                         spacing: 12px;
-                        LabeledField { width: 160px; label: "Bankleitzahl"; text <=> AppState.af-blz; placeholder: "8 Ziffern"; }
-                        LabeledField { label: "Anmeldename / Benutzerkennung"; text <=> AppState.af-user; }
-                        LabeledField { label: "Kunden-ID (optional)"; text <=> AppState.af-customer; }
+                        LabeledField { width: 160px; label: @tr("Bankleitzahl"); text <=> AppState.af-blz; placeholder: @tr("8 Ziffern"); }
+                        LabeledField { label: @tr("Anmeldename / Benutzerkennung"); text <=> AppState.af-user; }
+                        LabeledField { label: @tr("Kunden-ID (optional)"); text <=> AppState.af-customer; }
                     }
                     LabeledField {
-                        label: "FinTS-Server-URL";
+                        label: @tr("FinTS-Server-URL");
                         text <=> AppState.af-url;
                         placeholder: "https://…";
-                        hint: "Wird über die Banksuche ausgefüllt. Abweichende Adressen finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“). Die PIN wird nicht gespeichert.";
+                        hint: @tr("Wird über die Banksuche ausgefüllt. Abweichende Adressen finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“). Die PIN wird nicht gespeichert.");
                     }
                 }
                 if AppState.af-kind == 1 || AppState.af-kind == 2: VerticalLayout {
@@ -1292,33 +1292,33 @@ export component AccessesPage inherits ScrollView {
                         spacing: 12px;
                         VerticalLayout {
                             spacing: 4px;
-                            Text { text: "Kartenleser"; font-size: 12px; font-weight: 600; color: Theme.text-muted; }
+                            Text { text: @tr("Kartenleser"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
                             ComboBox {
                                 width: 340px;
                                 model: AppState.reader-names;
                                 current-index <=> AppState.af-reader;
                             }
                         }
-                        LabeledField { width: 120px; label: "Karteneintrag"; text <=> AppState.af-record; placeholder: "1–5"; }
+                        LabeledField { width: 120px; label: @tr("Karteneintrag"); text <=> AppState.af-record; placeholder: "1–5"; }
                         VerticalLayout {
                             alignment: end;
                             padding-bottom: 18px;
-                            GhostButton { text: "Daten von Karte lesen"; icon: Icons.reader; clicked => { AppState.read-card(); } }
+                            GhostButton { text: @tr("Daten von Karte lesen"); icon: Icons.reader; clicked => { AppState.read-card(); } }
                         }
                         Rectangle { }
                     }
                     HorizontalLayout {
                         spacing: 12px;
-                        LabeledField { width: 160px; label: "Bankleitzahl"; text <=> AppState.af-blz; }
-                        LabeledField { label: "Benutzerkennung"; text <=> AppState.af-user; }
-                        LabeledField { label: "Server (Host oder URL)"; text <=> AppState.af-url; hint: AppState.af-kind == 2 ? "Von der Karte gelesen (RDH, PIN am Leser); HBCI über TCP-Port 3000." : "Von der Karte gelesen; HBCI über TCP-Port 3000."; }
+                        LabeledField { width: 160px; label: @tr("Bankleitzahl"); text <=> AppState.af-blz; }
+                        LabeledField { label: @tr("Benutzerkennung"); text <=> AppState.af-user; }
+                        LabeledField { label: @tr("Server (Host oder URL)"); text <=> AppState.af-url; hint: AppState.af-kind == 2 ? @tr("Von der Karte gelesen (RDH, PIN am Leser); HBCI über TCP-Port 3000.") : @tr("Von der Karte gelesen; HBCI über TCP-Port 3000."); }
                     }
                 }
                 HorizontalLayout {
                     alignment: end;
                     spacing: 10px;
-                    GhostButton { text: "Abbrechen"; clicked => { AppState.af-open = false; } }
-                    PrimaryButton { text: "Speichern & verbinden"; icon: Icons.check; clicked => { AppState.save-access(); } }
+                    GhostButton { text: @tr("Abbrechen"); clicked => { AppState.af-open = false; } }
+                    PrimaryButton { text: @tr("Speichern & verbinden"); icon: Icons.check; clicked => { AppState.save-access(); } }
                 }
             }
         }
@@ -1333,23 +1333,23 @@ export component ReaderPage inherits ScrollView {
         spacing: 18px;
         alignment: start;
         PageTitle {
-            title: "Kartenleser";
-            subtitle: "PC/SC-Leser für HBCI-Chipkarte und chipTAN USB";
+            title: @tr("Kartenleser");
+            subtitle: @tr("PC/SC-Leser für HBCI-Chipkarte und chipTAN USB");
             Rectangle { }
-            GhostButton { text: "Neu suchen"; icon: Icons.refresh; clicked => { AppState.reader-refresh(); } }
-            PrimaryButton { text: "Leser & Karte prüfen"; icon: Icons.check; clicked => { AppState.reader-diagnose(); } }
+            GhostButton { text: @tr("Neu suchen"); icon: Icons.refresh; clicked => { AppState.reader-refresh(); } }
+            PrimaryButton { text: @tr("Leser & Karte prüfen"); icon: Icons.check; clicked => { AppState.reader-diagnose(); } }
         }
         if AppState.cyberjack-found: Card {
-            background: #eaf6ef;
-            border-color: #bfe3cc;
+            background: Theme.success-bg;
+            border-color: Theme.success-border;
             HorizontalLayout {
                 padding: 16px;
                 spacing: 12px;
                 Icon { name: Icons.check; color: Theme.positive; y: 2px; }
                 Text {
                     wrap: word-wrap;
-                    color: #1f5d3a;
-                    text: "REINER SCT cyberJack erkannt. BankingCraft nutzt automatisch die sichere PIN-Eingabe am Pinpad und – sofern der Leser es meldet – chipTAN USB mit Anzeige der Auftragsdaten im Display.";
+                    color: Theme.success-text;
+                    text: @tr("REINER SCT cyberJack erkannt. BankingCraft nutzt automatisch die sichere PIN-Eingabe am Pinpad und – sofern der Leser es meldet – chipTAN USB mit Anzeige der Auftragsdaten im Display.");
                 }
             }
         }
@@ -1357,7 +1357,7 @@ export component ReaderPage inherits ScrollView {
             VerticalLayout {
                 padding: 20px;
                 spacing: 10px;
-                CardHeader { title: "Leser für chipTAN USB"; subtitle: "Wird im TAN-Dialog verwendet"; }
+                CardHeader { title: @tr("Leser für chipTAN USB"); subtitle: @tr("Wird im TAN-Dialog verwendet"); }
                 ComboBox {
                     width: 380px;
                     model: AppState.reader-names;
@@ -1369,7 +1369,7 @@ export component ReaderPage inherits ScrollView {
             VerticalLayout {
                 padding: 20px;
                 spacing: 6px;
-                CardHeader { title: "Diagnose"; subtitle: "Gefundene Leser, gemeldete Features und erkannte Karte"; }
+                CardHeader { title: @tr("Diagnose"); subtitle: @tr("Gefundene Leser, gemeldete Features und erkannte Karte"); }
                 for line in AppState.reader-report: Text {
                     text: line;
                     font-family: "monospace";
@@ -1378,7 +1378,7 @@ export component ReaderPage inherits ScrollView {
                     color: Theme.text;
                 }
                 if AppState.reader-report.length == 0: Text {
-                    text: "Noch keine Prüfung durchgeführt.";
+                    text: @tr("Noch keine Prüfung durchgeführt.");
                     color: Theme.text-faint;
                 }
             }
@@ -1393,26 +1393,47 @@ export component SettingsPage inherits ScrollView {
         padding: 24px;
         spacing: 18px;
         alignment: start;
-        PageTitle { title: "Einstellungen"; }
+        PageTitle { title: @tr("Einstellungen"); }
         Card {
             VerticalLayout {
                 padding: 22px;
-                spacing: 14px;
-                CardHeader { title: "FinTS-Produktregistrierung"; }
+                spacing: 12px;
+                CardHeader { title: @tr("Sprache"); subtitle: @tr("Wählen Sie die Sprache der Anwendung."); }
+                ComboBox {
+                    width: 320px;
+                    enabled: !AppState.busy;
+                    model: [@tr("Systemeinstellung"), "Deutsch", "English", "Français", "Español"];
+                    current-index <=> AppState.language-mode;
+                    selected(value) => { AppState.change-language(self.current-index); }
+                }
                 Text {
-                    wrap: word-wrap;
-                    font-size: 13px;
+                    text: AppState.language-mode == 0
+                        ? @tr("Verwendet die Systemsprache, sofern verfügbar. Andernfalls wird Englisch verwendet.")
+                        : @tr("Ihre Auswahl wird sofort angewendet und für den nächsten Start gespeichert.");
                     color: Theme.text-muted;
-                    text: "Banken akzeptieren FinTS-Zugriffe nur mit einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID. Die Registrierung ist für Software-Hersteller kostenlos (fints.org → Produktregistrierung).";
+                    font-size: 13px;
+                    wrap: word-wrap;
                 }
-                HorizontalLayout {
-                    spacing: 12px;
-                    LabeledField { label: "Produkt-ID"; text <=> AppState.product-id; placeholder: "25-stellige Registrierungsnummer"; }
-                    LabeledField { width: 140px; label: "Produktversion"; text <=> AppState.product-version; }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 12px;
+                CardHeader { title: @tr("Erscheinungsbild"); subtitle: @tr("Wählen Sie ein helles oder dunkles Design."); }
+                ComboBox {
+                    width: 320px;
+                    model: [@tr("Systemeinstellung"), @tr("Hell"), @tr("Dunkel")];
+                    current-index <=> AppState.theme-mode;
+                    selected(value) => { AppState.change-theme(self.current-index); }
                 }
-                HorizontalLayout {
-                    alignment: end;
-                    PrimaryButton { text: "Speichern"; clicked => { AppState.save-settings(); } }
+                Text {
+                    text: AppState.theme-mode == 0
+                        ? @tr("Folgt automatisch dem Design Ihres Betriebssystems. Änderungen werden sofort übernommen.")
+                        : @tr("Ihre Auswahl wird sofort angewendet und für den nächsten Start gespeichert.");
+                    color: Theme.text-muted;
+                    font-size: 13px;
+                    wrap: word-wrap;
                 }
             }
         }
@@ -1420,15 +1441,37 @@ export component SettingsPage inherits ScrollView {
             VerticalLayout {
                 padding: 22px;
                 spacing: 14px;
-                CardHeader { title: "Tresor-Passwort ändern"; subtitle: "Alle Daten werden lokal mit AES-256-GCM verschlüsselt (Schlüssel per Argon2id)."; }
+                CardHeader { title: @tr("FinTS-Produktregistrierung"); }
+                Text {
+                    wrap: word-wrap;
+                    font-size: 13px;
+                    color: Theme.text-muted;
+                    text: @tr("Banken akzeptieren FinTS-Zugriffe nur mit einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID. Die Registrierung ist für Software-Hersteller kostenlos (fints.org → Produktregistrierung).");
+                }
                 HorizontalLayout {
                     spacing: 12px;
-                    LabeledField { label: "Aktuelles Passwort"; input-type: password; text <=> AppState.old-password; }
-                    LabeledField { label: "Neues Passwort"; input-type: password; text <=> AppState.new-password; }
+                    LabeledField { label: @tr("Produkt-ID"); text <=> AppState.product-id; placeholder: @tr("25-stellige Registrierungsnummer"); }
+                    LabeledField { width: 140px; label: @tr("Produktversion"); text <=> AppState.product-version; }
                 }
                 HorizontalLayout {
                     alignment: end;
-                    PrimaryButton { text: "Passwort ändern"; icon: Icons.lock; clicked => { AppState.change-password(); } }
+                    PrimaryButton { text: @tr("Speichern"); clicked => { AppState.save-settings(); } }
+                }
+            }
+        }
+        Card {
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                CardHeader { title: @tr("Tresor-Passwort ändern"); subtitle: @tr("Alle Daten werden lokal mit AES-256-GCM verschlüsselt (Schlüssel per Argon2id)."); }
+                HorizontalLayout {
+                    spacing: 12px;
+                    LabeledField { label: @tr("Aktuelles Passwort"); input-type: password; text <=> AppState.old-password; }
+                    LabeledField { label: @tr("Neues Passwort"); input-type: password; text <=> AppState.new-password; }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PrimaryButton { text: @tr("Passwort ändern"); icon: Icons.lock; clicked => { AppState.change-password(); } }
                 }
             }
         }
@@ -1436,11 +1479,11 @@ export component SettingsPage inherits ScrollView {
             VerticalLayout {
                 padding: 22px;
                 spacing: 10px;
-                CardHeader { title: "Daten"; }
-                Text { text: "Speicherort: " + AppState.data-path; font-size: 13px; color: Theme.text-muted; wrap: word-wrap; }
+                CardHeader { title: @tr("Daten"); }
+                Text { text: @tr("Speicherort: ") + AppState.data-path; font-size: 13px; color: Theme.text-muted; wrap: word-wrap; }
                 HorizontalLayout {
                     alignment: start;
-                    GhostButton { text: "Demo-Bankzugang hinzufügen"; clicked => { AppState.load-demo(); } }
+                    GhostButton { text: @tr("Demo-Bankzugang hinzufügen"); clicked => { AppState.load-demo(); } }
                 }
             }
         }

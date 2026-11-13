@@ -137,7 +137,7 @@ impl<'a> Client<'a> {
                         && (cfg.user_id.is_empty() || c.user_id == cfg.user_id)
                 })
                 .cloned()
-                .ok_or_else(|| Error::Security("Der gewählte Bankzugang wurde auf der Chipkarte nicht gefunden".into()))?;
+                .ok_or_else(|| Error::Security(i18n::tr("Der gewählte Bankzugang wurde auf der Chipkarte nicht gefunden").into()))?;
             if cfg.blz.is_empty() {
                 cfg.blz = context.blz.clone();
             }
@@ -157,7 +157,7 @@ impl<'a> Client<'a> {
                 decipher_key: card.decipher_key()?,
             };
             if !matches!(session.profile, 7 | 9 | 10) {
-                return Err(Error::NotSupported(format!("RDH-Profil {}", session.profile)));
+                return Err(Error::NotSupported(i18n::tr_format!("RDH-Profil {}", session.profile)));
             }
             rdh = Some(RdhCtx { session, context });
         }
@@ -223,7 +223,7 @@ impl<'a> Client<'a> {
         }
         let p = Zeroizing::new(self
             .ui
-            .pin(&format!("PIN für {} ({})", self.cfg.user_id, self.state.bpd.bank_name))
+            .pin(&i18n::tr_format!("PIN für {} ({})", self.cfg.user_id, self.state.bpd.bank_name))
             .ok_or(Error::Cancelled)?);
         self.pin = Some(p.clone());
         Ok(p)
@@ -256,10 +256,10 @@ impl<'a> Client<'a> {
                 (Medium::Rdh(card, _), _, Some(ctx)) => Auth::Rdh {
                     card: card.as_mut(),
                     session: &ctx.session,
-                    bank: bank_crypt.ok_or_else(|| Error::Security("Der öffentliche Schlüssel der Bank fehlt".into()))?,
+                    bank: bank_crypt.ok_or_else(|| Error::Security(i18n::tr("Der öffentliche Schlüssel der Bank fehlt").into()))?,
                     no_sysid,
                 },
-                _ => return Err(Error::Security("chip card not initialised".into())),
+                _ => return Err(Error::Security(i18n::tr("Chipkarte nicht initialisiert").into())),
             };
             Zeroizing::new(build_message(&env, auth, segments)?)
         };
@@ -316,9 +316,9 @@ impl<'a> Client<'a> {
         });
         let mut out = format!("{} {}", c.code, c.text);
         match (seg, &c.reference_element) {
-            (Some(sg), Some(el)) => out.push_str(&format!(" ({sg}, Element {el})")),
+            (Some(sg), Some(el)) => out.push_str(&i18n::tr_format!(" ({sg}, Element {el})")),
             (Some(sg), None) => out.push_str(&format!(" ({sg})")),
-            (None, Some(el)) => out.push_str(&format!(" (Element {el})")),
+            (None, Some(el)) => out.push_str(&i18n::tr_format!(" (Element {el})")),
             _ => {}
         }
         out
@@ -361,7 +361,7 @@ impl<'a> Client<'a> {
     /// Banks that only accept two-step methods reject the one-step "999" login,
     /// so the TAN method has to be known before the first personal dialog.
     fn fetch_bpd_anonymous(&mut self) -> Result<()> {
-        self.ui.progress("Lade Bankparameter …");
+        self.ui.progress(i18n::tr("Lade Bankparameter …"));
         self.reset_dialog();
         let segs = vec![
             SegmentBuilder::new("HKIDN", 2)
@@ -481,8 +481,8 @@ impl<'a> Client<'a> {
         if !approval_pending {
             return Ok(resp);
         }
-        if !sca { return Err(Error::Security("Die Bank fordert eine Freigabe, die nicht abgeschlossen wurde".into())); }
-        let hitan = resp.first("HITAN").ok_or_else(|| Error::Other("TAN required but no HITAN".into()))?;
+        if !sca { return Err(Error::Security(i18n::tr("Die Bank fordert eine Freigabe, die nicht abgeschlossen wurde").into())); }
+        let hitan = resp.first("HITAN").ok_or_else(|| Error::Other(i18n::tr("TAN erforderlich, aber HITAN fehlt").into()))?;
         let method = self.current_method().unwrap_or(TanMethod {
             security_function: self.security_function(),
             name: "TAN".into(),
@@ -497,7 +497,7 @@ impl<'a> Client<'a> {
             decoupled_poll_wait_next: 2,
         });
         let task_reference = hitan.text_or_empty(3, 0);
-        if task_reference.trim().is_empty() { return Err(Error::Security("TAN-Auftragsreferenz fehlt".into())); }
+        if task_reference.trim().is_empty() { return Err(Error::Security(i18n::tr("TAN-Auftragsreferenz fehlt").into())); }
         let mut challenge = TanChallenge {
             text: hitan.text_or_empty(4, 0),
             hhduc: hitan.bin(5, 0).map(|b| b.to_vec()).filter(|b| !b.is_empty()),
@@ -521,7 +521,7 @@ impl<'a> Client<'a> {
                     let seg = self.hktan_followup(process, &task_reference);
                     let r = self.exchange(vec![seg], None)?;
                     if r.code("3956").is_some() {
-                        challenge.text = format!(
+                        challenge.text = i18n::tr_format!(
                             "Die Freigabe ist noch nicht erfolgt. Bitte bestätigen Sie den Auftrag in Ihrer App.\n\n{}",
                             strip_html(&challenge.text)
                         );
@@ -573,7 +573,7 @@ impl<'a> Client<'a> {
         if !self.is_pintan() {
             return Ok(());
         }
-        self.ui.progress("Synchronisiere Bankzugang …");
+        self.ui.progress(i18n::tr("Synchronisiere Bankzugang …"));
         let saved = self.state.tan_method.replace("999".into());
         self.reset_dialog();
         let mut segs = self.init_segments(true);
@@ -597,7 +597,7 @@ impl<'a> Client<'a> {
     /// RDH: system id via a signed and encrypted dialog without system id (AqBanking JobSync,
     /// security details `1::0`).
     fn synchronize_rdh(&mut self) -> Result<()> {
-        self.ui.progress("Synchronisiere Bankzugang (Chipkarte) …");
+        self.ui.progress(i18n::tr("Synchronisiere Bankzugang (Chipkarte) …"));
         self.state.system_id.clear();
         self.reset_dialog();
         let mut segs = self.init_segments(true);
@@ -624,7 +624,7 @@ impl<'a> Client<'a> {
         let Some(ctx) = self.rdh.as_ref() else { return Ok(()) };
         let profile = ctx.session.profile;
         let card_hash = ctx.context.bank_key_hash.clone();
-        self.ui.progress("Lade öffentliche Schlüssel der Bank …");
+        self.ui.progress(i18n::tr("Lade öffentliche Schlüssel der Bank …"));
         self.reset_dialog();
         let segs = vec![
             SegmentBuilder::new("HKIDN", 2)
@@ -659,10 +659,10 @@ impl<'a> Client<'a> {
             }
         }
         let Some(crypt) = keys.crypt.clone() else {
-            return Err(Error::Security("Die Bank hat keinen Verschlüsselungsschlüssel geliefert".into()));
+            return Err(Error::Security(i18n::tr("Die Bank hat keinen Verschlüsselungsschlüssel geliefert").into()));
         };
         if keys.sign.is_none() {
-            return Err(Error::Security("Die Bank hat keinen Signaturschlüssel geliefert; RDH ohne geprüfte Banksignatur wird nicht unterstützt".into()));
+            return Err(Error::Security(i18n::tr("Die Bank hat keinen Signaturschlüssel geliefert; RDH ohne geprüfte Banksignatur wird nicht unterstützt").into()));
         }
         // The hash on the card belongs to one key (number/version). Banks often use the same
         // number/version for both keys, so a non-matching key only counts as a mismatch when no
@@ -683,9 +683,9 @@ impl<'a> Client<'a> {
             }
         }
         let describe = |k: &crate::rdh::BankKey| {
-            format!(
+            i18n::tr_format!(
                 "\n{} (Nr. {}, Version {}, {} Bit), SHA-256:\n{}\n",
-                if k.kind == "V" { "Verschlüsselungsschlüssel" } else { "Signaturschlüssel" },
+                if k.kind == "V" { i18n::tr("Verschlüsselungsschlüssel") } else { i18n::tr("Signaturschlüssel") },
                 k.num,
                 k.version,
                 k.size() * 8,
@@ -695,30 +695,30 @@ impl<'a> Client<'a> {
         if !mismatch.is_empty() {
             // as AqBanking: strong warning, the user may only continue after comparing with the INI letter
             let mut text = String::from(
-                "ACHTUNG: Der von der Bank übermittelte Schlüssel stimmt NICHT mit dem Hashwert auf Ihrer Chipkarte überein. \
+                i18n::tr("ACHTUNG: Der von der Bank übermittelte Schlüssel stimmt NICHT mit dem Hashwert auf Ihrer Chipkarte überein. \
                  Fahren Sie nur fort, wenn der Hashwert exakt mit Ihrem INI-Brief übereinstimmt – andernfalls brechen Sie ab und \
-                 wenden Sie sich an Ihre Bank.\n",
+                 wenden Sie sich an Ihre Bank.\n"),
             );
             if let Some(h) = &card_hash {
-                text.push_str(&format!("\nHashwert auf der Chipkarte:\n{}\n", crate::rdh::hex_blocks(&h.hash)));
+                text.push_str(&i18n::tr_format!("\nHashwert auf der Chipkarte:\n{}\n", crate::rdh::hex_blocks(&h.hash)));
             }
             for k in &mismatch {
                 text.push_str(&describe(k));
             }
-            if !self.ui.confirm("Bankschlüssel stimmt nicht überein", &text) {
+            if !self.ui.confirm(i18n::tr("Bankschlüssel stimmt nicht überein"), &text) {
                 return Err(Error::Security(
-                    "Der Schlüssel der Bank stimmt nicht mit dem Hashwert auf der Chipkarte überein und wurde nicht übernommen.".into(),
+                    i18n::tr("Der Schlüssel der Bank stimmt nicht mit dem Hashwert auf der Chipkarte überein und wurde nicht übernommen.").into(),
                 ));
             }
         }
         if !unknown.is_empty() {
             let mut text = String::from(
-                "Bitte vergleichen Sie die Hashwerte mit dem INI-Brief Ihrer Bank. Nur bei exakter Übereinstimmung bestätigen.\n",
+                i18n::tr("Bitte vergleichen Sie die Hashwerte mit dem INI-Brief Ihrer Bank. Nur bei exakter Übereinstimmung bestätigen.\n"),
             );
             for k in &unknown {
                 text.push_str(&describe(k));
             }
-            if !self.ui.confirm("Bankschlüssel prüfen", &text) {
+            if !self.ui.confirm(i18n::tr("Bankschlüssel prüfen"), &text) {
                 return Err(Error::Cancelled);
             }
         }
@@ -763,7 +763,7 @@ impl<'a> Client<'a> {
                 self.synchronize_rdh()?;
             }
         }
-        self.ui.progress("Dialog wird eröffnet …");
+        self.ui.progress(i18n::tr("Dialog wird eröffnet …"));
         self.reset_dialog();
         let segs = self.init_segments(false);
         self.exchange_sca(segs, "HKIDN", false)?;
@@ -803,7 +803,7 @@ impl<'a> Client<'a> {
     fn determine_tan_medium(&mut self) -> Result<Option<String>> {
         let mut media: Vec<String> = Vec::new();
         if let Some(v) = self.state.bpd.version_for("HKTAB", &[4, 5]) {
-            self.ui.progress("Lade TAN-Medien …");
+            self.ui.progress(i18n::tr("Lade TAN-Medien …"));
             let saved = self.state.tan_method.replace("999".into());
             self.reset_dialog();
             let segs = self.init_segments(false);
@@ -829,8 +829,8 @@ impl<'a> Client<'a> {
         Ok(self
             .ui
             .text(
-                "TAN-Medium",
-                &format!(
+                i18n::tr("TAN-Medium"),
+                &i18n::tr_format!(
                     "Die Bank verlangt für „{name}“ die Bezeichnung Ihres TAN-Mediums (z. B. den Gerätenamen aus der BestSign- bzw. photoTAN-App). Bitte genau so eingeben, wie er in der App bzw. im Onlinebanking angezeigt wird."
                 ),
             )
@@ -900,7 +900,7 @@ impl<'a> Client<'a> {
         }
         self.open()?;
         if let Some(v) = self.state.bpd.version_for("HKSPA", &[1, 2, 3]) {
-            self.ui.progress("Lade SEPA-Kontoverbindungen …");
+            self.ui.progress(i18n::tr("Lade SEPA-Kontoverbindungen …"));
             self.exchange_sca(vec![SegmentBuilder::new("HKSPA", v)], "HKSPA", false)?;
         }
         let mut accounts = self.state.upd.accounts.clone();
@@ -915,21 +915,21 @@ impl<'a> Client<'a> {
     pub fn balance(&mut self, a: &Account) -> Result<Option<Balance>> {
         self.open()?;
         if let Some((code, version)) = self.card_job(a, "HKKKS", 1, "DKKKS", 3)? {
-            self.ui.progress(&format!("Kreditkartensaldo {} …", display_account(a)));
+            self.ui.progress(&i18n::tr_format!("Kreditkartensaldo {} …", display_account(a)));
             let mut seg = SegmentBuilder::new(code, version)
                 .deg(if code == "HKKKS" { Self::kti(a) } else { Self::ktv(a) }).de(&a.account_number);
             if code == "HKKKS" { seg = seg.de(&a.sub_account); }
             let response = self.exchange_sca(vec![seg], code, false)?;
             let answer = if code == "HKKKS" { "HIKKS" } else { "DIKKS" };
-            let s = response.first(answer).ok_or_else(|| Error::Syntax("Kreditkartensaldo fehlt in der Bankantwort".into()))?;
-            if s.version != version { return Err(Error::NotSupported("Version der Kreditkartensaldenantwort".into())); }
+            let s = response.first(answer).ok_or_else(|| Error::Syntax(i18n::tr("Kreditkartensaldo fehlt in der Bankantwort").into()))?;
+            if s.version != version { return Err(Error::NotSupported(i18n::tr("Version der Kreditkartensaldenantwort").into())); }
             return crate::credit_card::balance(s);
         }
-        if !a.allows("HKSAL") { return Err(Error::NotSupported("Saldo für dieses Konto".into())); }
+        if !a.allows("HKSAL") { return Err(Error::NotSupported(i18n::tr("Saldo für dieses Konto").into())); }
         let Some(v) = self.state.bpd.version_for("HKSAL", SAL_VERSIONS) else {
-            return Err(Error::NotSupported("Saldenabfrage (HKSAL)".into()));
+            return Err(Error::NotSupported(i18n::tr("Saldenabfrage (HKSAL)").into()));
         };
-        self.ui.progress(&format!("Saldo {} …", display_account(a)));
+        self.ui.progress(&i18n::tr_format!("Saldo {} …", display_account(a)));
         let acc = if v >= 7 { Self::kti(a) } else { Self::ktv(a) };
         let resp = self.exchange_sca(vec![SegmentBuilder::new("HKSAL", v).deg(acc).de("N")], "HKSAL", false)?;
         let Some(s) = resp.first("HISAL") else { return Ok(None) };
@@ -962,8 +962,8 @@ impl<'a> Client<'a> {
         }
         let camt_fmt = self.state.bpd.preferred_camt();
         let use_camt = a.allows("HKCAZ") && camt_fmt.is_some() && self.state.bpd.version_for("HKCAZ", &[1]).is_some() && a.is_sepa();
-        if !use_camt && !a.allows("HKKAZ") { return Err(Error::NotSupported("Umsätze für dieses Konto".into())); }
-        self.ui.progress(&format!("Umsätze {} …", display_account(a)));
+        if !use_camt && !a.allows("HKKAZ") { return Err(Error::NotSupported(i18n::tr("Umsätze für dieses Konto").into())); }
+        self.ui.progress(&i18n::tr_format!("Umsätze {} …", display_account(a)));
         let mut out = Vec::new();
         let mut touchdown: Option<String> = None;
         let mut seen_pages = std::collections::HashSet::new();
@@ -979,7 +979,7 @@ impl<'a> Client<'a> {
                     .de(touchdown.clone())
             } else {
                 let Some(v) = self.state.bpd.version_for("HKKAZ", KAZ_VERSIONS) else {
-                    return Err(Error::NotSupported("Umsatzabruf (HKKAZ/HKCAZ)".into()));
+                    return Err(Error::NotSupported(i18n::tr("Umsatzabruf (HKKAZ/HKCAZ)").into()));
                 };
                 SegmentBuilder::new("HKKAZ", v)
                     .deg(if v >= 7 { Self::kti(a) } else { Self::ktv(a) })
@@ -992,7 +992,7 @@ impl<'a> Client<'a> {
             let code = if use_camt { "HKCAZ" } else { "HKKAZ" };
             let resp = self.exchange_sca(vec![seg], code, false)?;
             if resp.first(if use_camt { "HICAZ" } else { "HIKAZ" }).is_none() && resp.code("3010").is_none() {
-                return Err(Error::Syntax("Umsatzdaten fehlen in der Bankantwort".into()));
+                return Err(Error::Syntax(i18n::tr("Umsatzdaten fehlen in der Bankantwort").into()));
             }
             if use_camt {
                 for s in resp.find("HICAZ") {
@@ -1027,7 +1027,7 @@ impl<'a> Client<'a> {
             }
         }
         if touchdown.is_some() {
-            return Err(Error::Other("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt".into()));
+            return Err(Error::Other(i18n::tr("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt").into()));
         }
         Ok(TransactionReport { transactions: out, balance: None })
     }
@@ -1039,7 +1039,7 @@ impl<'a> Client<'a> {
             if explicit || offered {
                 // Some banks advertise proprietary card jobs only in the UPD (as AqBanking).
                 if self.state.bpd.supports(code) && self.state.bpd.version_for(code, &[version]).is_none() {
-                    return Err(Error::NotSupported(format!("Keine gemeinsame Version für {code}")));
+                    return Err(Error::NotSupported(i18n::tr_format!("Keine gemeinsame Version für {code}")));
                 }
                 return Ok(Some((code, version)));
             }
@@ -1048,7 +1048,7 @@ impl<'a> Client<'a> {
     }
 
     fn credit_card_report(&mut self, a: &Account, code: &str, version: u32, from: NaiveDate, to: Option<NaiveDate>) -> Result<TransactionReport> {
-        self.ui.progress(&format!("Kreditkartenumsätze {} …", display_account(a)));
+        self.ui.progress(&i18n::tr_format!("Kreditkartenumsätze {} …", display_account(a)));
         let mut report = TransactionReport::default();
         let mut touchdown: Option<String> = None;
         let mut seen_pages = std::collections::HashSet::new();
@@ -1070,17 +1070,17 @@ impl<'a> Client<'a> {
             // An explicit empty-result code is valid; a missing/unknown payload otherwise
             // must not turn an unsuccessful response into an empty local statement.
             if !found && resp.code("3010").is_none() {
-                return Err(Error::Syntax("Kreditkartenumsätze fehlen in der Bankantwort".into()));
+                return Err(Error::Syntax(i18n::tr("Kreditkartenumsätze fehlen in der Bankantwort").into()));
             }
             touchdown = match resp.code("3040") {
                 Some(code) => Some(code.params.first().filter(|p| !p.is_empty()).cloned()
-                    .ok_or_else(|| Error::Syntax("Aufsetzpunkt des Kreditkartenabrufs fehlt".into()))?),
+                    .ok_or_else(|| Error::Syntax(i18n::tr("Aufsetzpunkt des Kreditkartenabrufs fehlt").into()))?),
                 None => None,
             };
             let Some(next) = &touchdown else { return Ok(report); };
             if next.is_empty() || !seen_pages.insert(next.clone()) { break; }
         }
-        Err(Error::Other("Kreditkartenabruf unvollständig; lokale Umsätze wurden nicht ersetzt".into()))
+        Err(Error::Other(i18n::tr("Kreditkartenabruf unvollständig; lokale Umsätze wurden nicht ersetzt").into()))
     }
 
     fn send_order(&mut self, code: &str, seg: SegmentBuilder) -> Result<Response> {
@@ -1098,7 +1098,7 @@ impl<'a> Client<'a> {
         let descriptor = self.state.bpd.preferred_pain001();
         let (code, desc) = if t.instant {
             if !self.state.bpd.supports("HKIPZ") {
-                return Err(Error::NotSupported("Echtzeitüberweisung (HKIPZ)".into()));
+                return Err(Error::NotSupported(i18n::tr("Echtzeitüberweisung (HKIPZ)").into()));
             }
             ("HKIPZ", descriptor)
         } else {
@@ -1114,18 +1114,18 @@ impl<'a> Client<'a> {
         pain::validate_transfer(t)?;
         validate_debtor(a, t)?;
         if !t.execution_date.map(|d| d > chrono::Local::now().date_naive()).unwrap_or(false) {
-            return Err(Error::Other("Terminüberweisung benötigt ein zukünftiges Ausführungsdatum".into()));
+            return Err(Error::Other(i18n::tr("Terminüberweisung benötigt ein zukünftiges Ausführungsdatum").into()));
         }
         self.open()?;
         if !self.state.bpd.supports("HKCSE") {
-            return Err(Error::NotSupported("Terminüberweisung (HKCSE)".into()));
+            return Err(Error::NotSupported(i18n::tr("Terminüberweisung (HKCSE)").into()));
         }
         let desc = self.state.bpd.preferred_pain001();
         let pain = pain::build_pain001(&desc, t, None);
         let seg = SegmentBuilder::new("HKCSE", 1).deg(Self::sepa_account(a)).de(desc).bin(pain);
         let r = self.send_order("HKCSE", seg)?;
         let id = r.first("HICSE").map(|s| s.text_or_empty(1, 0)).unwrap_or_default();
-        Ok(format!("{}{}", r.summary(), if id.is_empty() { String::new() } else { format!("\nAuftrags-ID: {id}") }))
+        Ok(format!("{}{}", r.summary(), if id.is_empty() { String::new() } else { i18n::tr_format!("\nAuftrags-ID: {id}") }))
     }
 
     fn standing_details(so: &StandingOrder) -> Vec<Val> {
@@ -1144,7 +1144,7 @@ impl<'a> Client<'a> {
         pain::validate_standing_schedule(so)?;
         self.open()?;
         if !self.state.bpd.supports("HKCDE") {
-            return Err(Error::NotSupported("Dauerauftrag anlegen (HKCDE)".into()));
+            return Err(Error::NotSupported(i18n::tr("Dauerauftrag anlegen (HKCDE)").into()));
         }
         let desc = self.state.bpd.preferred_pain001();
         // standing orders use the 1999-01-01 placeholder date in the pain document
@@ -1163,7 +1163,7 @@ impl<'a> Client<'a> {
     pub fn standing_orders(&mut self, a: &Account) -> Result<Vec<StandingOrder>> {
         self.open()?;
         let version = self.state.bpd.version_for("HKCDB", &[1, 2])
-            .ok_or_else(|| Error::NotSupported("Daueraufträge abrufen: keine gemeinsame HKCDB-Version".into()))?;
+            .ok_or_else(|| Error::NotSupported(i18n::tr("Daueraufträge abrufen: keine gemeinsame HKCDB-Version").into()))?;
         let formats = if self.state.bpd.standing_pain001_formats.is_empty() {
             &self.state.bpd.pain001_formats
         } else { &self.state.bpd.standing_pain001_formats };
@@ -1171,11 +1171,11 @@ impl<'a> Client<'a> {
             .find_map(|known| formats.iter().find(|f| f.ends_with(known))).cloned();
         let format = if let Some(format) = format { format } else {
             if !self.state.bpd.standing_pain001_formats.is_empty() {
-                return Err(Error::NotSupported("Kein unterstütztes Zahlungsformat für Daueraufträge".into()));
+                return Err(Error::NotSupported(i18n::tr("Kein unterstütztes Zahlungsformat für Daueraufträge").into()));
             }
             self.state.bpd.preferred_pain001()
         };
-        self.ui.progress("Lade Daueraufträge …");
+        self.ui.progress(i18n::tr("Lade Daueraufträge …"));
         let mut out = Vec::new();
         let mut touchdown: Option<String> = None;
         let mut seen_pages = std::collections::HashSet::new();
@@ -1189,12 +1189,12 @@ impl<'a> Client<'a> {
             let resp = self.exchange_sca(vec![seg], "HKCDB", false)?;
             for s in resp.find("HICDB") {
                 if !matches!(s.version, 1 | 2) {
-                    return Err(Error::NotSupported("Unbekannte Version der Dauerauftragsantwort".into()));
+                    return Err(Error::NotSupported(i18n::tr("Unbekannte Version der Dauerauftragsantwort").into()));
                 }
                 let raw = s.bin(3, 0).unwrap_or_default().to_vec();
-                let transfer = pain::read_pain001(&raw).ok_or_else(|| Error::Syntax("Dauerauftrag enthält ungültige Zahlungsdaten".into()))?;
+                let transfer = pain::read_pain001(&raw).ok_or_else(|| Error::Syntax(i18n::tr("Dauerauftrag enthält ungültige Zahlungsdaten").into()))?;
                 let first = parse_fints_date(&s.text_or_empty(5, 0))
-                    .ok_or_else(|| Error::Syntax("Ungültiges erstes Ausführungsdatum im Dauerauftrag".into()))?;
+                    .ok_or_else(|| Error::Syntax(i18n::tr("Ungültiges erstes Ausführungsdatum im Dauerauftrag").into()))?;
                 out.push(StandingOrder {
                     order_id: s.text_or_empty(4, 0),
                     transfer,
@@ -1207,7 +1207,7 @@ impl<'a> Client<'a> {
                         let value = s.text_or_empty(5, 4);
                         if value.is_empty() { None } else {
                             Some(chrono::NaiveTime::parse_from_str(&value, "%H%M%S")
-                                .map_err(|_| Error::Syntax("Ungültige Ausführungszeit im Dauerauftrag".into()))?)
+                                .map_err(|_| Error::Syntax(i18n::tr("Ungültige Ausführungszeit im Dauerauftrag").into()))?)
                         }
                     } else { None },
                     raw_pain: raw,
@@ -1220,7 +1220,7 @@ impl<'a> Client<'a> {
             }
         }
         if touchdown.is_some() {
-            return Err(Error::Other("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt".into()));
+            return Err(Error::Other(i18n::tr("Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt").into()));
         }
         Ok(out)
     }
@@ -1228,7 +1228,7 @@ impl<'a> Client<'a> {
     pub fn delete_standing_order(&mut self, a: &Account, so: &StandingOrder) -> Result<String> {
         self.open()?;
         if !self.state.bpd.supports("HKCDL") {
-            return Err(Error::NotSupported("Dauerauftrag löschen (HKCDL)".into()));
+            return Err(Error::NotSupported(i18n::tr("Dauerauftrag löschen (HKCDL)").into()));
         }
         let desc = if so.descriptor.is_empty() { self.state.bpd.preferred_pain001() } else { so.descriptor.clone() };
         let pain = if so.raw_pain.is_empty() { pain::build_pain001(&desc, &so.transfer, None) } else { so.raw_pain.clone() };
@@ -1259,9 +1259,9 @@ impl<'a> Client<'a> {
 fn next_page(resp: &Response, seen: &mut std::collections::HashSet<String>) -> Result<Option<String>> {
     let Some(more) = resp.code("3040") else { return Ok(None) };
     let cursor = more.params.first().filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| Error::Syntax("Weitere Daten angekündigt, aber Aufsetzpunkt fehlt".into()))?;
+        .ok_or_else(|| Error::Syntax(i18n::tr("Weitere Daten angekündigt, aber Aufsetzpunkt fehlt").into()))?;
     if !seen.insert(cursor.clone()) {
-        return Err(Error::Syntax("Wiederholter Aufsetzpunkt; Abruf ist unvollständig".into()));
+        return Err(Error::Syntax(i18n::tr("Wiederholter Aufsetzpunkt; Abruf ist unvollständig").into()));
     }
     Ok(Some(cursor.clone()))
 }
@@ -1276,7 +1276,7 @@ fn merge(mut a: Response, b: Response) -> Response {
 fn completed_approval(response: &Response) -> Result<()> {
     if response.codes.iter().any(|c| matches!(c.code.as_str(), "0030" | "3955" | "3956"))
         || !response.codes.iter().any(|c| c.code.len() == 4 && c.code.starts_with('0') && c.code != "0030" && c.code.bytes().all(|b| b.is_ascii_digit())) {
-        return Err(Error::Security("Keine abschließende Auftragsbestätigung der Bank; Status bitte bei der Bank prüfen und Auftrag nicht erneut senden".into()));
+        return Err(Error::Security(i18n::tr("Keine abschließende Auftragsbestätigung der Bank; Status bitte bei der Bank prüfen und Auftrag nicht erneut senden").into()));
     }
     Ok(())
 }
@@ -1284,13 +1284,13 @@ fn completed_approval(response: &Response) -> Result<()> {
 fn validate_debtor(account: &Account, transfer: &SepaTransfer) -> Result<()> {
     let normalize = |value: &str| value.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_uppercase();
     if account.iban.is_empty() || normalize(&account.iban) != normalize(&transfer.debtor_iban) {
-        return Err(Error::Security("Auftraggeber-IBAN stimmt nicht mit dem ausgewählten Konto überein".into()));
+        return Err(Error::Security(i18n::tr("Auftraggeber-IBAN stimmt nicht mit dem ausgewählten Konto überein").into()));
     }
     Ok(())
 }
 
 fn diagnostic_code(code: &str) -> &str {
-    if code.len() == 4 && code.bytes().all(|b| b.is_ascii_digit()) { code } else { "[ungültig]" }
+    if code.len() == 4 && code.bytes().all(|b| b.is_ascii_digit()) { code } else { i18n::tr("[ungültig]") }
 }
 
 pub fn display_account(a: &Account) -> String {
@@ -1360,10 +1360,10 @@ fn protocol_summary(raw: &[u8]) -> String {
             if s.code.len() == 5 && s.code.bytes().all(|c| c.is_ascii_uppercase()) {
                 format!("{}:{}:{}", s.code, s.number, s.version)
             } else {
-                "[ungültiger Segmentkopf]".into()
+                i18n::tr("[ungültiger Segmentkopf]").into()
             }
         }).collect::<Vec<_>>().join(" "),
-        Err(_) => format!("[nicht lesbare Nachricht: {} Bytes]", raw.len()),
+        Err(_) => i18n::tr_format!("[nicht lesbare Nachricht: {} Bytes]", raw.len()),
     }
 }
 

@@ -543,11 +543,13 @@ dependencies = [
  "aes-gcm",
  "arboard",
  "argon2",
+ "bankingcraft-i18n",
  "cardreader",
  "chrono",
  "directories",
  "env_logger",
  "fints",
+ "i-slint-backend-testing",
  "image",
  "log",
  "rand 0.8.8",
@@ -557,7 +559,26 @@ dependencies = [
  "sha2 0.10.9",
  "slint",
  "slint-build",
+ "sys-locale",
  "zeroize",
+]
+
+[[package]]
+name = "bankingcraft-i18n"
+version = "0.1.0"
+dependencies = [
+ "bankingcraft-i18n-macros",
+ "serde_json",
+]
+
+[[package]]
+name = "bankingcraft-i18n-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -822,10 +843,12 @@ dependencies = [
 name = "cardreader"
 version = "0.1.0"
 dependencies = [
+ "bankingcraft-i18n",
  "fints",
  "log",
  "pcsc",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]
@@ -1608,6 +1631,7 @@ checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 name = "fints"
 version = "0.1.0"
 dependencies = [
+ "bankingcraft-i18n",
  "base64 0.22.1",
  "cbc",
  "chrono",

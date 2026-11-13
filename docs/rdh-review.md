@@ -165,3 +165,33 @@ beide Einträge werden in der App angezeigt. Gruppensalden und die neue Buttonbe
 wurden in der aktualisierten App geprüft. Das Umordnen wurde per Maus ausgeführt und
 nach Neustart bestätigt; anschließend wurde die vorherige Kontenreihenfolge wiederhergestellt.
 Der Kartenlesertest bleibt auf Nutzerwunsch ausgelassen.
+
+## PIN-Korrektur am 13.11.2026
+
+Eine PIN-freie Diagnose bestätigte am angeschlossenen cyberJack ecom_a eine
+ZKA/SECCOS-Karte mit globaler PIN-Referenz 3 und ASCII-Format. Der bisherige
+VERIFY-Puffer enthielt unabhängig von der eingegebenen Länge acht Leerzeichen.
+Der generische libchipcard-PC/SC-Pfad verwendet dagegen bei ASCII nur den
+vier Byte langen Befehlskopf; der Leser ergänzt Lc und die tatsächlich eingegebene
+PIN. Die bisherige Vorlage entspricht dem besonderen SCM-X32-Pfad, nicht dem
+generischen Pfad. Diese Abweichung ist eine plausible Erklärung für die gemeldete
+Ablehnung einer korrekten PIN; ein erfolgreicher PIN-Versuch ist damit noch nicht bewiesen.
+
+BankingCraft verwendet jetzt die generische ASCII-Vorlage. Auch Software-PINs
+werden mit ihrer tatsächlichen Länge übertragen; FPIN2 bleibt separat codiert.
+Die Zugriffs-PIN muss eindeutig aus EF_PWDD hervorgehen. Die App probiert weder
+andere PIN-Referenzen noch andere Codierungen aus und wiederholt einen gescheiterten,
+abgebrochenen oder unklaren Versuch innerhalb der Kartenverbindung nicht.
+EF_FBZ liefert den Fehlversuchszähler rein lesend; die Diagnose zeigt ihn an.
+Bei null verbleibenden Versuchen wird kein VERIFY ausgelöst.
+
+Referenz: [libchipcard generic_pcsc/card.xml](https://github.com/aqbanking/libchipcard/blob/c0d0f19d36674baf06032731ea6b1830aa31b30f/data/drivers/posix/generic_pcsc/card.xml).
+Zusätzliche Regressionstests prüfen die Befehlsbytes und Fehlerabläufe mit
+synthetischen PINs, ohne Hardware-PIN-Versuche.
+
+Validierung: Alle 140 Workspace-Tests und Clippy mit `-D warnings` bestehen.
+Der Release-Build wurde installiert und gestartet. Bei der abschließenden
+PIN-freien Diagnose meldete die App jedoch keinen verfügbaren Kartenleser;
+der tatsächliche Fehlversuchszähler konnte deshalb noch nicht gelesen werden.
+Es wurde keine PIN-Prüfung ausgelöst. Die Bestätigung mit der echten Karte
+und ein erfolgreicher VR-Bank-Abruf stehen weiterhin aus.

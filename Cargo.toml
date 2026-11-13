@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fints", "crates/cardreader", "app"]
+members = ["crates/fints", "crates/cardreader", "app", "crates/i18n", "crates/i18n-macros"]
 
 [workspace.package]
 version = "0.1.0"

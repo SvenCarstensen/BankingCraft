@@ -214,14 +214,14 @@ impl VaultFile {
     pub fn open(path: PathBuf, password: &str) -> Result<(Self, Vault), String> {
         use std::io::Read;
         const MAX_VAULT_SIZE: u64 = 256 * 1024 * 1024;
-        let file = std::fs::File::open(&path).map_err(|e| format!("Tresor nicht lesbar: {e}"))?;
+        let file = std::fs::File::open(&path).map_err(|e| i18n::tr_format!("Tresor nicht lesbar: {e}"))?;
         let metadata = file.metadata().map_err(|e| e.to_string())?;
-        if !metadata.is_file() || metadata.len() > MAX_VAULT_SIZE { return Err("Tresordatei ist ungültig oder zu groß".into()); }
+        if !metadata.is_file() || metadata.len() > MAX_VAULT_SIZE { return Err(i18n::tr("Tresordatei ist ungültig oder zu groß").into()); }
         let mut data = Vec::new();
         file.take(MAX_VAULT_SIZE + 1).read_to_end(&mut data).map_err(|e| e.to_string())?;
-        if data.len() as u64 > MAX_VAULT_SIZE { return Err("Tresordatei ist zu groß".into()); }
+        if data.len() as u64 > MAX_VAULT_SIZE { return Err(i18n::tr("Tresordatei ist zu groß").into()); }
         if data.len() < 36 || &data[..8] != MAGIC {
-            return Err("Unbekanntes Dateiformat".into());
+            return Err(i18n::tr("Unbekanntes Dateiformat").into());
         }
         let mut salt = [0u8; 16];
         salt.copy_from_slice(&data[8..24]);
@@ -230,9 +230,9 @@ impl VaultFile {
         let plain = Zeroizing::new(
             cipher
                 .decrypt(Nonce::from_slice(&data[24..36]), &data[36..])
-                .map_err(|_| "Falsches Passwort".to_string())?,
+                .map_err(|_| i18n::tr("Falsches Passwort").to_string())?,
         );
-        let vault: Vault = serde_json::from_slice(&plain).map_err(|e| format!("Tresor beschädigt: {e}"))?;
+        let vault: Vault = serde_json::from_slice(&plain).map_err(|e| i18n::tr_format!("Tresor beschädigt: {e}"))?;
         Ok((Self { path, salt, key }, vault))
     }
 
@@ -276,7 +276,7 @@ impl VaultFile {
     /// Changes the vault password and re-encrypts saved PINs with the new key.
     pub fn change_password(&mut self, old: &str, new: &str, vault: &mut Vault) -> Result<(), String> {
         if derive(old, &self.salt)?.as_ref() != self.key.as_ref() {
-            return Err("Aktuelles Passwort ist falsch".into());
+            return Err(i18n::tr("Aktuelles Passwort ist falsch").into());
         }
         let mut salt = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut salt);
@@ -284,7 +284,7 @@ impl VaultFile {
         let mut updated = vault.clone();
         for access in &mut updated.accesses {
             if let Some(sealed) = &access.saved_pin {
-                let pin = self.open_secret(sealed).ok_or("Gespeicherte PIN beschädigt; Passwort wurde nicht geändert")?;
+                let pin = self.open_secret(sealed).ok_or(i18n::tr("Gespeicherte PIN beschädigt; Passwort wurde nicht geändert"))?;
                 access.saved_pin = Some(candidate.seal_secret(&pin)?);
             }
         }

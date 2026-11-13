@@ -18,11 +18,13 @@
 use crate::{apdu_ext, err, hex, Feature, Result, Session, SoftPinProvider};
 use fints::rdh::{BankKeyHash, CardKey, KeyRef, RdhCard, RdhContext};
 use std::time::Duration;
+use zeroize::Zeroizing;
 
 const AID_DF_SIG: [u8; 6] = [0xD2, 0x76, 0x00, 0x00, 0x66, 0x01];
 const AID_DF_NOTEPAD: [u8; 9] = [0xD2, 0x76, 0x00, 0x00, 0x25, 0x4E, 0x50, 0x01, 0x00];
 const EF_ID: u16 = 0x0003;
 const EF_PWDD: u16 = 0x0015;
+const EF_FBZ: u16 = 0x0016;
 const EF_KEYD: u16 = 0x0013;
 const EF_NOTEPAD: u16 = 0xA611;
 
@@ -31,6 +33,60 @@ struct PinInfo {
     id: u8,
     fpin2: bool,
     min_len: usize,
+    retry_record: Option<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PinRetries { maximum: u8, remaining: u8 }
+
+fn parse_pin_retries(raw: &[u8]) -> Result<PinRetries> {
+    if raw.len() < 2 || raw[0] == 0 || raw[1] > raw[0] {
+        return Err(err(i18n::tr("Ungültiger PIN-Fehlversuchszähler der Karte")));
+    }
+    Ok(PinRetries { maximum: raw[0], remaining: raw[1] })
+}
+
+impl PinInfo {
+    fn verify_template(&self) -> Vec<u8> {
+        if self.fpin2 {
+            apdu_ext(0x00, 0x20, 0x00, self.id, &[0x20, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff], None)
+        } else {
+            // ZKA ASCII is variable-length. The reader appends Lc and exactly the
+            // entered characters. An eight-byte space-padded template is only the
+            // libchipcard SCM-X32 workaround, not the generic/cyberJack command.
+            vec![0x00, 0x20, 0x00, self.id]
+        }
+    }
+
+    fn pinpad_command(&self) -> Vec<u8> {
+        let a = self.verify_template();
+        let (fmt, block, len_fmt) = if self.fpin2 { (0x89, 0x47, 0x04) } else { (0x82, 0x00, 0x00) };
+        let mut command = vec![0x1e, 0x0f, fmt, block, len_fmt, 8, self.min_len as u8,
+            0x02, 0x01, 0x04, 0x09, 0x00, 0x00, 0x00, 0x00];
+        command.extend_from_slice(&(a.len() as u32).to_le_bytes());
+        command.extend_from_slice(&a);
+        command
+    }
+
+    fn soft_command(&self, pin: &str) -> Result<Zeroizing<Vec<u8>>> {
+        if pin.len() < self.min_len || pin.len() > 8 || !pin.is_ascii() {
+            return Err(err(i18n::tr_format!("Die Karten-PIN muss {} bis 8 ASCII-Zeichen lang sein", self.min_len)));
+        }
+        if !self.fpin2 {
+            return Ok(Zeroizing::new(apdu_ext(0x00, 0x20, 0x00, self.id, pin.as_bytes(), None)));
+        }
+        if !pin.bytes().all(|c| c.is_ascii_digit()) {
+            return Err(err(i18n::tr("Die Karten-PIN darf nur Ziffern enthalten")));
+        }
+        let mut body = Zeroizing::new([0xff; 8]);
+        body[0] = 0x20 | pin.len() as u8;
+        for (i, c) in pin.bytes().enumerate() {
+            let d = c - b'0';
+            let idx = 1 + i / 2;
+            body[idx] = if i % 2 == 0 { (d << 4) | 0x0f } else { (body[idx] & 0xf0) | d };
+        }
+        Ok(Zeroizing::new(apdu_ext(0x00, 0x20, 0x00, self.id, body.as_ref(), None)))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +102,7 @@ pub struct RdhChipCard {
     pub session: Session,
     ef_id: Vec<u8>,
     pin: PinInfo,
-    pin_ok: bool,
+    pin_verification: PinVerification,
     soft_pin: Option<SoftPinProvider>,
     keys: Vec<KeyEntry>,
     /// Called with `true` before the reader waits for PIN entry on its pin pad and `false` afterwards.
@@ -98,18 +154,40 @@ fn num3(b: &[u8]) -> u32 {
     ascii(b).parse().unwrap_or(0)
 }
 
-/// PIN format from the "pseudo OIDs" in EF_PWDD tag 89 (libchipcard semantics:
-/// one value per nibble without continuation bit).
-fn pin_format(format: &[u8]) -> (bool, usize) {
-    let vals: Vec<u8> = format
-        .iter()
-        .flat_map(|b| [b >> 4, b & 0x0F])
-        .filter(|n| n & 0x08 == 0)
-        .map(|n| n & 0x07)
-        .collect();
-    let fpin2 = vals.len() >= 2 && vals[0] == 1 && vals[1] == 1;
-    let min = vals.get(2).map(|v| *v as usize).filter(|v| *v > 0).unwrap_or(4);
-    (fpin2, min)
+/// PIN format from EF_PWDD tag 89. Unknown encodings must never trigger an
+/// attempted verification with a guessed ASCII encoding.
+fn pin_format(format: &[u8]) -> Option<(bool, usize)> {
+    let mut values = Vec::new(); let mut value = 0u32; let mut continued = false;
+    for nibble in format.iter().flat_map(|b| [b >> 4, b & 0xf]) {
+        value = value.checked_mul(8)?.checked_add(u32::from(nibble & 7))?;
+        continued = nibble & 8 != 0;
+        if !continued { values.push(value); value = 0; }
+    }
+    if continued { return None; }
+    let fpin2 = match values.get(..2)? { [1, 1] => true, [2, 1] => false, _ => return None };
+    let min = *values.get(2)? as usize;
+    (4..=8).contains(&min).then_some((fpin2, min))
+}
+
+fn access_pin(records: &[(u8, Vec<u8>)]) -> Result<PinInfo> {
+    let mut selected = None;
+    for (_, raw) in records {
+        let items = tlvs(raw);
+        let Some((tag, reference)) = items.iter().find(|(t, v)| matches!(t, 0x83 | 0x93 | 0x84 | 0x94) && !v.is_empty()) else { continue };
+        // ZKA's cardholder/access PIN is global reference 3. Do not select a PUK,
+        // management PIN or a DF-specific PIN just because it is the first record.
+        if reference[0] != 3 { continue; }
+        if selected.is_some() { return Err(err(i18n::tr("Zugriffs-PIN der Karte ist nicht eindeutig beschrieben"))); }
+        let (fpin2, min_len) = items.iter().find(|(t, _)| *t == 0x89)
+            .and_then(|(_, bytes)| pin_format(bytes))
+            .ok_or_else(|| err(i18n::tr("PIN-Format der Karte ist unbekannt. Keine PIN-Prüfung ausgeführt.")))?;
+        let retry_record = if matches!(*tag, 0x83 | 0x93) {
+            Some(*reference.get(1).filter(|r| **r > 0)
+                .ok_or_else(|| err(i18n::tr("PIN-Fehlversuchszähler ist nicht eindeutig zugeordnet")))?)
+        } else { None };
+        selected = Some(PinInfo { id: 3, fpin2, min_len, retry_record });
+    }
+    selected.ok_or_else(|| err(i18n::tr("Zugriffs-PIN (Referenz 3) fehlt in den Kartendaten. Keine PIN-Prüfung ausgeführt.")))
 }
 
 /// Parse one EF_NOTEPAD record (tag F0 with the HBCI data).
@@ -230,8 +308,8 @@ impl RdhChipCard {
         let mut me = Self {
             session,
             ef_id: vec![],
-            pin: PinInfo { id: 3, fpin2: false, min_len: 4 },
-            pin_ok: false,
+            pin: PinInfo { id: 3, fpin2: false, min_len: 4, retry_record: None },
+            pin_verification: PinVerification::default(),
             soft_pin,
             keys: vec![],
             pinpad_notify: None,
@@ -241,8 +319,8 @@ impl RdhChipCard {
         me.ef_id = me.read_record(1)?;
         me.select_mf()?;
         me.select_df(&AID_DF_SIG)
-            .map_err(|e| err(format!("Keine RDH-Chipkarte (ZKA/SECCOS-Signaturanwendung fehlt): {e}")))?;
-        me.read_pwdd();
+            .map_err(|e| err(i18n::tr_format!("Keine RDH-Chipkarte (ZKA/SECCOS-Signaturanwendung fehlt): {e}")))?;
+        me.read_pwdd()?;
         me.read_keys()?;
         Ok(me)
     }
@@ -259,17 +337,22 @@ impl RdhChipCard {
 
     pub fn describe(&self) -> Vec<String> {
         let mut out = vec![
-            format!("RDH-Chipkarte (ZKA/SECCOS) · Kartennummer {}", self.card_number()),
-            format!("Karten-ID: {}", hex(&self.ef_id)),
-            format!("PIN: ID {} · {}", self.pin.id, if self.pin.fpin2 { "Format 2 (BCD)" } else { "ASCII" }),
+            i18n::tr_format!("RDH-Chipkarte (ZKA/SECCOS) · Kartennummer {}", self.card_number()),
+            i18n::tr_format!("Karten-ID: {}", hex(&self.ef_id)),
+            i18n::tr_format!("PIN: ID {} · {} · {}–8 Zeichen", self.pin.id, if self.pin.fpin2 { "Format 2 (BCD)" } else { "ASCII" }, self.pin.min_len),
         ];
+        out.push(match self.pin_retries() {
+            Ok(Some(status)) => i18n::tr_format!("PIN-Versuche verbleibend: {} von {} (nur gelesen, keine PIN-Prüfung)", status.remaining, status.maximum),
+            Ok(None) => i18n::tr("PIN-Fehlversuchszähler: von dieser Karte nicht zugeordnet").into(),
+            Err(e) => i18n::tr_format!("PIN-Fehlversuchszähler nicht lesbar: {e}"),
+        });
         for k in &self.keys {
-            out.push(format!(
+            out.push(i18n::tr_format!(
                 "Schlüssel #{} Version {} · {} Bit{}",
                 k.num,
                 k.version,
                 k.size * 8,
-                k.counter.map(|c| format!(" · Signatur-Zähler {c}")).unwrap_or_default()
+                k.counter.map(|c| i18n::tr_format!(" · Signatur-Zähler {c}")).unwrap_or_default()
             ));
         }
         out
@@ -280,7 +363,7 @@ impl RdhChipCard {
         if sw == 0x9000 || sw >> 8 == 0x61 {
             Ok(d)
         } else {
-            Err(err(format!("Fehler {:04X}: {}", sw, crate::status_text(sw))))
+            Err(err(i18n::tr_format!("Fehler {:04X}: {}", sw, crate::status_text(sw))))
         }
     }
 
@@ -312,22 +395,28 @@ impl RdhChipCard {
         out
     }
 
-    fn read_pwdd(&mut self) {
-        if self.select_mf().and_then(|_| self.select_ef(EF_PWDD)).is_err() {
-            return;
-        }
-        let mut infos = Vec::new();
-        for (_, raw) in self.read_records(8) {
-            let items = tlvs(&raw);
-            let id = items.iter().find(|(t, v)| matches!(t, 0x83 | 0x93 | 0x84 | 0x94) && !v.is_empty()).map(|(_, v)| v[0]);
-            let (fpin2, min_len) = items.iter().find(|(t, _)| *t == 0x89).map(|(_, v)| pin_format(v)).unwrap_or((false, 4));
-            if let Some(id) = id {
-                infos.push(PinInfo { id, fpin2, min_len });
+    fn read_pwdd(&mut self) -> Result<()> {
+        self.select_mf()?;
+        self.select_ef(EF_PWDD)?;
+        let mut records = Vec::new();
+        for record in 1..=8 {
+            let (data, sw) = self.session.transmit(&apdu_ext(0, 0xb2, record, 4, &[], Some(256)))?;
+            match sw {
+                0x9000 => records.push((record, data)),
+                0x6a83 => break,
+                _ => return Err(err(i18n::tr_format!("PIN-Beschreibung nicht lesbar ({sw:04X}). Keine PIN-Prüfung ausgeführt."))),
             }
         }
-        if let Some(p) = infos.iter().find(|p| p.id & 0x7F == 3).or(infos.first()) {
-            self.pin = *p;
-        }
+        self.pin = access_pin(&records)?;
+        Ok(())
+    }
+
+    /// EF_FBZ is a read-only counter query; never send VERIFY to discover retries.
+    fn pin_retries(&self) -> Result<Option<PinRetries>> {
+        let Some(record) = self.pin.retry_record else { return Ok(None) };
+        self.select_mf()?;
+        self.select_ef(EF_FBZ)?;
+        parse_pin_retries(&self.read_record(record)?).map(Some)
     }
 
     fn read_keys(&mut self) -> Result<()> {
@@ -336,7 +425,7 @@ impl RdhChipCard {
         self.select_ef(EF_KEYD)?;
         self.keys = self.read_records(31).iter().filter_map(|(rec, raw)| parse_keyd(*rec, raw)).collect();
         if self.keys.is_empty() {
-            return Err(err("Auf der Chipkarte wurden keine RDH-Schlüssel gefunden"));
+            return Err(err(i18n::tr("Auf der Chipkarte wurden keine RDH-Schlüssel gefunden")));
         }
         Ok(())
     }
@@ -347,72 +436,40 @@ impl RdhChipCard {
             .filter(|k| k.num == num)
             .max_by_key(|k| k.version)
             .copied()
-            .ok_or_else(|| err(format!("Schlüssel #{num} nicht auf der Chipkarte")))
+            .ok_or_else(|| err(i18n::tr_format!("Schlüssel #{num} nicht auf der Chipkarte")))
     }
 
-    fn verify_apdu(&self, p2: u8) -> Vec<u8> {
-        let body: [u8; 8] = if self.pin.fpin2 { [0x20, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF] } else { [0x20; 8] };
-        apdu_ext(0x00, 0x20, 0x00, p2, &body, None)
-    }
+}
 
-    fn verify_on_pinpad(&self, p2: u8) -> Result<u16> {
-        let a = self.verify_apdu(p2);
-        let (fmt, block, len_fmt) = if self.pin.fpin2 { (0x89, 0x47, 0x04) } else { (0x82, 0x00, 0x00) };
-        let mut s = vec![
-            0x1E, // bTimeOut (30 s)
-            0x0F, // bTimeOut2
-            fmt,  // bmFormatString
-            block, // bmPINBlockString
-            len_fmt, // bmPINLengthFormat
-            0x08,
-            self.pin.min_len.clamp(4, 8) as u8, // wPINMaxExtraDigit (max 8, min)
-            0x02, // bEntryValidationCondition: OK key
-            0x01, // bNumberMessage
-            0x04,
-            0x09, // wLangId
-            0x00, // bMsgIndex
-            0x00,
-            0x00,
-            0x00, // bTeoPrologue
-        ];
-        s.extend_from_slice(&(a.len() as u32).to_le_bytes());
-        s.extend_from_slice(&a);
-        let r = self.session.control(Feature::VerifyPinDirect, &s)?;
-        if r.len() < 2 {
-            return Err(err("Leser lieferte keine Antwort auf die PIN-Prüfung"));
-        }
-        Ok(u16::from_be_bytes([r[r.len() - 2], r[r.len() - 1]]))
-    }
+#[derive(Default)]
+struct PinVerification { attempted: bool, verified: bool }
 
-    fn verify_soft(&self, p2: u8, pin: &str) -> Result<u16> {
-        if pin.len() < self.pin.min_len.max(4) || pin.len() > 8 || !pin.is_ascii() {
-            return Err(err(format!("Die Karten-PIN muss {} bis 8 ASCII-Zeichen lang sein", self.pin.min_len.max(4))));
+impl PinVerification {
+    fn run(&mut self, operation: impl FnOnce() -> Result<u16>) -> Result<()> {
+        if self.verified { return Ok(()); }
+        if self.attempted {
+            return Err(err(i18n::tr("PIN-Prüfung dieser Kartenverbindung ist bereits fehlgeschlagen oder wurde abgebrochen. Keine automatische Wiederholung.")));
         }
-        let mut body = [0x20u8; 8];
-        if self.pin.fpin2 {
-            if !pin.chars().all(|c| c.is_ascii_digit()) {
-                return Err(err("Die Karten-PIN darf nur Ziffern enthalten"));
-            }
-            body = [0xFF; 8];
-            body[0] = 0x20 | pin.len() as u8;
-            for (i, c) in pin.bytes().enumerate() {
-                let d = c - b'0';
-                let idx = 1 + i / 2;
-                body[idx] = if i % 2 == 0 { (d << 4) | 0x0F } else { (body[idx] & 0xF0) | d };
-            }
-        } else {
-            body[..pin.len()].copy_from_slice(pin.as_bytes());
-        }
-        let (_, sw) = self.session.transmit(&apdu_ext(0x00, 0x20, 0x00, p2, &body, None))?;
-        Ok(sw)
+        self.attempted = true;
+        pin_result(operation()?)?;
+        self.verified = true;
+        Ok(())
     }
+}
+
+fn pinpad_status(response: &[u8]) -> Result<u16> {
+    let bytes: [u8; 2] = response.try_into()
+        .map_err(|_| err(i18n::tr("Ungültige Antwort des Lesers auf die PIN-Prüfung. Kein weiterer Versuch ausgeführt.")))?;
+    Ok(u16::from_be_bytes(bytes))
 }
 
 fn pin_result(sw: u16) -> Result<()> {
     match sw {
         0x9000 => Ok(()),
         0x6401 => Err(fints::Error::Cancelled),
-        _ => Err(err(format!("PIN-Prüfung: {} ({:04X})", crate::status_text(sw), sw))),
+        0x6983 | 0x63c0 => Err(err(i18n::tr_format!("Karten-PIN gesperrt (0 Versuche verbleibend, {sw:04X}). Keine automatische Wiederholung."))),
+        code if code & 0xfff0 == 0x63c0 => Err(err(i18n::tr_format!("Die Chipkarte hat die PIN abgelehnt. Verbleibende PIN-Versuche: {} ({sw:04X}). Keine automatische Wiederholung.", code & 0xf))),
+        _ => Err(err(i18n::tr_format!("PIN-Prüfung: {} ({:04X})", crate::status_text(sw), sw))),
     }
 }
 
@@ -422,40 +479,29 @@ impl RdhCard for RdhChipCard {
     }
 
     fn verify_pin(&mut self) -> fints::Result<()> {
-        if self.pin_ok {
-            return Ok(());
+        if self.pin_verification.verified { return Ok(()); }
+        if self.pin_retries()?.is_some_and(|status| status.remaining == 0) {
+            return Err(err(i18n::tr("Die Karten-PIN ist gesperrt (0 Versuche verbleibend). Keine weitere PIN-Prüfung ausgeführt.")));
         }
         self.select_mf()?;
-        let pinpad = self.session.has(Feature::VerifyPinDirect);
-        let soft = if pinpad {
-            None
-        } else {
-            let provider = self.soft_pin.as_ref().ok_or_else(|| err("Leser ohne PIN-Pad und keine PIN-Abfrage verfügbar"))?;
-            Some(provider().ok_or(fints::Error::Cancelled)?)
-        };
-        let mut sw = 0;
-        // the PIN reference from EF_PWDD first; some cards address it DF-specific (bit 8)
-        for p2 in [self.pin.id, self.pin.id ^ 0x80] {
-            sw = match &soft {
-                None => {
-                    if let Some(n) = &self.pinpad_notify {
-                        n(true);
-                    }
-                    let r = self.verify_on_pinpad(p2);
-                    if let Some(n) = &self.pinpad_notify {
-                        n(false);
-                    }
-                    r?
-                }
-                Some(pin) => self.verify_soft(p2, pin)?,
-            };
-            if sw != 0x6A88 && sw != 0x6A86 {
-                break;
+        let session = &self.session;
+        let pin = self.pin;
+        let provider = self.soft_pin.as_ref();
+        let notify = self.pinpad_notify.as_ref();
+        self.pin_verification.run(|| {
+            if session.has(Feature::VerifyPinDirect) {
+                if let Some(n) = notify { n(true); }
+                let result = session.control(Feature::VerifyPinDirect, &pin.pinpad_command());
+                if let Some(n) = notify { n(false); }
+                pinpad_status(&result?)
+            } else {
+                let provider = provider.ok_or_else(|| err(i18n::tr("Leser ohne PIN-Pad und keine PIN-Abfrage verfügbar")))?;
+                let secret = Zeroizing::new(provider().ok_or(fints::Error::Cancelled)?);
+                let command = pin.soft_command(&secret)?;
+                // VERIFY is state-changing: no generic 6Cxx APDU resubmission.
+                session.transmit_raw(&command).map(|(_, sw)| sw)
             }
-        }
-        pin_result(sw)?;
-        self.pin_ok = true;
-        Ok(())
+        })
     }
 
     fn contexts(&mut self) -> fints::Result<Vec<RdhContext>> {
@@ -483,7 +529,7 @@ impl RdhCard for RdhChipCard {
         self.select_ef(EF_KEYD)?;
         let raw = self.read_record(k.record)?;
         let fresh = parse_keyd(k.record, &raw).and_then(|e| e.counter);
-        fresh.ok_or_else(|| err("Signatur-Zähler der Chipkarte nicht lesbar"))
+        fresh.ok_or_else(|| err(i18n::tr("Signatur-Zähler der Chipkarte nicht lesbar")))
     }
 
     fn sign(&mut self, hash: &[u8; 32]) -> fints::Result<Vec<u8>> {
@@ -494,7 +540,7 @@ impl RdhCard for RdhChipCard {
         self.send(&apdu_ext(0x00, 0x22, 0x41, 0xA4, &[0x84, 0x01, 0x80 | k.record, 0x80, 0x01, 0x46], None))?;
         let sig = self.send(&apdu_ext(0x00, 0x88, 0x00, 0x00, hash, Some(k.size as u16)))?;
         if sig.len() != k.size {
-            return Err(err("Unerwartete Länge der Kartensignatur"));
+            return Err(err(i18n::tr("Unerwartete Länge der Kartensignatur")));
         }
         if let Some(e) = self.keys.iter_mut().find(|e| e.record == k.record) {
             e.counter = e.counter.map(|c| c.wrapping_add(1));
@@ -569,8 +615,111 @@ mod tests {
     #[test]
     fn pin_formats() {
         // 2.1.6 → ASCII, min 6 ; 1.1.4 → FPIN2
-        assert_eq!(pin_format(&[0x21, 0x60]), (false, 6));
-        assert_eq!(pin_format(&[0x11, 0x40]), (true, 4));
+        assert_eq!(pin_format(&[0x21, 0x60]), Some((false, 6)));
+        assert_eq!(pin_format(&[0x11, 0x40]), Some((true, 4)));
+        assert_eq!(pin_format(&[0x21, 0x90]), Some((false, 8)));
+        for bytes in [&[][..], &[0x21], &[0x31, 0x60], &[0x21, 0x30], &[0x21, 0x91], &[0x21, 0x68]] {
+            assert_eq!(pin_format(bytes), None);
+        }
+    }
+
+    fn ascii_pin(min_len: usize) -> PinInfo {
+        PinInfo { id: 3, fpin2: false, min_len, retry_record: Some(1) }
+    }
+
+    #[test]
+    fn ascii_pinpad_matches_generic_libchipcard_header_only_command() {
+        // Golden vector from generic_pcsc/card.xml (our timeout/display settings).
+        let command = ascii_pin(6).pinpad_command();
+        assert_eq!(command, [0x1e, 0x0f, 0x82, 0, 0, 8, 6, 2, 1, 4, 9, 0, 0, 0, 0,
+            4, 0, 0, 0, 0, 0x20, 0, 3]);
+        assert_eq!(&command[19..], &[0, 0x20, 0, 3]); // no Lc, spaces, or guessed PIN length
+    }
+
+    #[test]
+    fn ascii_reader_supplied_pin_and_software_pin_have_identical_exact_length() {
+        let info = ascii_pin(4);
+        // Only synthetic test PINs. Model a reader appending the typed PIN to the header.
+        for secret in ["1234", "123456", "12345678"] {
+            let mut from_reader = info.verify_template();
+            from_reader.push(secret.len() as u8); from_reader.extend_from_slice(secret.as_bytes());
+            let software = info.soft_command(secret).unwrap();
+            assert_eq!(*software, from_reader);
+            assert_eq!(&software[5..], secret.as_bytes());
+            assert_eq!(software.len(), 5 + secret.len());
+        }
+        assert_eq!(*ascii_pin(6).soft_command("123456").unwrap(), [0, 0x20, 0, 3, 6, b'1', b'2', b'3', b'4', b'5', b'6']);
+    }
+
+    #[test]
+    fn fpin2_pinpad_and_software_encoding_keep_the_length_nibble_and_fillers() {
+        let info = PinInfo { fpin2: true, ..ascii_pin(4) };
+        let command = info.pinpad_command();
+        assert_eq!(&command[2..7], &[0x89, 0x47, 4, 8, 4]);
+        assert_eq!(&command[15..19], &[13, 0, 0, 0]);
+        assert_eq!(&command[19..], &[0, 0x20, 0, 3, 8, 0x20, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        assert_eq!(&info.soft_command("12345").unwrap()[5..], &[0x25, 0x12, 0x34, 0x5f, 0xff, 0xff, 0xff, 0xff]);
+        assert_eq!(&info.soft_command("12345678").unwrap()[5..], &[0x28, 0x12, 0x34, 0x56, 0x78, 0xff, 0xff, 0xff]);
+        assert!(info.soft_command("abcd").is_err());
+    }
+
+    #[test]
+    fn invalid_software_pin_is_rejected_before_card_access() {
+        for secret in ["", "12345", "123456789", "12ä456"] { assert!(ascii_pin(6).soft_command(secret).is_err()); }
+        assert!(ascii_pin(6).soft_command("123456").is_ok());
+    }
+
+    #[test]
+    fn metadata_selects_only_global_access_pin_and_its_counter_record() {
+        let puk = [tlv(0x83, &[1, 2]), tlv(0x89, &[0x21, 0x60])].concat();
+        let access = [tlv(0x93, &[3, 7]), tlv(0x89, &[0x21, 0x60])].concat();
+        let pin = access_pin(&[(1, puk.clone()), (2, access.clone())]).unwrap();
+        assert_eq!((pin.id, pin.min_len, pin.retry_record, pin.fpin2), (3, 6, Some(7), false));
+        assert!(access_pin(&[(1, puk)]).is_err());
+        assert!(access_pin(&[(1, access.clone()), (2, access)]).is_err());
+        let local_pin = [tlv(0x83, &[0x83, 1]), tlv(0x89, &[0x21, 0x60])].concat();
+        assert!(access_pin(&[(1, local_pin)]).is_err());
+    }
+
+    #[test]
+    fn missing_or_unknown_pin_metadata_never_guesses_ascii_or_another_reference() {
+        for record in [tlv(0x83, &[3, 1]), [tlv(0x83, &[3]), tlv(0x89, &[0x21, 0x60])].concat(),
+            [tlv(0x83, &[3, 0]), tlv(0x89, &[0x21, 0x60])].concat(),
+            [tlv(0x83, &[3, 1]), tlv(0x89, &[0x31, 0x60])].concat()] {
+            assert!(access_pin(&[(1, record)]).is_err());
+        }
+        assert!(access_pin(&[]).is_err());
+    }
+
+    #[test]
+    fn pin_verification_success_is_cached_and_all_failures_stop_after_one_attempt() {
+        use std::cell::Cell;
+        let calls = Cell::new(0);
+        let mut state = PinVerification::default();
+        state.run(|| { calls.set(calls.get()+1); Ok(0x9000) }).unwrap();
+        state.run(|| panic!("success must not ask for PIN twice")).unwrap();
+        assert_eq!(calls.get(), 1);
+        for sw in [0x63c2, 0x63c1, 0x63c0, 0x6983, 0x6a88, 0x6a86, 0x6401, 0x6400] {
+            let mut state = PinVerification::default();
+            assert!(state.run(|| Ok(sw)).is_err());
+            assert!(state.run(|| panic!("failed/cancelled PIN must not retry or toggle P2")).is_err());
+            assert!(!state.verified);
+        }
+        let mut state = PinVerification::default();
+        assert!(state.run(|| Err(err("simulated transport loss"))).is_err());
+        assert!(state.run(|| panic!("uncertain outcome must not retry")).is_err());
+    }
+
+    #[test]
+    fn counter_and_reader_status_parsing_distinguish_blocked_cancelled_and_remaining() {
+        assert_eq!(parse_pin_retries(&[3, 2]).unwrap(), PinRetries { maximum: 3, remaining: 2 });
+        assert_eq!(parse_pin_retries(&[3, 0]).unwrap().remaining, 0);
+        for bytes in [&[][..], &[3], &[0, 0], &[3, 4]] { assert!(parse_pin_retries(bytes).is_err()); }
+        assert_eq!(pinpad_status(&[0x90, 0]).unwrap(), 0x9000);
+        for bytes in [&[][..], &[0x90], &[0, 0x90, 0]] { assert!(pinpad_status(bytes).is_err()); }
+        assert!(matches!(pin_result(0x6401), Err(fints::Error::Cancelled)));
+        assert!(pin_result(0x63c1).unwrap_err().to_string().contains("PIN-Versuche: 1"));
+        assert!(pin_result(0x6983).unwrap_err().to_string().contains("gesperrt"));
     }
 
     #[test]

@@ -113,7 +113,7 @@ impl BankKey {
             BoxedUint::from_be_slice_vartime(&self.exponent),
             1024..=8192,
         )
-        .map_err(|e| Error::Security(format!("ungültiger Bankschlüssel: {e}")))
+        .map_err(|e| Error::Security(i18n::tr_format!("ungültiger Bankschlüssel: {e}")))
     }
 
     /// Hash as printed on the INI letter / stored on the card: exponent and modulus, each left
@@ -275,7 +275,7 @@ pub fn sign(
     let hash: [u8; 32] = Sha256::digest(&data).into();
     let signature = card.sign(&hash)?;
     if signature.is_empty() {
-        return Err(Error::Security("Die Chipkarte hat keine Signatur geliefert".into()));
+        return Err(Error::Security(i18n::tr("Die Chipkarte hat keine Signatur geliefert").into()));
     }
     let mut hnsha = SegmentBuilder::new("HNSHA", 2).de(ctrlref.as_str()).bin(signature);
     hnsha.number = hnsha_number;
@@ -292,7 +292,7 @@ pub fn encrypt(s: &RdhSession, bank: &BankKey, blz: &str, user_id: &str, system_
     let k = pk.size();
     let enc_key = if crypt_mode(s.profile) == 18 {
         pk.pkcs1v15_encrypt(&key)
-            .map_err(|e| Error::Security(format!("Verschlüsselung des Nachrichtenschlüssels: {e}")))?
+            .map_err(|e| Error::Security(i18n::tr_format!("Verschlüsselung des Nachrichtenschlüssels: {e}")))?
     } else {
         raw_rsa(&pk, &key, k)?
     };
@@ -327,12 +327,12 @@ fn raw_rsa(pk: &PublicKey, data: &[u8], k: usize) -> Result<Vec<u8>> {
     // RDH-10 defines mode 2 as the raw public RSA operation. Keep it confined
     // to this protocol-specific message-key transport; never use it for data.
     let m = BoxedUint::from_be_slice(data, pk.n_bits_precision())
-        .map_err(|_| Error::Security("Ungültiger RDH-Nachrichtenschlüssel".into()))?;
+        .map_err(|_| Error::Security(i18n::tr("Ungültiger RDH-Nachrichtenschlüssel").into()))?;
     if m >= pk.n().as_ref() || k != pk.size() {
-        return Err(Error::Security("Ungültiger RDH-Nachrichtenschlüssel".into()));
+        return Err(Error::Security(i18n::tr("Ungültiger RDH-Nachrichtenschlüssel").into()));
     }
     let c = rsa::hazmat::rsa_encrypt(pk, &m)
-        .map_err(|_| Error::Security("RDH-Schlüsseltransport fehlgeschlagen".into()))?.to_be_bytes();
+        .map_err(|_| Error::Security(i18n::tr("RDH-Schlüsseltransport fehlgeschlagen").into()))?.to_be_bytes();
     let mut out = vec![0u8; k.saturating_sub(c.len())];
     out.extend(c);
     Ok(out)
@@ -343,21 +343,21 @@ pub fn decrypt(card: &mut dyn RdhCard, encrypted_key: &[u8], payload: &[u8]) -> 
     let size = card.decipher_key()?.size;
     if !(128..=1024).contains(&size) || encrypted_key.is_empty() || encrypted_key.len() > size
         || payload.is_empty() || !payload.len().is_multiple_of(8) {
-        return Err(Error::Security("Ungültige Größe der verschlüsselten RDH-Antwort".into()));
+        return Err(Error::Security(i18n::tr("Ungültige Größe der verschlüsselten RDH-Antwort").into()));
     }
     card.verify_pin()?;
     let mut block = vec![0u8; size - encrypted_key.len()];
     block.extend_from_slice(encrypted_key);
     let plain = card.decipher(&block)?;
     if plain.len() < 16 {
-        return Err(Error::Security("Nachrichtenschlüssel der Bank zu kurz".into()));
+        return Err(Error::Security(i18n::tr("Nachrichtenschlüssel der Bank zu kurz").into()));
     }
     let mut key = [0u8; 16];
     key.copy_from_slice(&plain[plain.len() - 16..]);
     let mut p = crate::security::tdes_decrypt(&key, payload)?;
     let pl = *p.last().unwrap_or(&0) as usize;
     if pl == 0 || pl > 8 || pl > p.len() || p[p.len() - pl..p.len() - 1].iter().any(|b| *b != 0) {
-        return Err(Error::Security("Antwort der Bank ließ sich nicht entschlüsseln (Padding)".into()));
+        return Err(Error::Security(i18n::tr("Antwort der Bank ließ sich nicht entschlüsseln (Padding)").into()));
     }
     p.truncate(p.len() - pl);
     Ok(p)
@@ -383,40 +383,40 @@ pub fn verify(plain: &[u8], key: Option<&BankKey>) -> Result<SignatureCheck> {
         || spans.iter().take(heads.len()).any(|s| s.2 != "HNSHK")
         || spans.iter().rev().take(tails.len()).any(|s| s.2 != "HNSHA")
     {
-        return Err(Error::Security("Signatur der Bank: unvollständige oder ungeschützte Segmentfolge".into()));
+        return Err(Error::Security(i18n::tr("Signatur der Bank: unvollständige oder ungeschützte Segmentfolge").into()));
     }
     let Some(key) = key else { return Ok(SignatureCheck::NoKey) };
     let data_start = heads.last().map(|h| h.1).unwrap_or(0);
-    let data_end = tails.first().map(|t| t.0).ok_or_else(|| Error::Security("Signaturabschluss der Bank fehlt".into()))?;
+    let data_end = tails.first().map(|t| t.0).ok_or_else(|| Error::Security(i18n::tr("Signaturabschluss der Bank fehlt").into()))?;
     if data_end < data_start {
-        return Err(Error::Security("Signatur der Bank: Segmentfolge ungültig".into()));
+        return Err(Error::Security(i18n::tr("Signatur der Bank: Segmentfolge ungültig").into()));
     }
     let pk = key.rsa()?;
     // signature heads are nested: the innermost head belongs to the first tail
     for (k, head) in heads.iter().rev().enumerate() {
-        let tail = tails.get(k).ok_or_else(|| Error::Security("Signaturabschluss der Bank fehlt".into()))?;
+        let tail = tails.get(k).ok_or_else(|| Error::Security(i18n::tr("Signaturabschluss der Bank fehlt").into()))?;
         let tail_seg = crate::syntax::parse_segments(&plain[tail.0..tail.1])?;
         let head_seg = crate::syntax::parse_segments(&plain[head.0..head.1])?;
         let hs = &head_seg[0];
         if hs.text(3, 0).is_none() || hs.text(3, 0) != tail_seg[0].text(1, 0) {
-            return Err(Error::Security("Kontrollreferenzen der Banksignatur stimmen nicht überein".into()));
+            return Err(Error::Security(i18n::tr("Kontrollreferenzen der Banksignatur stimmen nicht überein").into()));
         }
         if hs.text_or_empty(1, 0) != "RDH" || !matches!(hs.text_or_empty(1, 1).as_str(), "7" | "9" | "10")
             || hs.text_or_empty(9, 1) != "6" || hs.text_or_empty(10, 1) != "10" || hs.text_or_empty(10, 2) != "19"
         {
-            return Err(Error::Security("Unerwartetes Verfahren der Banksignatur".into()));
+            return Err(Error::Security(i18n::tr("Unerwartetes Verfahren der Banksignatur").into()));
         }
         let sig = tail_seg
             .first()
             .and_then(|s| s.bin(2, 0))
-            .ok_or_else(|| Error::Security("Signatur der Bank fehlt".into()))?;
+            .ok_or_else(|| Error::Security(i18n::tr("Signatur der Bank fehlt").into()))?;
         let mut h = Sha256::new();
         h.update(&plain[head.0..head.1]);
         h.update(&plain[data_start..data_end]);
         let first: [u8; 32] = h.finalize().into();
         let digest: [u8; 32] = Sha256::digest(first).into();
         pk.verify(rsa::Pss::<rsa::sha2::Sha256>::new(), &digest, sig)
-            .map_err(|_| Error::Security("Die Signatur der Bank ist ungültig – Antwort verworfen".into()))?;
+            .map_err(|_| Error::Security(i18n::tr("Die Signatur der Bank ist ungültig – Antwort verworfen").into()))?;
     }
     Ok(SignatureCheck::Valid)
 }

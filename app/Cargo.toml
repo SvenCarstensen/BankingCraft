@@ -7,6 +7,8 @@ license.workspace = true
 build = "build.rs"
 
 [dependencies]
+sys-locale = "0.3"
+i18n = { package = "bankingcraft-i18n", path = "../crates/i18n" }
 fints = { path = "../crates/fints" }
 cardreader = { path = "../crates/cardreader" }
 slint = { version = "~1.18", features = ["unstable-winit-030"] }
@@ -26,8 +28,13 @@ arboard = { version = "3.7", default-features = false }
 sha2 = "0.10"
 
 [build-dependencies]
+serde_json = "1"
 slint-build = "1.18"
 
 [package.metadata.bundle]
 name = "BankingCraft"
 identifier = "de.appcreation.bankingcraft"
+
+[dev-dependencies]
+i-slint-backend-testing = "=1.18.1"
+i18n = { package = "bankingcraft-i18n", path = "../crates/i18n", features = ["test-support"] }

@@ -18,6 +18,8 @@ pub enum Answer {
 #[derive(Clone)]
 pub struct Bridge {
     pub weak: slint::Weak<AppWindow>,
+    /// Cancellation is control flow, independent of the translated message.
+    pub cancelled: Arc<std::sync::atomic::AtomicBool>,
     pub pending: Arc<Mutex<Option<mpsc::Sender<Answer>>>>,
     /// HHDuc bytes for chipTAN USB while a TAN dialog is open.
     pub usb_payload: Arc<Mutex<Option<Vec<u8>>>>,
@@ -73,6 +75,7 @@ impl Bridge {
     pub fn new(weak: slint::Weak<AppWindow>) -> Self {
         Self {
             weak,
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             pending: Arc::new(Mutex::new(None)),
             usb_payload: Arc::new(Mutex::new(None)),
             pin_cache: Arc::new(Mutex::new(None)),
@@ -114,7 +117,7 @@ impl Bridge {
     }
 
     pub fn ask_pin(&self, prompt: &str) -> Option<String> {
-        self.ask_input("PIN-Eingabe", prompt, true)
+        self.ask_input(i18n::tr("PIN-Eingabe"), prompt, true)
     }
 
     pub fn ask_input(&self, heading: &str, prompt: &str, masked: bool) -> Option<String> {
@@ -167,7 +170,7 @@ impl Interaction for Bridge {
             return Some(p.to_string());
         }
         let offer = *self.pin_save_offer.lock().unwrap();
-        let p = self.ask_input_ext("PIN-Eingabe", prompt, true, offer)?;
+        let p = self.ask_input_ext(i18n::tr("PIN-Eingabe"), prompt, true, offer)?;
         *self.pin_cache.lock().unwrap() = Some(Zeroizing::new(p.clone()));
         Some(p)
     }
@@ -177,16 +180,16 @@ impl Interaction for Bridge {
             .iter()
             .map(|m| {
                 let kind = match m.kind() {
-                    TanKind::ChipTan => "chipTAN (optisch / USB)",
+                    TanKind::ChipTan => i18n::tr("chipTAN (optisch / USB)"),
                     TanKind::Matrix => "photoTAN / QR-TAN",
-                    TanKind::Decoupled => "Freigabe in der Banking-App",
+                    TanKind::Decoupled => i18n::tr("Freigabe in der Banking-App"),
                     TanKind::Sms => "mobileTAN / SMS",
-                    TanKind::Other => "TAN-Verfahren",
+                    TanKind::Other => i18n::tr("TAN-Verfahren"),
                 };
-                (m.security_function.clone(), m.name.clone(), format!("{kind} · Verfahren {}", m.security_function))
+                (m.security_function.clone(), m.name.clone(), i18n::tr_format!("{kind} · Verfahren {}", m.security_function))
             })
             .collect();
-        self.choose("TAN-Verfahren wählen", rows)
+        self.choose(i18n::tr("TAN-Verfahren wählen"), rows)
     }
 
     fn choose_tan_medium(&self, media: &[String]) -> Option<String> {
@@ -194,7 +197,7 @@ impl Interaction for Bridge {
             return None;
         }
         let rows = media.iter().map(|m| (m.clone(), m.clone(), String::new())).collect();
-        self.choose("TAN-Medium wählen", rows)
+        self.choose(i18n::tr("TAN-Medium wählen"), rows)
     }
 
     fn tan(&self, ch: &TanChallenge) -> TanAnswer {
@@ -216,7 +219,7 @@ impl Interaction for Bridge {
         let usb_possible = usb.is_some() && self.has_reader();
         *self.usb_payload.lock().unwrap() = usb;
         let pixels = matrix.and_then(|(_, img)| decode_tan_image(&img));
-        let title = SharedString::from(format!("Freigabe · {}", ch.method.name));
+        let title = SharedString::from(i18n::tr_format!("Freigabe · {}", ch.method.name));
         let text = SharedString::from(text);
         let answer = self.ask(move |app| {
             let st = app.global::<AppState>();

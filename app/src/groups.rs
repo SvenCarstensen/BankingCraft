@@ -2,8 +2,8 @@ use crate::store::{AccountGroup, Vault};
 
 impl Vault {
     pub fn move_account(&mut self, source: u32, target: u32, after: bool) -> Result<(), String> {
-        let from = self.accounts.iter().position(|a| a.id == source).ok_or("Konto nicht gefunden")?;
-        let target_index = self.accounts.iter().position(|a| a.id == target).ok_or("Zielkonto nicht gefunden")?;
+        let from = self.accounts.iter().position(|a| a.id == source).ok_or(i18n::tr("Konto nicht gefunden"))?;
+        let target_index = self.accounts.iter().position(|a| a.id == target).ok_or(i18n::tr("Zielkonto nicht gefunden"))?;
         if source == target { return Ok(()); }
         let mut to = target_index + usize::from(after);
         if from < to { to -= 1; }
@@ -15,10 +15,10 @@ impl Vault {
     fn group_name(&self, name: &str, except: Option<u32>) -> Result<String, String> {
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 60 || name.chars().any(char::is_control) {
-            return Err("Bitte einen Gruppennamen mit 1 bis 60 Zeichen eingeben.".into());
+            return Err(i18n::tr("Bitte einen Gruppennamen mit 1 bis 60 Zeichen eingeben.").into());
         }
         if name.to_lowercase() == "ohne gruppe" || self.groups.iter().any(|g| Some(g.id) != except && g.name.to_lowercase() == name.to_lowercase()) {
-            return Err("Dieser Gruppenname ist bereits vergeben.".into());
+            return Err(i18n::tr("Dieser Gruppenname ist bereits vergeben.").into());
         }
         Ok(name.to_string())
     }
@@ -32,14 +32,14 @@ impl Vault {
 
     pub fn rename_group(&mut self, id: u32, name: &str) -> Result<(), String> {
         let name = self.group_name(name, Some(id))?;
-        self.groups.iter_mut().find(|g| g.id == id).ok_or("Gruppe nicht gefunden")?.name = name;
+        self.groups.iter_mut().find(|g| g.id == id).ok_or(i18n::tr("Gruppe nicht gefunden"))?.name = name;
         Ok(())
     }
 
     pub fn assign_group(&mut self, account_id: u32, group_id: Option<u32>) -> Result<(), String> {
-        if self.account(account_id).is_none() { return Err("Konto nicht gefunden".into()); }
+        if self.account(account_id).is_none() { return Err(i18n::tr("Konto nicht gefunden").into()); }
         if group_id.is_some_and(|id| !self.groups.iter().any(|g| g.id == id)) {
-            return Err("Gruppe nicht gefunden".into());
+            return Err(i18n::tr("Gruppe nicht gefunden").into());
         }
         for group in &mut self.groups {
             group.account_ids.retain(|id| *id != account_id);
@@ -49,7 +49,7 @@ impl Vault {
     }
 
     pub fn delete_group(&mut self, id: u32) -> Result<(), String> {
-        if !self.groups.iter().any(|g| g.id == id) { return Err("Gruppe nicht gefunden".into()); }
+        if !self.groups.iter().any(|g| g.id == id) { return Err(i18n::tr("Gruppe nicht gefunden").into()); }
         self.groups.retain(|g| g.id != id);
         Ok(())
     }

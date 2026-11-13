@@ -1,0 +1,17 @@
+[package]
+name = "bankingcraft-i18n"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bankingcraft-i18n-macros = { path = "../i18n-macros" }
+
+[build-dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+serde_json = "1"
+
+[features]
+test-support = []

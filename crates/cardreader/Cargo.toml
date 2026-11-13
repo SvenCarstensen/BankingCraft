@@ -6,7 +6,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+i18n = { package = "bankingcraft-i18n", path = "../i18n" }
 fints = { path = "../fints" }
 pcsc = "2.9"
 log.workspace = true
 thiserror.workspace = true
+zeroize = "1"

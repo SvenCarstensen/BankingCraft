@@ -80,22 +80,22 @@ impl Feature {
     pub fn label(self) -> &'static str {
         use Feature::*;
         match self {
-            VerifyPinDirect => "Sichere PIN-Eingabe (VERIFY_PIN_DIRECT)",
-            ModifyPinDirect => "PIN-Änderung am Leser (MODIFY_PIN_DIRECT)",
+            VerifyPinDirect => i18n::tr("Sichere PIN-Eingabe (VERIFY_PIN_DIRECT)"),
+            ModifyPinDirect => i18n::tr("PIN-Änderung am Leser (MODIFY_PIN_DIRECT)"),
             MctReaderDirect => "chipTAN USB / MKT (MCT_READER_DIRECT)",
             MctUniversal => "MKT universal (MCT_UNIVERSAL)",
-            IfdPinProperties => "PIN-Pad-Eigenschaften",
-            WriteDisplay => "Display beschreibbar",
-            IfdDisplayProperties => "Display-Eigenschaften",
-            GetTlvProperties => "TLV-Eigenschaften",
+            IfdPinProperties => i18n::tr("PIN-Pad-Eigenschaften"),
+            WriteDisplay => i18n::tr("Display beschreibbar"),
+            IfdDisplayProperties => i18n::tr("Display-Eigenschaften"),
+            GetTlvProperties => i18n::tr("TLV-Eigenschaften"),
             CcidEscCommand => "CCID-Escape",
             ExecutePace => "PACE",
-            VerifyPinStart | VerifyPinFinish => "PIN-Prüfung (zweistufig)",
-            ModifyPinStart | ModifyPinFinish => "PIN-Änderung (zweistufig)",
-            GetKeyPressed | GetKey => "Tastenabfrage",
-            Abort => "Abbruch",
-            SetSpeMessage => "SPE-Meldungen",
-            VerifyPinDirectAppId | ModifyPinDirectAppId => "PIN mit App-ID",
+            VerifyPinStart | VerifyPinFinish => i18n::tr("PIN-Prüfung (zweistufig)"),
+            ModifyPinStart | ModifyPinFinish => i18n::tr("PIN-Änderung (zweistufig)"),
+            GetKeyPressed | GetKey => i18n::tr("Tastenabfrage"),
+            Abort => i18n::tr("Abbruch"),
+            SetSpeMessage => i18n::tr("SPE-Meldungen"),
+            VerifyPinDirectAppId | ModifyPinDirectAppId => i18n::tr("PIN mit App-ID"),
         }
     }
 }
@@ -114,7 +114,7 @@ pub fn is_cyberjack(name: &str) -> bool {
 }
 
 pub fn list_readers() -> Result<Vec<ReaderInfo>> {
-    let ctx = Context::establish(Scope::User).map_err(|e| err(format!("PC/SC nicht verfügbar: {e}")))?;
+    let ctx = Context::establish(Scope::User).map_err(|e| err(i18n::tr_format!("PC/SC nicht verfügbar: {e}")))?;
     let names = match ctx.list_readers_owned() {
         Ok(n) => n,
         Err(pcsc::Error::NoReadersAvailable) => return Ok(vec![]),
@@ -153,16 +153,16 @@ pub struct Session {
 impl Session {
     /// Connect to `reader` (or the preferred reader), waiting up to `wait` for a card.
     pub fn open(reader: Option<&str>, wait: Duration) -> Result<Self> {
-        let ctx = Context::establish(Scope::User).map_err(|e| err(format!("PC/SC nicht verfügbar: {e}")))?;
+        let ctx = Context::establish(Scope::User).map_err(|e| err(i18n::tr_format!("PC/SC nicht verfügbar: {e}")))?;
         let name = match reader {
             Some(r) if !r.is_empty() => r.to_string(),
             _ => list_readers()?
                 .into_iter()
                 .next()
                 .map(|r| r.name)
-                .ok_or_else(|| err("Kein Kartenleser gefunden"))?,
+                .ok_or_else(|| err(i18n::tr("Kein Kartenleser gefunden")))?,
         };
-        let cname = CString::new(name.clone()).map_err(|_| err("ungültiger Readername"))?;
+        let cname = CString::new(name.clone()).map_err(|_| err(i18n::tr("ungültiger Readername")))?;
         let mut st = [ReaderState::new(cname.clone(), State::UNAWARE)];
         ctx.get_status_change(Duration::from_millis(200), &mut st).ok();
         if !st[0].event_state().contains(State::PRESENT) {
@@ -172,7 +172,7 @@ impl Session {
             loop {
                 let left = deadline.saturating_duration_since(std::time::Instant::now());
                 if left.is_zero() {
-                    return Err(err(format!("Keine Chipkarte in \"{name}\" gefunden")));
+                    return Err(err(i18n::tr_format!("Keine Chipkarte in \"{name}\" gefunden")));
                 }
                 match ctx.get_status_change(left.min(Duration::from_secs(1)), &mut st) {
                     Ok(()) | Err(pcsc::Error::Timeout) => {}
@@ -186,7 +186,7 @@ impl Session {
         }
         let card = ctx
             .connect(&cname, ShareMode::Shared, Protocols::ANY)
-            .map_err(|e| err(format!("Verbindung zur Karte fehlgeschlagen: {e}")))?;
+            .map_err(|e| err(i18n::tr_format!("Verbindung zur Karte fehlgeschlagen: {e}")))?;
         let status = card.status2_owned().map_err(|e| err(e.to_string()))?;
         let mut s = Self {
             protocol: status.protocol2(),
@@ -224,9 +224,9 @@ impl Session {
     /// Raw transmit; returns (data, sw).
     pub fn transmit_raw(&self, apdu: &[u8]) -> Result<(Vec<u8>, u16)> {
         let mut buf = vec![0u8; pcsc::MAX_BUFFER_SIZE_EXTENDED];
-        let r = self.card.transmit(apdu, &mut buf).map_err(|e| err(format!("Kartenzugriff: {e}")))?;
+        let r = self.card.transmit(apdu, &mut buf).map_err(|e| err(i18n::tr_format!("Kartenzugriff: {e}")))?;
         if r.len() < 2 {
-            return Err(err("Antwort der Karte zu kurz"));
+            return Err(err(i18n::tr("Antwort der Karte zu kurz")));
         }
         let sw = u16::from_be_bytes([r[r.len() - 2], r[r.len() - 1]]);
         Ok((r[..r.len() - 2].to_vec(), sw))
@@ -236,7 +236,7 @@ impl Session {
     pub fn transmit(&self, apdu: &[u8]) -> Result<(Vec<u8>, u16)> {
         let (mut data, mut sw) = self.transmit_raw(apdu)?;
         if sw >> 8 == 0x6C {
-            let a = corrected_le(apdu, sw as u8).ok_or_else(|| err("Ungültige APDU für Le-Korrektur"))?;
+            let a = corrected_le(apdu, sw as u8).ok_or_else(|| err(i18n::tr("Ungültige APDU für Le-Korrektur")))?;
             let r = self.transmit_raw(&a)?;
             data = r.0;
             sw = r.1;
@@ -250,12 +250,12 @@ impl Session {
     }
 
     pub fn control(&self, feature: Feature, data: &[u8]) -> Result<Vec<u8>> {
-        let code = *self.features.get(&feature).ok_or_else(|| err(format!("Leser unterstützt {} nicht", feature.label())))?;
+        let code = *self.features.get(&feature).ok_or_else(|| err(i18n::tr_format!("Leser unterstützt {} nicht", feature.label())))?;
         let mut buf = vec![0u8; 1024];
         let r = self
             .card
             .control(code as _, data, &mut buf)
-            .map_err(|e| err(format!("Leser-Steuerbefehl fehlgeschlagen: {e}")))?;
+            .map_err(|e| err(i18n::tr_format!("Leser-Steuerbefehl fehlgeschlagen: {e}")))?;
         Ok(r.to_vec())
     }
 }
@@ -264,31 +264,32 @@ fn check(sw: u16, ok_sw1: &[u8]) -> Result<()> {
     if ok_sw1.contains(&((sw >> 8) as u8)) {
         return Ok(());
     }
-    Err(err(format!("Fehler {:04X}: {}", sw, status_text(sw))))
+    if sw == 0x6401 { return Err(fints::Error::Cancelled); }
+    Err(err(i18n::tr_format!("Fehler {:04X}: {}", sw, status_text(sw))))
 }
 
 pub fn status_text(sw: u16) -> &'static str {
     match sw {
-        0x6281 => "Die zurückgegebenen Daten können fehlerhaft sein",
-        0x6282 => "Dateiende vorzeitig erreicht",
-        0x6283 => "Die ausgewählte Datei ist gesperrt",
-        0x6700 => "Länge (Lc oder Le) falsch",
-        0x6982 => "Sicherheitszustand nicht erfüllt (PIN nicht geprüft?)",
-        0x6983 => "Authentisierungsmethode ist gesperrt",
-        0x6984 => "Referenzierte Daten sind gesperrt",
-        0x6985 => "Nutzungsbedingungen sind nicht erfüllt",
-        0x6A82 => "Datei nicht gefunden – keine HBCI-Chipkarte?",
-        0x6A83 => "Record nicht gefunden",
-        0x6A86 => "Inkorrekte Parameter P1/P2",
-        0x6A88 => "Referenzierte Daten nicht gefunden",
-        0x6D00 => "Kommando wird nicht unterstützt",
-        0x6E00 => "Kommandoklasse wird nicht unterstützt",
-        0x63C0 => "PIN falsch, kein Versuch mehr",
-        0x63C1 => "PIN falsch, noch 1 Versuch",
-        0x63C2 => "PIN falsch, noch 2 Versuche",
-        0x6400 => "PIN-Eingabe: Zeitüberschreitung",
-        0x6401 => "PIN-Eingabe abgebrochen",
-        _ => "Kartenfehler",
+        0x6281 => i18n::tr("Die zurückgegebenen Daten können fehlerhaft sein"),
+        0x6282 => i18n::tr("Dateiende vorzeitig erreicht"),
+        0x6283 => i18n::tr("Die ausgewählte Datei ist gesperrt"),
+        0x6700 => i18n::tr("Länge (Lc oder Le) falsch"),
+        0x6982 => i18n::tr("Sicherheitszustand nicht erfüllt (PIN nicht geprüft?)"),
+        0x6983 => i18n::tr("Authentisierungsmethode ist gesperrt"),
+        0x6984 => i18n::tr("Referenzierte Daten sind gesperrt"),
+        0x6985 => i18n::tr("Nutzungsbedingungen sind nicht erfüllt"),
+        0x6A82 => i18n::tr("Datei nicht gefunden – keine HBCI-Chipkarte?"),
+        0x6A83 => i18n::tr("Record nicht gefunden"),
+        0x6A86 => i18n::tr("Inkorrekte Parameter P1/P2"),
+        0x6A88 => i18n::tr("Referenzierte Daten nicht gefunden"),
+        0x6D00 => i18n::tr("Kommando wird nicht unterstützt"),
+        0x6E00 => i18n::tr("Kommandoklasse wird nicht unterstützt"),
+        0x63C0 => i18n::tr("PIN falsch, kein Versuch mehr"),
+        0x63C1 => i18n::tr("PIN falsch, noch 1 Versuch"),
+        0x63C2 => i18n::tr("PIN falsch, noch 2 Versuche"),
+        0x6400 => i18n::tr("PIN-Eingabe: Zeitüberschreitung"),
+        0x6401 => i18n::tr("PIN-Eingabe abgebrochen"),
+        _ => i18n::tr("Kartenfehler"),
     }
 }
 
@@ -377,7 +378,7 @@ impl DdvChipCard {
         let aid: [u8; 9] = [0xD2, 0x76, 0x00, 0x00, 0x25, 0x48, 0x42, if ddv1 { 0x02 } else { 0x01 }, 0x00];
         let me = Self { session, ddv1, pin_ok: false, soft_pin, cid: None, pinpad_notify: None };
         me.send(&apdu(0x00, 0xA4, 0x04, 0x0C, &aid, None))
-            .map_err(|e| err(format!("Keine HBCI-Chipkarte (DDV) erkannt: {e}")))?;
+            .map_err(|e| err(i18n::tr_format!("Keine HBCI-Chipkarte (DDV) erkannt: {e}")))?;
         Ok(me)
     }
 
@@ -435,7 +436,7 @@ impl DdvChipCard {
         s.extend_from_slice(&verify_apdu);
         let r = self.session.control(Feature::VerifyPinDirect, &s)?;
         if r.len() < 2 {
-            return Err(err("Leser lieferte keine Antwort auf die PIN-Prüfung"));
+            return Err(err(i18n::tr("Leser lieferte keine Antwort auf die PIN-Prüfung")));
         }
         let sw = u16::from_be_bytes([r[r.len() - 2], r[r.len() - 1]]);
         check(sw, &[0x90])
@@ -443,7 +444,7 @@ impl DdvChipCard {
 
     fn verify_soft_pin(&self, pin: &str) -> Result<()> {
         if pin.len() < 4 || pin.len() > 12 || !pin.chars().all(|c| c.is_ascii_digit()) {
-            return Err(err("Die Karten-PIN muss aus 4 bis 12 Ziffern bestehen"));
+            return Err(err(i18n::tr("Die Karten-PIN muss aus 4 bis 12 Ziffern bestehen")));
         }
         let mut body = [0x25u8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
         for (i, c) in pin.bytes().enumerate() {
@@ -470,7 +471,7 @@ impl DdvCard for DdvChipCard {
     fn bank_data(&mut self, record: u8) -> Result<DdvBankData> {
         let raw = self.read_record(EF_BNK, record.saturating_sub(1))?;
         if raw.len() < 88 {
-            return Err(err("EF_BNK-Eintrag zu kurz"));
+            return Err(err(i18n::tr("EF_BNK-Eintrag zu kurz")));
         }
         let s = |a: usize, b: usize| fints::syntax::latin1_to_string(&raw[a..b]).trim().to_string();
         let mut blz = String::new();
@@ -505,7 +506,7 @@ impl DdvCard for DdvChipCard {
             self.select_sub_file(0x0014)?;
             let e = self.read_record(0x00, 0)?;
             if s.len() < 5 || e.len() < 4 {
-                return Err(err("Schlüsselinformationen unvollständig"));
+                return Err(err(i18n::tr("Schlüsselinformationen unvollständig")));
             }
             Ok((DdvKey { num: s[0] as u32, version: s[4] as u32 }, DdvKey { num: e[0] as u32, version: e[3] as u32 }))
         }
@@ -514,7 +515,7 @@ impl DdvCard for DdvChipCard {
     fn sig_id(&mut self) -> Result<u32> {
         let r = self.read_record(EF_SEQ, 0)?;
         if r.len() < 2 {
-            return Err(err("Signatur-ID nicht lesbar"));
+            return Err(err(i18n::tr("Signatur-ID nicht lesbar")));
         }
         Ok(((r[0] as u32) << 8) | r[1] as u32)
     }
@@ -537,7 +538,7 @@ impl DdvCard for DdvChipCard {
             }
             r?;
         } else {
-            let provider = self.soft_pin.as_ref().ok_or_else(|| err("Leser ohne PIN-Pad und keine PIN-Abfrage verfügbar"))?;
+            let provider = self.soft_pin.as_ref().ok_or_else(|| err(i18n::tr("Leser ohne PIN-Pad und keine PIN-Abfrage verfügbar")))?;
             let pin = provider().ok_or(fints::Error::Cancelled)?;
             self.verify_soft_pin(&pin)?;
         }
@@ -554,11 +555,11 @@ impl DdvCard for DdvChipCard {
             body.extend_from_slice(left);
             body.extend_from_slice(&[0x96, 0x01, 0x00]);
             let d = self.receive(&apdu(0x08, 0xB2, 0x01, (EF_MAC << 3) | 0x04, &body, Some(256)))?;
-            out.copy_from_slice(d.get(16..24).ok_or_else(|| err("MAC-Antwort zu kurz"))?);
+            out.copy_from_slice(d.get(16..24).ok_or_else(|| err(i18n::tr("MAC-Antwort zu kurz")))?);
         } else {
             self.send(&apdu(0x00, 0xDA, 0x01, 0x00, left, None))?;
             let d = self.receive(&apdu(0x04, 0xB2, 0x01, (EF_MAC << 3) | 0x04, &[], Some(256)))?;
-            out.copy_from_slice(d.get(12..20).ok_or_else(|| err("MAC-Antwort zu kurz"))?);
+            out.copy_from_slice(d.get(12..20).ok_or_else(|| err(i18n::tr("MAC-Antwort zu kurz")))?);
         }
         Ok(out)
     }
@@ -570,7 +571,7 @@ impl DdvCard for DdvChipCard {
             let ch = self.get_challenge()?;
             let e = self.internal_authenticate(enc_key_num, &ch)?;
             if ch.len() < 8 || e.len() < 8 {
-                return Err(err("Sitzungsschlüssel unvollständig"));
+                return Err(err(i18n::tr("Sitzungsschlüssel unvollständig")));
             }
             plain[i * 8..i * 8 + 8].copy_from_slice(&ch[..8]);
             enc[i * 8..i * 8 + 8].copy_from_slice(&e[..8]);
@@ -580,12 +581,12 @@ impl DdvCard for DdvChipCard {
 
     fn decrypt_key(&mut self, enc_key_num: u32, encrypted: &[u8]) -> Result<[u8; 16]> {
         if encrypted.len() < 16 {
-            return Err(err("verschlüsselter Schlüssel zu kurz"));
+            return Err(err(i18n::tr("verschlüsselter Schlüssel zu kurz")));
         }
         let mut plain = [0u8; 16];
         for i in 0..2 {
             let p = self.internal_authenticate(enc_key_num, &encrypted[i * 8..i * 8 + 8])?;
-            plain[i * 8..i * 8 + 8].copy_from_slice(p.get(..8).ok_or_else(|| err("Schlüssel zu kurz"))?);
+            plain[i * 8..i * 8 + 8].copy_from_slice(p.get(..8).ok_or_else(|| err(i18n::tr("Schlüssel zu kurz")))?);
         }
         Ok(plain)
     }
@@ -612,14 +613,14 @@ pub fn chiptan_usb(reader: Option<&str>, hhduc: &[u8]) -> Result<String> {
     let (data, sw) = if direct {
         let r = s.control(Feature::MctReaderDirect, &cmd)?;
         if r.len() < 2 {
-            return Err(err("Leser lieferte keine TAN"));
+            return Err(err(i18n::tr("Leser lieferte keine TAN")));
         }
         (r[..r.len() - 2].to_vec(), u16::from_be_bytes([r[r.len() - 2], r[r.len() - 1]]))
     } else {
         s.transmit_raw(&cmd)?
     };
     check(sw, &[0x90, 0x91])?;
-    let tan = parse_bcd_tan(&data).ok_or_else(|| err("Keine TAN vom Leser erhalten (abgebrochen?)"))?;
+    let tan = parse_bcd_tan(&data).ok_or_else(|| err(i18n::tr("Keine TAN vom Leser erhalten (abgebrochen?)")))?;
 
     // finalize the reader transaction; failures here are not fatal
     let mut fin = if direct { vec![0x20, 0x77, 0x00, 0x00] } else { vec![0xFF, 0x91, 0x07, 0x00] };
@@ -663,50 +664,50 @@ pub fn diagnose(reader: Option<&str>) -> Vec<String> {
         Err(e) => return vec![format!("PC/SC: {e}")],
     };
     if readers.is_empty() {
-        return vec!["Kein Kartenleser gefunden. Treiber installiert und Leser angeschlossen?".into()];
+        return vec![i18n::tr("Kein Kartenleser gefunden. Treiber installiert und Leser angeschlossen?").into()];
     }
     for r in &readers {
-        out.push(format!(
+        out.push(i18n::tr_format!(
             "Leser: {}{}{} – Karte {}",
             r.name,
             if r.cyberjack { " [REINER SCT cyberJack]" } else { "" },
             if r.secoder { " [secoder]" } else { "" },
-            if r.card_present { "eingesteckt" } else { "nicht eingesteckt" }
+            if r.card_present { i18n::tr("eingesteckt") } else { i18n::tr("nicht eingesteckt") }
         ));
     }
     let target = reader
         .map(|s| s.to_string())
         .or_else(|| readers.iter().find(|r| r.card_present).map(|r| r.name.clone()));
     let Some(target) = target else {
-        out.push("Für Feature-Abfrage und Kartentest bitte eine Karte einstecken.".into());
+        out.push(i18n::tr("Für Feature-Abfrage und Kartentest bitte eine Karte einstecken.").into());
         return out;
     };
     match Session::open(Some(&target), Duration::from_secs(2)) {
-        Err(e) => out.push(format!("Verbindung zu {target}: {e}")),
+        Err(e) => out.push(i18n::tr_format!("Verbindung zu {target}: {e}")),
         Ok(s) => {
-            out.push(format!("Protokoll: {:?}", s.protocol));
+            out.push(i18n::tr_format!("Protokoll: {:?}", s.protocol));
             out.push(format!("ATR: {}", hex(&s.atr)));
             if s.features.is_empty() {
-                out.push("Leser meldet keine PC/SC-Part-10-Features (Klasse 1, keine sichere PIN-Eingabe)".into());
+                out.push(i18n::tr("Leser meldet keine PC/SC-Part-10-Features (Klasse 1, keine sichere PIN-Eingabe)").into());
             }
             for (f, code) in &s.features {
-                out.push(format!("Feature: {} (IOCTL 0x{:08X})", f.label(), code));
+                out.push(i18n::tr_format!("Feature: {} (IOCTL 0x{:08X})", f.label(), code));
             }
-            out.push(format!(
+            out.push(i18n::tr_format!(
                 "Sichere PIN-Eingabe: {} · chipTAN USB: {}",
-                if s.has(Feature::VerifyPinDirect) { "ja" } else { "nein" },
-                if s.has(Feature::MctReaderDirect) { "ja (MCT)" } else { "über FF91-APDU, falls vom Leser unterstützt" }
+                if s.has(Feature::VerifyPinDirect) { i18n::tr("ja") } else { i18n::tr("nein") },
+                if s.has(Feature::MctReaderDirect) { i18n::tr("ja (MCT)") } else { i18n::tr("über FF91-APDU, falls vom Leser unterstützt") }
             ));
             drop(s);
             match DdvChipCard::open(Some(&target), None) {
                 Ok(mut c) => {
-                    out.push(format!("HBCI-Chipkarte erkannt: {}", c.kind()));
+                    out.push(i18n::tr_format!("HBCI-Chipkarte erkannt: {}", c.kind()));
                     if let Ok(cid) = c.cid() {
-                        out.push(format!("Karten-ID: {}", hex(&cid)));
+                        out.push(i18n::tr_format!("Karten-ID: {}", hex(&cid)));
                     }
                     for rec in 1..=5u8 {
                         match c.bank_data(rec) {
-                            Ok(b) if !b.blz.trim_matches('0').is_empty() => out.push(format!(
+                            Ok(b) if !b.blz.trim_matches('0').is_empty() => out.push(i18n::tr_format!(
                                 "Bankzugang {rec}: {} · BLZ {} · Kennung {} · Host {}",
                                 b.short_name, b.blz, b.user_id, b.host
                             )),
@@ -714,12 +715,12 @@ pub fn diagnose(reader: Option<&str>) -> Vec<String> {
                         }
                     }
                     if let Ok(id) = c.sig_id() {
-                        out.push(format!("Signatur-Zähler: {id}"));
+                        out.push(i18n::tr_format!("Signatur-Zähler: {id}"));
                     }
                 }
                 Err(_) => match RdhChipCard::open(Some(&target), None) {
                     Ok(c) => out.extend(c.describe()),
-                    Err(_) => out.push("Keine HBCI-Chipkarte (DDV/RDH) – für chipTAN USB genügt die girocard".into()),
+                    Err(e) => out.push(i18n::tr_format!("Keine nutzbare HBCI-Chipkarte (DDV/RDH) erkannt. RDH-Prüfung: {e}. Für chipTAN USB genügt die girocard.")),
                 },
             }
         }

@@ -1,173 +1,194 @@
-# BankingCraft – Online-Banking für Windows, Linux und macOS
+# BankingCraft – Desktop banking for Windows, Linux and macOS
 
-Desktop-Banking in Rust mit Slint-Oberfläche. Aufbau angelehnt an klassische deutsche
-Finanzsoftware: Navigationsleiste links, Kachel-Übersicht, Umsatzliste mit Tagessalden,
-Zahlungsverkehr-Formulare, Auswertungen.
+BankingCraft is a Rust desktop banking application with a Slint interface: a navigation sidebar,
+an account dashboard, transaction lists with daily balances, payment forms and financial reports.
 
-Die App hieß zuvor Kontor. Bestehende Tresore werden weiterhin am bisherigen Speicherort
-gefunden; Dateiformat, Dateiname `vault.kontor` und Schlüsselableitung bleiben kompatibel.
+The application was previously called Kontor. Existing vaults are still found in their original
+location; the file format, `vault.kontor` filename and key derivation remain compatible.
 
-## Funktionen
+## Features
 
-| Bereich | Umsetzung |
+| Area | Implementation |
 |---|---|
-| Kontenrundruf Girokonten | UPD-Kontenliste, IBAN/BIC (HKSPA), Saldo inkl. verfügbar (HKSAL v5–7), Umsätze camt.052 (HKCAZ) mit Fallback MT940/MT942 (HKKAZ v5–7), vorgemerkte Umsätze, Aufsetzpunkte, Duplikaterkennung |
-| Kreditkarten | Umsatzabruf HKKKU v1 / DKKKU v2, Saldo HKKKS v1 / DKKKS v3 bzw. aus der Umsatzantwort; Auswahl anhand der Kontoberechtigungen, mehrseitige Antworten, Soll/Haben und Vormerkungen |
-| PIN/TAN | FinTS 3.0, PSD2-SCA (HKTAN v6/v7, Prozess 4/2/S), Systemsynchronisation, TAN-Verfahren-/Medienwahl, Decoupled (App-Freigabe) |
-| TAN-Darstellung | chipTAN optisch (animierter Flickercode, Tempo/Größe einstellbar), photoTAN/QR-TAN (Bild aus HHDuc), SMS/Text |
-| chipTAN USB | HHDuc an den Leser per `FEATURE_MCT_READER_DIRECT` (SCardControl) oder `FF 91 06 00`-APDU, TAN wird übernommen |
-| HBCI-Chipkarte (DDV) | DDV-0/DDV-1, Bankdaten/Signaturzähler von der Karte, RIPEMD-160 + DES-Retail-MAC durch die Karte, 2-Key-3DES-CBC-Verschlüsselung, HBCI über TCP-Port 3000 |
-| RDH-Chipkarte | ZKA/SECCOS-Signaturkarte (z. B. VR-NetWorld-Card), Profile RDH-7/9/10: Bankzugänge aus dem Notizblock der Karte, Bankschlüssel per HKISA mit Prüfung gegen den Hashwert auf der Karte, RSA-PSS-Signatur durch die Karte, Signaturzähler der Karte, 2-Key-3DES + RSA-Schlüsseltransport (PKCS#1 v1.5 bei RDH-7/9, Modus 2 bei RDH-10), Prüfung der Banksignatur |
-| Sichere PIN-Eingabe | `FEATURE_VERIFY_PIN_DIRECT` (Klasse 2/3) – PIN verlässt den Leser nicht; Soft-PIN nur bei Lesern ohne Pinpad |
-| Zahlungsverkehr | SEPA-Überweisung (HKCCS), Echtzeit (HKIPZ), Terminüberweisung (HKCSE), Daueraufträge anlegen/abrufen/löschen (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
-| Auswertungen | Automatische Kategorisierung mit lernenden Regeln, Monats- und 12-Monats-Auswertung |
-| Export | CSV (Excel-tauglich, `;`, deutsches Zahlenformat) und camt.052.001.08 in den Download-Ordner |
-| Bankverzeichnis | 2.787 Institute mit PIN/TAN-URL bzw. HBCI-Host, Suche nach Name, Ort, BLZ, BIC (umlauttolerant), eingebettet in `app/data/banks.tsv` |
-| Datenschutz | Lokaler Tresor: AES-256-GCM, Schlüssel per Argon2id aus dem Tresor-Passwort; PIN/TAN-PINs werden nur auf ausdrücklichen Wunsch zusätzlich verschlüsselt gespeichert; Karten-PINs nicht |
+| Current accounts | UPD account discovery, IBAN/BIC (HKSPA), booked and available balances (HKSAL v5–7), camt.052 transactions (HKCAZ) with MT940/MT942 fallback (HKKAZ v5–7), pending transactions, pagination and duplicate detection |
+| Credit cards | HKKKU v1 / DKKKU v2 transactions; HKKKS v1 / DKKKS v3 balances or balances from transaction reports; account permissions, pagination, debit/credit and pending entries |
+| PIN/TAN | FinTS 3.0, PSD2 SCA (HKTAN v6/v7, processes 4/2/S), system synchronization, TAN method/media selection and decoupled app approval |
+| TAN display | Optical chipTAN with adjustable animated flicker code, photoTAN/QR-TAN images from HHDuc, SMS/text |
+| chipTAN USB | HHDuc sent through `FEATURE_MCT_READER_DIRECT` (SCardControl) or `FF 91 06 00` APDU; TAN read back from the reader |
+| HBCI smart cards (DDV) | DDV-0/DDV-1; bank details and signature counters read from the card; RIPEMD-160 and card-generated DES retail MAC; two-key 3DES CBC encryption; HBCI over TCP port 3000 |
+| RDH smart cards | ZKA/SECCOS cards such as VR-NetWorld-Card, RDH-7/9/10 profiles, card notepad access, HKISA bank keys checked against the card hash, card-generated RSA-PSS signatures and signature counters, two-key 3DES and RSA key transport (PKCS#1 v1.5 for RDH-7/9, mode 2 for RDH-10), bank signature verification |
+| Secure PIN entry | `FEATURE_VERIFY_PIN_DIRECT` for class 2/3 readers; the PIN stays on the reader. Software PIN entry is available only for readers without a PIN pad |
+| Payments | SEPA transfers (HKCCS), instant transfers (HKIPZ), scheduled transfers (HKCSE), standing order creation/retrieval/deletion (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
+| Reports | Automatic categorization with learned rules, monthly and twelve-month reports |
+| Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
+| Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
+| Privacy | Local AES-256-GCM vault, key derived from the vault password using Argon2id; online banking PINs are saved only when explicitly requested and are additionally encrypted; card PINs are never saved |
+| Appearance | Light and dark themes, applied immediately; the first launch follows the system theme |
+| Languages | German, English, French and Spanish; the first launch uses the system language, with English as the fallback; the language can be changed in Settings |
 
 ## REINER SCT cyberJack (secoder)
 
-Leser mit „cyberJack“/„REINER SCT“ im PC/SC-Namen werden erkannt und bevorzugt.
-Die Seite **Kartenleser → Leser & Karte prüfen** zeigt, welche PC/SC-Part-10-Features
-das Gerät meldet (sichere PIN-Eingabe, MCT/chipTAN USB, Display), ob eine HBCI-Chipkarte
-steckt und welche Bankzugänge darauf gespeichert sind.
+Readers with “cyberJack” or “REINER SCT” in their PC/SC name are detected and preferred.
+**Card reader → Check reader & card** shows the reported PC/SC Part 10 capabilities
+(secure PIN entry, MCT/chipTAN USB, display), the inserted HBCI card and its bank connections.
 
-Die proprietäre Secoder-Visualisierung (Anzeige von Auftragsdaten bei HBCI-Signaturen) ist
-nicht öffentlich spezifiziert und daher nicht umgesetzt. Bei chipTAN USB zeigt der Leser die
-Auftragsdaten über das standardisierte HHDuc-Verfahren an.
+The proprietary Secoder display of payment details during HBCI signing is not implemented.
+For chipTAN USB, the reader displays payment details using the standard HHDuc mechanism.
 
-Treiber: macOS und Windows über REINER SCT, Linux über `pcscd` + `ifd-cyberjack`.
+Drivers: REINER SCT drivers on macOS and Windows; `pcscd` and `ifd-cyberjack` on Linux.
 
-## Bauen
+## Build
 
-Voraussetzungen: aktuelles stabiles Rust (getestet mit 1.99.1), plus
+Requirements: stable Rust (tested with 1.99.1), plus:
 
 - **Linux:** `libpcsclite-dev`, `pcscd`, `libfontconfig1-dev`, `libxkbcommon-dev`
-- **macOS:** Xcode Command Line Tools (PC/SC über `PCSC.framework`)
-- **Windows:** keine (WinSCard ist Teil von Windows)
+- **macOS:** Xcode Command Line Tools; PC/SC uses `PCSC.framework`
+- **Windows:** no additional PC/SC package; WinSCard is part of Windows
 
-```bash
+```sh
 cargo build --release
 ./target/release/bankingcraft          # Windows: target\release\bankingcraft.exe
 ```
 
-**macOS-App:** `macos/build-macos.command` per Doppelklick ausführen – baut `BankingCraft.app` neben dem Projektordner (mit Icon, ad-hoc signiert) und startet sie.
+**macOS application:** double-click `macos/build-macos.command`. It builds `BankingCraft.app`
+next to the project directory, includes the icon, applies an ad-hoc signature and launches the app.
 
-Ohne GPU/OpenGL (z. B. VMs): `SLINT_BACKEND=winit-software ./target/release/bankingcraft`.
-Protokoll-Logging: `RUST_LOG=debug`. Nachrichteninhalte und PIN/TAN werden nicht ausgegeben;
-Fehlerprotokolle enthalten nur technische Segmentübersichten, keine freien Banktexte.
+For environments without GPU/OpenGL support, use
+`SLINT_BACKEND=winit-software ./target/release/bankingcraft`.
 
-## Erste Schritte
+Set `RUST_LOG=debug` for protocol diagnostics. Message contents and PINs/TANs are not logged.
+Error reports contain technical segment summaries, without free-form bank messages.
 
-1. Tresor-Passwort festlegen.
-2. **Einstellungen → FinTS-Produktregistrierung**: Banken akzeptieren FinTS-Zugriffe nur mit
-   einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID (kostenlos, fints.org).
-3. **Bankzugänge → Neuer Bankzugang**: Bank über die Suche (Name, Ort, BLZ oder BIC) wählen –
-   BLZ und FinTS-URL bzw. HBCI-Host werden übernommen. Dann PIN/TAN-Kennung eintragen, oder
-   HBCI-Chipkarte: Leser wählen, „Daten von Karte lesen“.
-4. **Umsätze abrufen** auf der Übersicht.
+## Getting started
 
-Ohne Bankzugang: „Demo-Daten laden“ legt einen lokalen Demo-Zugang an; Überweisungen
-zeigen dort einen Beispiel-Flickercode und werden nur lokal simuliert.
+1. Set a vault password.
+2. Under **Settings → FinTS product registration**, enter a product ID registered with
+   Deutsche Kreditwirtschaft. See [the official registration page](https://www.fints.org/de/hersteller/produktregistrierung).
+3. Open **Bank connections → New bank connection** and find the bank by name, city,
+   bank code or BIC. The bank code and FinTS URL or HBCI host are filled in automatically.
+   Enter the PIN/TAN user ID, or select a smart card reader and choose **Read data from card**.
+4. Choose **Retrieve transactions** on the overview page.
 
-Fensterposition und -größe werden beim Schließen und Beenden gespeichert und beim nächsten
-Start wiederhergestellt, auch bei gesperrtem Tresor. Die Datei `window-state.json` neben dem
-Tresor enthält nur Fenstereinstellungen. Ist ein zuvor verwendeter Bildschirm nicht mehr
-angeschlossen, wird das Fenster auf einen erreichbaren Bildschirm verschoben. Unter Wayland
-kann der Fenstermanager das Wiederherstellen einer absoluten Position einschränken.
+Without a bank connection, **Load demo data** creates a local demo connection. Demo transfers
+show a sample flicker code and are simulated locally; they do not contact a bank.
 
-## Kontengruppen
+Window size and position are saved when the window closes or the application quits and restored
+on the next launch, including the locked screen. `window-state.json` next to the vault contains
+only window preferences. If a previous monitor is unavailable, the window is moved to an accessible
+screen. On Wayland, the compositor may restrict restoring absolute window positions.
 
-Unter **Konten** können beliebige Gruppen angelegt und umbenannt werden. Jedes Konto
-wird über seine Gruppenauswahl zugeordnet. „Ohne Gruppe“ hebt die Zuordnung auf. Beim
-Entfernen einer Gruppe bleiben Konten, Bankzugänge und Umsätze erhalten. Die Gruppen
-werden zusammen mit dem Tresor verschlüsselt gespeichert.
+Under **Settings → Appearance**, choose **System setting**, **Light** or **Dark**.
+Without a saved choice, the application follows the system, including later theme changes.
+A manual choice takes effect immediately and is stored in `appearance.json` next to the vault.
+It also applies to the unlock screen; the file contains no banking or credential data.
 
-Die Übersicht zeigt je Gruppe die Summe der bekannten gebuchten Salden, getrennt nach
-Währung. Fehlende Salden werden gekennzeichnet und nicht als null gewertet. In der
-Kontenliste der Übersicht können Konten mit der Maus an die gewünschte Position gezogen
-werden. Die Einfügelinie zeigt die Zielposition; die Reihenfolge bleibt nach Neustart und
-Bankabruf erhalten. Die Gruppenzuordnung bleibt beim Sortieren bestehen.
+Under **Settings → Language**, choose **System setting**, **Deutsch**, **English**, **Français**
+or **Español**. On the first launch, the application uses the primary system language; regional
+variants such as `fr-CA` and `es-MX` are recognized. Unsupported or unavailable languages fall back
+to English. The selection takes effect immediately and is saved in `language.json` next to the vault,
+so it also applies before unlocking on the next launch. System mode resolves the system language
+at startup. User-created group names, account names and bank-supplied transaction descriptions
+remain unchanged. Category IDs and payment data remain stable across language changes.
+Numeric dates and financial amounts retain their existing input/output conventions.
 
-Der Dauerauftragsabruf handelt HKCDB-Version 1 oder 2 mit der Bank aus und berücksichtigt
-die dafür angebotenen pain.001-Formate. Version 2 liefert zusätzlich Ausführungszeiten.
-Fehlgeschlagene Abrufe überschreiben keine vorhandenen Daueraufträge und werden als
-Fehler bzw. Teilerfolg angezeigt.
+## Account groups
 
-## Aufbau
+Create and rename groups under **Accounts**. Assign an account using its group selector;
+**Ungrouped** removes the assignment. Removing a group preserves accounts, bank connections
+and transactions. Groups are encrypted along with the vault.
+
+The overview shows each group’s known booked balances, separately by currency. Missing balances
+are marked as missing rather than treated as zero. Drag accounts within the overview account list
+to reorder them; an insertion line shows the destination. The order survives application restarts
+and account refreshes, and sorting preserves group assignments.
+
+Standing order retrieval negotiates HKCDB version 1 or 2 and the bank’s supported pain.001 formats.
+Version 2 also supplies execution times. Failed retrievals preserve existing standing orders and
+are reported as failures or partial successes.
+
+## Project layout
 
 ```
-crates/fints       FinTS 3.0: Syntax, Nachrichten, Sicherheit (PIN/TAN, DDV, RDH), BPD/UPD,
-                   Geschäftsvorfälle, MT940, camt.052, pain.001, Flickercode
-crates/cardreader  PC/SC: DDV- und RDH-Chipkarte (ZKA/SECCOS), chipTAN USB, Pinpad, Diagnose
-app                Slint-Oberfläche, Tresor, Kategorisierung, Hintergrund-Jobs
+crates/fints         FinTS 3.0 syntax, messages, PIN/TAN/DDV/RDH security, BPD/UPD,
+                     banking operations, MT940, camt.052, pain.001 and flicker codes
+crates/cardreader    PC/SC, DDV/RDH smart cards, chipTAN USB, PIN pads and diagnostics
+crates/i18n          Shared translation catalogue, locale resolution and runtime messages
+crates/i18n-macros   Compile-time checked translated format strings
+app                  Slint UI, encrypted vault, categorization and background jobs
 ```
 
-## Bankverzeichnis
+`crates/i18n/catalogue.json` is the translation source of truth. Each German source string maps
+to English, French and Spanish translations. Slint translations are generated and bundled at build
+time; Rust format strings are checked by the compiler in every language. Add new user-facing text
+to this catalogue and use `@tr`, `i18n::tr` or `i18n::tr_format!`. Do not translate protocol values,
+persisted identifiers or user/bank-supplied text. Keep this README and commit messages in English.
 
-`app/data/banks.tsv` stammt aus `blz.properties` von [hbci4java](https://github.com/hbci4j/hbci4java)
-(LGPL-2.1, Stand Oktober 2026). Veraltete Adressen wurden umgeschrieben: `hbci-pintan.gad.de` →
-`fints1.atruvia.de`, `hbci11.fiducia.de` → `fints2.atruvia.de`, ehemalige Dresdner-Bank-Adressen →
-Commerzbank. Maßgeblich bleibt die Angabe der jeweiligen Bank; die URL ist im Formular editierbar.
+## Bank directory
 
-## Kompatibilität (Abgleich mit AqBanking/GnuCash)
+`app/data/banks.tsv` originates from the `blz.properties` file in
+[hbci4java](https://github.com/hbci4j/hbci4java) (LGPL-2.1, October 2026 snapshot).
+Old endpoints were updated: `hbci-pintan.gad.de` to `fints1.atruvia.de`, `hbci11.fiducia.de` to
+`fints2.atruvia.de`, and former Dresdner Bank addresses to Commerzbank. The bank’s own information
+remains authoritative; the endpoint can be edited in the connection form.
 
-Nachrichtenaufbau und Dialogablauf folgen AqBanking, der FinTS-Bibliothek von GnuCash
-(Verhalten nachgebaut, kein Code übernommen):
+## Compatibility with AqBanking/GnuCash
 
-- System-ID per Einschritt-Dialog (Verfahren 999, Sicherheitsprofil `PIN:1`, ohne HKTAN),
-  Zwei-Schritt-Dialoge mit `PIN:2` und HKTAN Prozess 4 → 2/S
-- TAN-Medium (z. B. BestSign-Gerät) in HKTAN Feld 11 in allen Prozessschritten
-- HKVVB Dialogsprache 1, SEPA-Aufträge mit vollständiger KTI, HKCDB/HKCDL-Feldfolge wie AqBanking
-- Decoupled-Freigaben (BestSign, pushTAN-App) per HKTAN Prozess S, erkannt über HITANS oder Code 3955
+Message structure and dialog flow follow AqBanking, the FinTS library used by GnuCash
+(behavior reimplemented; no AqBanking source code copied):
 
-### RDH (Chipkarte) im Vergleich zu AqBanking/GnuCash
+- System IDs obtained with a single-step dialog: method 999, security profile `PIN:1`, no HKTAN.
+  Two-step dialogs use `PIN:2` and HKTAN processes 4 → 2/S.
+- The TAN medium, such as a BestSign device, is placed in HKTAN field 11 in every process step.
+- HKVVB protocol dialog language remains 1, independently of the UI language. SEPA orders use
+  complete KTI data; HKCDB/HKCDL field ordering follows AqBanking.
+- Decoupled approval uses HKTAN process S, detected through HITANS or return code 3955.
 
-**Prüfergebnis vom 12.11.2026: keine bestätigte Gleichwertigkeit.** GnuCash verwendet
-AqBanking/AqHBCI und für ZKA-Karten libchipcard. BankingCraft bildet einen Teil dieses
-Funktionsumfangs selbst in Rust nach.
+### RDH smart cards compared with AqBanking/GnuCash
 
-| Bereich | BankingCraft nach der Prüfung |
+**Review dated November 12, 2026: equivalence has not been established.** GnuCash uses
+AqBanking/AqHBCI and libchipcard for ZKA cards. BankingCraft reimplements part of this functionality in Rust.
+
+| Area | BankingCraft after review |
 |---|---|
-| RDH-7/9/10-Kryptografie | SHA-256/SHA-256, RSA-PSS, 2-Key-3DES und profilabhängiger RSA-Schlüsseltransport; lokal mit RSA-2048 getestet |
-| Antwortprüfung | Persönliche RDH-Antworten müssen vollständig verschlüsselt und gültig signiert sein; fehlende Schlüssel/Signaturen, widersprüchliche Kontrollreferenzen und ungeschützte Zusatzsegmente werden abgelehnt |
-| Kartenzugriff | ZKA/SECCOS, Notizblock, private Schlüssel, frischer Signaturzähler, PIN-Pad; EF_KEYD-Deskriptoren und erweiterte APDU-Längen korrigiert |
-| Vertrauensprüfung | Bankschlüssel gegen Kartenhash prüfen bzw. vom Nutzer prüfen lassen; keine ungeprüfte automatische Übernahme |
-| Umfang | Bereits initialisierte RDH-Chipkarten; keine Software-Schlüsseldateien, INI-Erstinitialisierung, Schlüsseländerung/-sperre oder Zertifikatsverfahren |
-| Praxisnachweis | Noch kein bestätigter Ende-zu-Ende-Abruf mit echter Bank und Chipkarte |
+| RDH-7/9/10 cryptography | SHA-256/SHA-256, RSA-PSS, two-key 3DES and profile-specific RSA key transport; tested locally with RSA-2048 |
+| Response validation | Personalized RDH responses must be fully encrypted and validly signed. Missing keys/signatures, inconsistent control references and unprotected additional segments are rejected |
+| Card access | ZKA/SECCOS notepad, private keys, fresh signature counter and PIN pad; corrected EF_KEYD descriptors and extended APDU lengths |
+| Trust | Bank keys checked against the card hash or explicitly verified by the user; no automatic acceptance of unverified keys |
+| Scope | Previously initialized RDH smart cards; no software key files, initial INI setup, key changes/revocation or certificate workflows |
+| Real-world validation | No confirmed successful end-to-end retrieval with a real bank and smart card yet |
 
-Befunde, Quellen, Korrekturen und Testgrenzen: [RDH-Codeprüfung](docs/rdh-review.md).
+Findings, sources, fixes and test limits: [RDH code review](docs/rdh-review.md).
 
-### Übernahme aus Bank X
+### Import from Bank X
 
-BankingCraft kann vorbereitete RDH-Kontoeinstellungen beim nächsten Entsperren aus
-`bankx-import.json` neben dem bestehenden Tresor übernehmen. Dies ist ein eigenes,
-versioniertes Austauschformat, kein Parser für Bank-X-Kontenmappen oder Umzugsarchive.
-Die Datei enthält nur Bankzugang und Kontoverbindungen; keine PINs, privaten Schlüssel,
-Bankschlüssel, Salden oder Buchungen. Sie muss mit privaten Dateirechten angelegt werden.
+BankingCraft can import prepared RDH account settings from `bankx-import.json` next to the vault
+on the next unlock. This is a custom, versioned interchange format, not a parser for Bank X account
+folders or migration archives. The file contains bank connections and account details only: no PINs,
+private keys, bank keys, balances or transactions. Create it with private file permissions.
 
-Der Import validiert IBAN/BLZ/Kontonummer, ergänzt fehlende Konten ohne bestehende
-Zugänge zu überschreiben, sichert den verschlüsselten Tresor als
-`vault.before-bankx-import` und entfernt die Importdatei erst nach erfolgreichem Speichern.
-Die Karte wird anhand BLZ und Benutzerkennung zugeordnet; der Leser wird bei leerer
-Auswahl automatisch erkannt. Berechtigungen, Kontotypen und aktuelle Salden werden beim
-Abruf von der Bank aktualisiert. Das Format ist in `app/src/bankx_import.rs` dokumentiert.
+The import validates IBAN, bank code and account number, adds missing accounts without overwriting
+existing connections, backs up the encrypted vault as `vault.before-bankx-import` and removes the
+import file only after saving successfully. Cards are matched by bank code and user ID; the reader
+is detected automatically when none is selected. Account permissions, types and current balances
+are updated from the bank during retrieval. The format is documented in `app/src/bankx_import.rs`.
 
-## Stand der Verifikation
+## Verification
 
-Die fachlichen Regressionstests lassen sich mit `./scripts/test-business.sh` ausführen.
-Eine Übersicht der Fälle und Grenzen steht in [docs/testing.md](docs/testing.md).
-Die zusätzliche [Sicherheitsprüfung](docs/security-review.md) dokumentiert Korrekturen,
-Abhängigkeitsscan und verbleibende Grenzen. Aktuell bestehen 132 automatisierte Tests.
+Run the offline regression suite with `./scripts/test-business.sh`. Test cases and limitations are
+listed in [docs/testing.md](docs/testing.md). The [security review](docs/security-review.md) covers
+fixes, the dependency scan and remaining limitations.
 
-- Flickercode-Erzeugung gegen die sechs Referenzvektoren der hbci4java-Testsuite geprüft (identisch).
-- Nachrichtenaufbau, Escaping, Binärdaten, MT940-/SEPA-Feldzerlegung, pain.001-Roundtrip und IBAN-Prüfung geprüft.
-- DDV- und chipTAN-USB-APDU-Folgen 1:1 aus hbci4java (`smartcardio`) übernommen.
-- RDH-7: kompletter Dialog (Schlüsselabruf, Hashprüfung, Synchronisation, signierter und verschlüsselter
-  Dialog, Prüfung der Banksignatur) gegen eine simulierte Bank mit echten RSA-2048-Schlüsseln getestet;
-  Kartenformate (Notizblock, EF_KEYD, PIN-Format) mit Testdatensätzen.
-- **Postbank PIN/TAN:** realer Konten-/Saldo-/Umsatzabruf am 12.11.2026 nach der camt-Korrektur erfolgreich abgeschlossen; Kreditkartensaldo und Kreditkartenumsätze ebenfalls erfolgreich abgerufen.
-- **RDH:** noch nicht gegen eine echte Bank und Chipkarte getestet; der Leser war nicht angeschlossen.
-- Echte Zahlungsaufträge wurden nicht gesendet oder getestet.
-- Lastschriftrückgabe ist kein FinTS-Geschäftsvorfall und daher nicht enthalten; Daueraufträge
-  ändern = löschen + neu anlegen.
+- Flicker code generation matches all six reference vectors from the hbci4java test suite.
+- Tests cover message structure, escaping, binary data, MT940/SEPA fields, pain.001 round trips and IBAN validation.
+- DDV and chipTAN USB APDU sequences follow the hbci4java `smartcardio` implementation.
+- A complete RDH-7 dialog is tested against a simulated bank using real RSA-2048 keys: key retrieval,
+  hash validation, synchronization, signing, encryption and bank signature verification. Card layouts
+  such as the notepad, EF_KEYD and PIN formats use test fixtures.
+- **Postbank PIN/TAN:** real account, balance and transaction retrieval succeeded on November 12, 2026
+  after the camt fix; credit card balances and transactions were also retrieved successfully.
+- **RDH:** successful operation against a real bank/card has not been confirmed. The latest checks
+  cover PIN format handling and prevention of automatic retries after a failed attempt.
+- No real payment orders have been submitted for testing.
+- Language tests cover first-start detection, English fallback, persistence, all four bundled UI
+  languages, translated format placeholders, stable categories and unchanged account/group/form data.
+- Direct debit reversal is not implemented. Standing orders are changed by deleting and recreating them.

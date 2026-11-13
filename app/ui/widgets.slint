@@ -44,7 +44,7 @@ export component Card inherits Rectangle {
     border-width: 1px;
     border-color: Theme.card-border;
     drop-shadow-blur: 8px;
-    drop-shadow-color: #0f1e3510;
+    drop-shadow-color: Theme.shadow;
     drop-shadow-offset-y: 2px;
 }
 
@@ -113,7 +113,7 @@ export component PrimaryButton inherits Rectangle {
     horizontal-stretch: 0;
     width: max(110px, pl.preferred-width);
     border-radius: Theme.radius-small;
-    background: !enabled ? #9fb4cf : danger ? (touch.has-hover ? #a8262e : Theme.negative) : (touch.has-hover ? Theme.accent-hover : Theme.accent);
+    background: !enabled ? Theme.button-disabled : danger ? (touch.has-hover ? Theme.danger-hover : Theme.danger-button) : (touch.has-hover ? Theme.accent-hover : Theme.button-bg);
     animate background { duration: 120ms; }
     pl := HorizontalLayout {
         padding-left: 14px;
@@ -188,13 +188,13 @@ export component Chip inherits Rectangle {
     height: 24px;
     width: label.preferred-width + 20px;
     border-radius: self.height / 2;
-    background: selected ? tint : tint.with-alpha(0.12);
+    background: selected ? (Theme.dark ? Theme.tag-color(tint) : tint) : tint.with-alpha(0.12);
     label := Text {
         text: root.text;
         width: parent.width;
         height: parent.height;
         font-size: root.label-size;
-        color: selected ? #ffffff : root.tint.darker(0.25);
+        color: selected ? (Theme.dark ? #101a2b : #ffffff) : Theme.tag-color(root.tint);
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -213,7 +213,7 @@ export component Avatar inherits Rectangle {
     background: tint.with-alpha(0.15);
     Text {
         text: root.text;
-        color: tint.darker(0.3);
+        color: Theme.tag-color(tint);
         font-weight: 700;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -256,7 +256,7 @@ export component SegmentedControl inherits Rectangle {
     callback changed(int);
     height: 34px;
     border-radius: Theme.radius-small;
-    background: #e9eef5;
+    background: Theme.segmented-bg;
     HorizontalLayout {
         padding: 3px;
         spacing: 3px;

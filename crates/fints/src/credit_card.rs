@@ -8,23 +8,23 @@ use rust_decimal::Decimal;
 fn date(value: &str) -> Result<Option<NaiveDate>> {
     if value.trim().is_empty() { return Ok(None); }
     parse_fints_date(value).or_else(|| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
-        .map(Some).ok_or_else(|| Error::Syntax("Ungültiges Datum im Kreditkartenumsatz".into()))
+        .map(Some).ok_or_else(|| Error::Syntax(i18n::tr("Ungültiges Datum im Kreditkartenumsatz").into()))
 }
 
 fn amount(value: &str, sign: &str) -> Result<Decimal> {
-    let value = parse_amount(value.trim()).ok_or_else(|| Error::Syntax("Ungültiger Kreditkartenbetrag".into()))?;
+    let value = parse_amount(value.trim()).ok_or_else(|| Error::Syntax(i18n::tr("Ungültiger Kreditkartenbetrag").into()))?;
     // Some banks supply a signed amount in addition to the debit/credit indicator.
     match sign.trim() {
         "D" | "RC" => Ok(-value.abs()),
         "C" | "RD" => Ok(value.abs()),
-        _ => Err(Error::Syntax("Ungültiges Soll-/Haben-Kennzeichen im Kreditkartenumsatz".into())),
+        _ => Err(Error::Syntax(i18n::tr("Ungültiges Soll-/Haben-Kennzeichen im Kreditkartenumsatz").into())),
     }
 }
 
 pub(crate) fn balance(s: &Segment) -> Result<Option<Balance>> {
     if s.de(3).iter().all(|v| v.as_ref().is_none_or(|v| v.is_empty())) { return Ok(None); }
     let currency = s.text_or_empty(3, 2);
-    if currency.is_empty() { return Err(Error::Syntax("Währung des Kreditkartensaldos fehlt".into())); }
+    if currency.is_empty() { return Err(Error::Syntax(i18n::tr("Währung des Kreditkartensaldos fehlt").into())); }
     Ok(Some(Balance {
         booked: amount(&s.text_or_empty(3, 1), &s.text_or_empty(3, 0))?,
         currency,
@@ -37,7 +37,7 @@ pub(crate) fn statement(s: &Segment) -> Result<TransactionReport> {
     let standard = match (s.code.as_str(), s.version) {
         ("HIKKU", 1) => true,
         ("DIKKU", 2) => false,
-        _ => return Err(Error::NotSupported("Version der Kreditkartenumsatzantwort".into())),
+        _ => return Err(Error::NotSupported(i18n::tr("Version der Kreditkartenumsatzantwort").into())),
     };
     let mut report = TransactionReport { balance: balance(s)?, ..Default::default() };
     for i in 6..=s.de_count() {
@@ -51,12 +51,12 @@ pub(crate) fn statement(s: &Segment) -> Result<TransactionReport> {
         let purpose_start = amount_index + 3;
         let purpose_end = purpose_start + 9;
         let currency = t(amount_index + 1);
-        if currency.is_empty() { return Err(Error::Syntax("Währung des Kreditkartenumsatzes fehlt".into())); }
+        if currency.is_empty() { return Err(Error::Syntax(i18n::tr("Währung des Kreditkartenumsatzes fehlt").into())); }
         let status = t(if standard { 23 } else { 20 });
         let pending = match status.as_str() {
             "N" => true,
             "J" | "Y" | "" => booking_date.is_none(),
-            _ => return Err(Error::Syntax("Unbekannter Buchungsstatus im Kreditkartenumsatz".into())),
+            _ => return Err(Error::Syntax(i18n::tr("Unbekannter Buchungsstatus im Kreditkartenumsatz").into())),
         };
         let mut tx = Transaction {
             booking_date: booking_date.or(value_date).unwrap_or(fallback),
@@ -66,7 +66,7 @@ pub(crate) fn statement(s: &Segment) -> Result<TransactionReport> {
             currency,
             counterparty_name: t(purpose_start),
             purpose: (purpose_start..purpose_end).map(t).filter(|p| !p.trim().is_empty()).collect::<Vec<_>>().join(" · "),
-            posting_text: "Kreditkartenumsatz".into(),
+            posting_text: i18n::tr("Kreditkartenumsatz").into(),
             end_to_end_id: t(21),
             pending,
             ..Default::default()

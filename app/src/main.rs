@@ -4,6 +4,8 @@
 slint::include_modules!();
 
 mod banks;
+mod appearance;
+mod localization;
 mod bankx_import;
 mod bridge;
 mod categorize;
@@ -63,9 +65,9 @@ pub fn toast(app: &AppWindow, text: &str, error: bool) {
     });
 }
 
-fn confirm(app: &AppWindow, title: &str, text: &str, action: impl FnOnce() + 'static) {
+fn confirm(app: &AppWindow, title: &str, text: &str, danger: bool, action: impl FnOnce() + 'static) {
     let st = app.global::<AppState>();
-    st.set_confirm_danger(title.contains("löschen") || title.contains("entfernen"));
+    st.set_confirm_danger(danger);
     st.set_confirm_title(title.into());
     st.set_confirm_text(text.into());
     st.set_confirm_ok_text(SharedString::default());
@@ -80,7 +82,7 @@ fn confirm_blocking(app: &AppWindow, title: &str, text: &str, bridge: bridge::Br
     st.set_confirm_danger(false);
     st.set_confirm_title(title.into());
     st.set_confirm_text(text.into());
-    st.set_confirm_ok_text("Bestätigen".into());
+    st.set_confirm_ok_text(i18n::tr("Bestätigen").into());
     st.set_show_confirm(true);
     let b = bridge.clone();
     CONFIRM.with(|c| *c.borrow_mut() = Some(Box::new(move || b.answer(bridge::Answer::Confirmed))));
@@ -101,7 +103,7 @@ fn refresh_readers(app: &AppWindow) {
     st.set_tan_reader(tan_idx as i32);
     st.set_af_reader(readers.iter().position(|r| r.cyberjack).unwrap_or(0) as i32);
     if names.is_empty() {
-        st.set_reader_names(ModelRc::new(VecModel::from(vec![SharedString::from("(kein Kartenleser gefunden)")])));
+        st.set_reader_names(ModelRc::new(VecModel::from(vec![SharedString::from(i18n::tr("(kein Kartenleser gefunden)"))])));
     } else {
         st.set_reader_names(ModelRc::new(VecModel::from(names)));
     }
@@ -128,7 +130,7 @@ fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
     refresh_readers(app);
     match import_result {
         Ok(Some(message)) => toast(app, &message, false),
-        Err(e) => toast(app, &format!("Bank-X-Übernahme fehlgeschlagen: {e}"), true),
+        Err(e) => toast(app, &i18n::tr_format!("Bank-X-Übernahme fehlgeschlagen: {e}"), true),
         Ok(None) => {},
     }
 }
@@ -141,7 +143,7 @@ fn edit_groups(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<(), Stri
         let mut candidate = vault.clone();
         edit(&mut candidate)?;
         let file = c.file.lock().unwrap();
-        file.as_ref().ok_or("Tresor ist gesperrt")?.save(&candidate)?;
+        file.as_ref().ok_or(i18n::tr("Tresor ist gesperrt"))?.save(&candidate)?;
         *vault = candidate;
         Ok::<_, String>(())
     })();
@@ -158,6 +160,8 @@ fn main() {
         .with_winit_custom_application_handler(window_state.clone()).select().expect("window backend");
     let app = AppWindow::new().expect("UI");
     window_state.install(&app);
+    appearance::install(&app);
+    localization::install(&app);
     let st = app.global::<AppState>();
     let path = store::default_path();
     st.set_first_run(!VaultFile::exists(&path));
@@ -188,11 +192,11 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             if p1.chars().count() < 8 {
-                st.set_unlock_error("Bitte mindestens 8 Zeichen verwenden.".into());
+                st.set_unlock_error(i18n::tr("Bitte mindestens 8 Zeichen verwenden.").into());
                 return;
             }
             if p1 != p2 {
-                st.set_unlock_error("Die Passwörter stimmen nicht überein.".into());
+                st.set_unlock_error(i18n::tr("Die Passwörter stimmen nicht überein.").into());
                 return;
             }
             match VaultFile::create(path.clone(), &p1) {
@@ -221,7 +225,7 @@ fn main() {
             }
         });
     }
-    st.on_refresh_all(|| ctx().run("Kontenrundruf …", jobs::sync_all));
+    st.on_refresh_all(|| ctx().run(i18n::tr("Kontenrundruf …"), jobs::sync_all));
     {
         let weak = app.as_weak();
         st.on_move_account(move |source, target, after| {
@@ -245,7 +249,7 @@ fn main() {
         let weak = app.as_weak();
         st.on_assign_group(move |account, index| {
             edit_groups(&weak.unwrap(), |v| {
-                let id = if index == 0 { None } else { Some(v.groups.get((index - 1) as usize).ok_or("Gruppe nicht gefunden")?.id) };
+                let id = if index == 0 { None } else { Some(v.groups.get((index - 1) as usize).ok_or(i18n::tr("Gruppe nicht gefunden"))?.id) };
                 v.assign_group(account as u32, id)
             });
         });
@@ -255,7 +259,7 @@ fn main() {
         st.on_delete_group(move |id| {
             let app = weak.unwrap();
             let weak = app.as_weak();
-            confirm(&app, "Gruppe entfernen", "Die Konten bleiben erhalten und werden unter „Ohne Gruppe“ angezeigt.", move || {
+            confirm(&app, i18n::tr("Gruppe entfernen"), i18n::tr("Die Konten bleiben erhalten und werden unter „Ohne Gruppe“ angezeigt."), true, move || {
                 edit_groups(&weak.unwrap(), |v| v.delete_group(id as u32));
             });
         });
@@ -322,7 +326,7 @@ fn main() {
             let c = ctx();
             let v = c.vault.lock().unwrap();
             match export::csv(&v, &idx) {
-                Ok(p) => toast(&app, &format!("{} Umsätze exportiert:\n{}", idx.len(), p.display()), false),
+                Ok(p) => toast(&app, &i18n::tr_format!("{} Umsätze exportiert:\n{}", idx.len(), p.display()), false),
                 Err(e) => toast(&app, &e, true),
             }
         });
@@ -335,7 +339,7 @@ fn main() {
             let c = ctx();
             let v = c.vault.lock().unwrap();
             match export::camt052(&v, &idx) {
-                Ok(p) => toast(&app, &format!("{} Umsätze als camt.052 exportiert:\n{}", idx.len(), p.display()), false),
+                Ok(p) => toast(&app, &i18n::tr_format!("{} Umsätze als camt.052 exportiert:\n{}", idx.len(), p.display()), false),
                 Err(e) => toast(&app, &e, true),
             }
         });
@@ -352,10 +356,10 @@ fn main() {
                 st.set_tf_iban_hint(SharedString::default());
                 st.set_tf_iban_error(false);
             } else if fints::pain::iban_valid(&clean) {
-                st.set_tf_iban_hint("IBAN gültig".into());
+                st.set_tf_iban_hint(i18n::tr("IBAN gültig").into());
                 st.set_tf_iban_error(false);
             } else {
-                st.set_tf_iban_hint("Prüfziffer passt nicht – bitte IBAN kontrollieren".into());
+                st.set_tf_iban_hint(i18n::tr("Prüfziffer passt nicht – bitte IBAN kontrollieren").into());
                 st.set_tf_iban_error(true);
             }
         });
@@ -366,7 +370,7 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             let Some(account_id) = VIEW.with(|vs| vs.borrow().sepa_accounts.get(st.get_tf_account().max(0) as usize).copied()) else {
-                toast(&app, "Bitte ein Auftraggeberkonto wählen.", true);
+                toast(&app, i18n::tr("Bitte ein Auftraggeberkonto wählen."), true);
                 return;
             };
             let (t, scheduled) = match transfer_from_form(&app) {
@@ -376,17 +380,17 @@ fn main() {
                     return;
                 }
             };
-            let text = format!(
+            let text = i18n::tr_format!(
                 "{} an {}\n{}\n„{}“{}",
                 view::fmt_eur(t.amount),
                 t.creditor_name,
                 t.creditor_iban,
                 t.purpose,
-                t.execution_date.map(|d| format!("\nAusführung am {}", view::fmt_date(d))).unwrap_or_default()
+                t.execution_date.map(|d| i18n::tr_format!("\nAusführung am {}", view::fmt_date(d))).unwrap_or_default()
             );
             let weak2 = app.as_weak();
-            confirm(&app, "Überweisung senden?", &text, move || {
-                ctx().run("Überweisung wird übermittelt …", move |c| {
+            confirm(&app, i18n::tr("Überweisung senden?"), &text, false, move || {
+                ctx().run(i18n::tr("Überweisung wird übermittelt …"), move |c| {
                     let r = jobs::transfer(c, account_id, t, scheduled);
                     if r.is_ok() {
                         let _ = weak2.upgrade_in_event_loop(|app| clear_transfer_form(&app));
@@ -402,7 +406,7 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             let Some(account_id) = VIEW.with(|vs| vs.borrow().sepa_accounts.get(st.get_tf_account().max(0) as usize).copied()) else {
-                toast(&app, "Bitte ein Auftraggeberkonto wählen.", true);
+                toast(&app, i18n::tr("Bitte ein Auftraggeberkonto wählen."), true);
                 return;
             };
             let (mut t, _) = match transfer_from_form(&app) {
@@ -414,20 +418,20 @@ fn main() {
             };
             t.execution_date = None;
             let Some(first) = view::parse_date(&st.get_so_first()) else {
-                toast(&app, "Bitte das Datum der ersten Ausführung als TT.MM.JJJJ angeben.", true);
+                toast(&app, i18n::tr("Bitte das Datum der ersten Ausführung als TT.MM.JJJJ angeben."), true);
                 return;
             };
             let last = if st.get_so_last().trim().is_empty() {
                 None
             } else {
                 let Some(date) = view::parse_date(&st.get_so_last()) else {
-                    toast(&app, "Bitte ein gültiges Enddatum als TT.MM.JJJJ angeben.", true);
+                    toast(&app, i18n::tr("Bitte ein gültiges Enddatum als TT.MM.JJJJ angeben."), true);
                     return;
                 };
                 Some(date)
             };
             let Ok(day) = st.get_so_day().trim().parse::<u32>() else {
-                toast(&app, "Bitte einen gültigen Ausführungstag angeben.", true);
+                toast(&app, i18n::tr("Bitte einen gültigen Ausführungstag angeben."), true);
                 return;
             };
             let (interval, every) = match st.get_so_interval() {
@@ -453,21 +457,21 @@ fn main() {
                 toast(&app, &e.to_string(), true);
                 return;
             }
-            let text = format!("{} an {}, {}", view::fmt_eur(so.transfer.amount), so.transfer.creditor_name, view::schedule_text(&so));
-            confirm(&app, "Dauerauftrag anlegen?", &text, move || {
-                ctx().run("Dauerauftrag wird angelegt …", move |c| jobs::create_standing(c, account_id, so));
+            let text = i18n::tr_format!("{} an {}, {}", view::fmt_eur(so.transfer.amount), so.transfer.creditor_name, view::schedule_text(&so));
+            confirm(&app, i18n::tr("Dauerauftrag anlegen?"), &text, false, move || {
+                ctx().run(i18n::tr("Dauerauftrag wird angelegt …"), move |c| jobs::create_standing(c, account_id, so));
             });
         });
     }
-    st.on_fetch_standing(|| ctx().run("Daueraufträge werden abgerufen …", jobs::fetch_standing));
+    st.on_fetch_standing(|| ctx().run(i18n::tr("Daueraufträge werden abgerufen …"), jobs::fetch_standing));
     {
         let weak = app.as_weak();
         st.on_delete_standing(move |i| {
             let app = weak.unwrap();
             let c = ctx();
             let name = c.vault.lock().unwrap().standing.get(i as usize).map(|s| s.order.transfer.creditor_name.clone()).unwrap_or_default();
-            confirm(&app, "Dauerauftrag löschen?", &format!("Der Dauerauftrag an {name} wird bei der Bank gelöscht."), move || {
-                ctx().run("Dauerauftrag wird gelöscht …", move |c| jobs::delete_standing(c, i as usize));
+            confirm(&app, i18n::tr("Dauerauftrag löschen?"), &i18n::tr_format!("Der Dauerauftrag an {name} wird bei der Bank gelöscht."), true, move || {
+                ctx().run(i18n::tr("Dauerauftrag wird gelöscht …"), move |c| jobs::delete_standing(c, i as usize));
             });
         });
     }
@@ -518,7 +522,7 @@ fn main() {
                 .map(|(i, b)| BankRow {
                     index: i as i32,
                     name: b.name.into(),
-                    detail: format!("BLZ {} · {} · {}", b.blz, b.city, b.bic).into(),
+                    detail: i18n::tr_format!("BLZ {} · {} · {}", b.blz, b.city, b.bic).into(),
                     endpoint: if chip { b.host } else { b.url.trim_start_matches("https://") }.into(),
                 })
                 .collect();
@@ -542,7 +546,7 @@ fn main() {
             }
             st.set_bank_query(b.name.into());
             let hint = banks::login_hint(b);
-            st.set_bank_picked(format!("✓ {} · BLZ {} übernommen{}", b.name, b.blz, hint.map(|h| format!(" – {h}")).unwrap_or_default()).into());
+            st.set_bank_picked(i18n::tr_format!("✓ {} · BLZ {} übernommen{}", b.name, b.blz, hint.map(|h| format!(" – {h}")).unwrap_or_default()).into());
             st.set_bank_results(ModelRc::new(VecModel::from(Vec::<BankRow>::new())));
         });
     }
@@ -552,13 +556,13 @@ fn main() {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
             let Some(reader) = selected_reader(&app, st.get_af_reader()) else {
-                toast(&app, "Kein Kartenleser ausgewählt.", true);
+                toast(&app, i18n::tr("Kein Kartenleser ausgewählt."), true);
                 return;
             };
             let record: u8 = st.get_af_record().trim().parse().unwrap_or(1);
             let weak = app.as_weak();
             st.set_busy(true);
-            st.set_busy_text("Lese Bankdaten von der Chipkarte …".into());
+            st.set_busy_text(i18n::tr("Lese Bankdaten von der Chipkarte …").into());
             if st.get_af_kind() == 2 {
                 std::thread::spawn(move || {
                     let r = jobs::read_rdh_card(&ctx(), &reader, record);
@@ -578,12 +582,12 @@ fn main() {
                                 };
                                 st.set_af_url(host.into());
                                 if st.get_af_name().is_empty() {
-                                    let bank = if c.bank_name.is_empty() { format!("BLZ {}", c.blz) } else { c.bank_name.clone() };
-                                    st.set_af_name(format!("{bank} (RDH-Chipkarte)").into());
+                                    let bank = if c.bank_name.is_empty() { i18n::tr_format!("BLZ {}", c.blz) } else { c.bank_name.clone() };
+                                    st.set_af_name(i18n::tr_format!("{bank} (RDH-Chipkarte)").into());
                                 }
                                 toast(
                                     &app,
-                                    &format!("Karte {number} gelesen: RDH-{} · BLZ {} · Kennung {}", c.profile, c.blz, c.user_id),
+                                    &i18n::tr_format!("Karte {number} gelesen: RDH-{} · BLZ {} · Kennung {}", c.profile, c.blz, c.user_id),
                                     false,
                                 );
                             }
@@ -605,9 +609,9 @@ fn main() {
                             let host = if b.host.trim().is_empty() { banks::by_blz(&b.blz).map(|x| x.host.to_string()).unwrap_or_default() } else { b.host.clone() };
                             st.set_af_url(host.into());
                             if st.get_af_name().is_empty() {
-                                st.set_af_name(format!("{} (Chipkarte)", b.short_name).into());
+                                st.set_af_name(i18n::tr_format!("{} (Chipkarte)", b.short_name).into());
                             }
-                            toast(&app, &format!("Karte gelesen: {} · BLZ {}", b.short_name, b.blz), false);
+                            toast(&app, &i18n::tr_format!("Karte gelesen: {} · BLZ {}", b.short_name, b.blz), false);
                         }
                         Err(e) => toast(&app, &e, true),
                     }
@@ -625,20 +629,20 @@ fn main() {
             let url = st.get_af_url().trim().to_string();
             let chip = st.get_af_kind() == 1 || st.get_af_kind() == 2;
             if blz.len() != 8 {
-                toast(&app, "Die Bankleitzahl muss 8 Ziffern haben.", true);
+                toast(&app, i18n::tr("Die Bankleitzahl muss 8 Ziffern haben."), true);
                 return;
             }
             if user.is_empty() {
-                toast(&app, "Bitte die Benutzerkennung angeben.", true);
+                toast(&app, i18n::tr("Bitte die Benutzerkennung angeben."), true);
                 return;
             }
             if !chip && fints::transport::validate_https_url(&url).is_err() {
-                toast(&app, "Bitte die FinTS-URL Ihrer Bank (https://…) angeben.", true);
+                toast(&app, i18n::tr("Bitte die FinTS-URL Ihrer Bank (https://…) angeben."), true);
                 return;
             }
             let kind = if chip {
                 let Some(reader) = selected_reader(&app, st.get_af_reader()) else {
-                    toast(&app, "Kein Kartenleser ausgewählt.", true);
+                    toast(&app, i18n::tr("Kein Kartenleser ausgewählt."), true);
                     return;
                 };
                 let record = st.get_af_record().trim().parse().unwrap_or(1);
@@ -674,7 +678,7 @@ fn main() {
             st.set_af_open(false);
             let _ = c.save();
             refresh_view(&app);
-            c.run("Bankzugang wird eingerichtet …", move |c| jobs::sync_access(c, id));
+            c.run(i18n::tr("Bankzugang wird eingerichtet …"), move |c| jobs::sync_access(c, id));
         });
     }
     {
@@ -684,7 +688,7 @@ fn main() {
             let c = ctx();
             let name = c.vault.lock().unwrap().access(id as u32).map(|a| a.name.clone()).unwrap_or_default();
             let weak = app.as_weak();
-            confirm(&app, "Bankzugang entfernen?", &format!("„{name}“ mit allen lokal gespeicherten Konten und Umsätzen entfernen? Bei der Bank wird nichts geändert."), move || {
+            confirm(&app, i18n::tr("Bankzugang entfernen?"), &i18n::tr_format!("„{name}“ mit allen lokal gespeicherten Konten und Umsätzen entfernen? Bei der Bank wird nichts geändert."), true, move || {
                 let c = ctx();
                 c.vault.lock().unwrap().remove_access(id as u32);
                 let _ = c.save();
@@ -704,11 +708,11 @@ fn main() {
             }
             let _ = c.save();
             refresh_view(&app);
-            toast(&app, "Die gespeicherte PIN wurde gelöscht.", false);
+            toast(&app, i18n::tr("Die gespeicherte PIN wurde gelöscht."), false);
         });
     }
-    st.on_sync_access(|id| ctx().run("Bankzugang wird synchronisiert …", move |c| jobs::sync_access(c, id as u32)));
-    st.on_reset_tan(|id| ctx().run("TAN-Verfahren werden abgefragt …", move |c| jobs::reset_tan(c, id as u32)));
+    st.on_sync_access(|id| ctx().run(i18n::tr("Bankzugang wird synchronisiert …"), move |c| jobs::sync_access(c, id as u32)));
+    st.on_reset_tan(|id| ctx().run(i18n::tr("TAN-Verfahren werden abgefragt …"), move |c| jobs::reset_tan(c, id as u32)));
 
     // ---------------------------------------------------------------- card reader
     {
@@ -722,7 +726,7 @@ fn main() {
             let st = app.global::<AppState>();
             let reader = selected_reader(&app, st.get_tan_reader());
             st.set_busy(true);
-            st.set_busy_text("Prüfe Kartenleser …".into());
+            st.set_busy_text(i18n::tr("Prüfe Kartenleser …").into());
             let weak = app.as_weak();
             std::thread::spawn(move || {
                 let report = cardreader::diagnose(reader.as_deref());
@@ -752,7 +756,7 @@ fn main() {
                 }
             }
             match c.save() {
-                Ok(()) => toast(&app, "Einstellungen gespeichert.", false),
+                Ok(()) => toast(&app, i18n::tr("Einstellungen gespeichert."), false),
                 Err(e) => toast(&app, &e, true),
             }
         });
@@ -766,19 +770,19 @@ fn main() {
             st.set_old_password(SharedString::default());
             st.set_new_password(SharedString::default());
             if new.chars().count() < 8 {
-                toast(&app, "Das neue Passwort braucht mindestens 8 Zeichen.", true);
+                toast(&app, i18n::tr("Das neue Passwort braucht mindestens 8 Zeichen."), true);
                 return;
             }
             let c = ctx();
             let r = {
                 let mut v = c.vault.lock().unwrap();
-                c.file.lock().unwrap().as_mut().map(|f| f.change_password(&old, &new, &mut v)).unwrap_or(Err("Tresor nicht geöffnet".into()))
+                c.file.lock().unwrap().as_mut().map(|f| f.change_password(&old, &new, &mut v)).unwrap_or(Err(i18n::tr("Tresor nicht geöffnet").into()))
             };
             match r {
                 Ok(()) => {
                     st.set_old_password(SharedString::default());
                     st.set_new_password(SharedString::default());
-                    toast(&app, "Tresor-Passwort geändert.", false);
+                    toast(&app, i18n::tr("Tresor-Passwort geändert."), false);
                 }
                 Err(e) => toast(&app, &e, true),
             }
@@ -792,7 +796,7 @@ fn main() {
             demo::add_demo(&mut c.vault.lock().unwrap());
             let _ = c.save();
             refresh_view(&app);
-            toast(&app, "Demo-Bankzugang mit Beispielumsätzen angelegt.", false);
+            toast(&app, i18n::tr("Demo-Bankzugang mit Beispielumsätzen angelegt."), false);
         });
     }
 
@@ -821,13 +825,13 @@ fn main() {
                 Ok(text) => {
                     st.set_pin_value(text.as_str().into());
                     if !st.get_pin_masked() {
-                        st.set_paste_note("Eingefügt.".into());
+                        st.set_paste_note(i18n::tr("Eingefügt.").into());
                         return;
                     }
                     // do not leave the PIN lying around in the clipboard
                     let cleared = clear_clipboard_if(&text);
                     st.set_paste_note(
-                        if cleared { "PIN eingefügt – die Zwischenablage wurde aus Sicherheitsgründen geleert." } else { "PIN eingefügt." }.into(),
+                        if cleared { i18n::tr("PIN eingefügt – die Zwischenablage wurde aus Sicherheitsgründen geleert.") } else { i18n::tr("PIN eingefügt.") }.into(),
                     );
                 }
                 Err(e) => st.set_paste_note(e.into()),
@@ -895,7 +899,7 @@ fn main() {
             let st = app.global::<AppState>();
             let Some(payload) = b.usb_payload.lock().unwrap().clone() else { return };
             let reader = selected_reader(&app, st.get_tan_reader());
-            b.pinpad(true, "Bitte prüfen Sie Empfänger und Betrag im Display des Kartenlesers und bestätigen Sie dort mit OK.");
+            b.pinpad(true, i18n::tr("Bitte prüfen Sie Empfänger und Betrag im Display des Kartenlesers und bestätigen Sie dort mit OK."));
             let b2 = b.clone();
             let weak = app.as_weak();
             std::thread::spawn(move || {
@@ -970,14 +974,14 @@ fn main() {
 
 /// Text from the system clipboard, trimmed (PINs/TANs are often copied with a trailing newline).
 fn clipboard_text() -> Result<String, String> {
-    let mut cb = arboard::Clipboard::new().map_err(|e| format!("Zwischenablage nicht verfügbar: {e}"))?;
-    let text = cb.get_text().map_err(|_| "Die Zwischenablage enthält keinen Text.".to_string())?;
+    let mut cb = arboard::Clipboard::new().map_err(|e| i18n::tr_format!("Zwischenablage nicht verfügbar: {e}"))?;
+    let text = cb.get_text().map_err(|_| i18n::tr("Die Zwischenablage enthält keinen Text.").to_string())?;
     let text = text.trim().to_string();
     if text.is_empty() {
-        return Err("Die Zwischenablage ist leer.".into());
+        return Err(i18n::tr("Die Zwischenablage ist leer.").into());
     }
     if text.chars().count() > 64 || text.contains('\n') {
-        return Err("Der Inhalt der Zwischenablage sieht nicht nach einer PIN/TAN aus.".into());
+        return Err(i18n::tr("Der Inhalt der Zwischenablage sieht nicht nach einer PIN/TAN aus.").into());
     }
     Ok(text)
 }
@@ -1007,25 +1011,25 @@ fn transfer_from_form(app: &AppWindow) -> Result<(SepaTransfer, bool), String> {
     let st = app.global::<AppState>();
     let name = st.get_tf_name().trim().to_string();
     let iban: String = st.get_tf_iban().chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase();
-    let amount = view::parse_amount(&st.get_tf_amount()).ok_or("Bitte einen gültigen Betrag angeben.")?;
+    let amount = view::parse_amount(&st.get_tf_amount()).ok_or(i18n::tr("Bitte einen gültigen Betrag angeben."))?;
     let purpose = st.get_tf_purpose().trim().to_string();
     if name.is_empty() {
-        return Err("Bitte den Empfänger angeben.".into());
+        return Err(i18n::tr("Bitte den Empfänger angeben.").into());
     }
     if !fints::pain::iban_valid(&iban) {
-        return Err("Die IBAN ist ungültig.".into());
+        return Err(i18n::tr("Die IBAN ist ungültig.").into());
     }
     if amount <= rust_decimal::Decimal::ZERO {
-        return Err("Der Betrag muss größer als 0 sein.".into());
+        return Err(i18n::tr("Der Betrag muss größer als 0 sein.").into());
     }
     if purpose.chars().count() > 140 {
-        return Err("Der Verwendungszweck ist länger als 140 Zeichen.".into());
+        return Err(i18n::tr("Der Verwendungszweck ist länger als 140 Zeichen.").into());
     }
     let mode = st.get_tf_mode();
     let execution_date = if mode == 2 {
-        let d = view::parse_date(&st.get_tf_date()).ok_or("Bitte das Ausführungsdatum als TT.MM.JJJJ angeben.")?;
+        let d = view::parse_date(&st.get_tf_date()).ok_or(i18n::tr("Bitte das Ausführungsdatum als TT.MM.JJJJ angeben."))?;
         if d <= Local::now().date_naive() {
-            return Err("Eine Terminüberweisung muss in der Zukunft liegen.".into());
+            return Err(i18n::tr("Eine Terminüberweisung muss in der Zukunft liegen.").into());
         }
         Some(d)
     } else {

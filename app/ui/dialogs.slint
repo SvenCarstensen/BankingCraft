@@ -39,7 +39,7 @@ export component PinDialog inherits Modal {
             accepted => { AppState.pin-ok(); }
         }
         GhostButton {
-            text: "Einfügen";
+            text: @tr("Einfügen");
             icon: Icons.paste;
             y: (parent.height - self.height) / 2;
             clicked => {
@@ -49,18 +49,18 @@ export component PinDialog inherits Modal {
         }
     }
     if AppState.pin-offer-save: CheckBox {
-        text: "PIN für diesen Bankzugang speichern (verschlüsselt im Tresor)";
+        text: @tr("PIN für diesen Bankzugang speichern (verschlüsselt im Tresor)");
         checked <=> AppState.pin-save;
     }
     Text {
-        text: AppState.paste-note != "" ? AppState.paste-note : AppState.pin-save ? "Die PIN wird mit AES-256-GCM verschlüsselt im Tresor abgelegt und künftig automatisch verwendet." : AppState.pin-masked ? "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten." : "Wird zusammen mit dem Bankzugang gespeichert.";
+        text: AppState.paste-note != "" ? AppState.paste-note : AppState.pin-save ? @tr("Die PIN wird mit AES-256-GCM verschlüsselt im Tresor abgelegt und künftig automatisch verwendet.") : AppState.pin-masked ? @tr("Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten.") : @tr("Wird zusammen mit dem Bankzugang gespeichert.");
         font-size: 11px;
         color: Theme.text-faint;
     }
     HorizontalLayout {
         alignment: end;
         spacing: 10px;
-        GhostButton { text: "Abbrechen"; clicked => { AppState.pin-cancel(); } }
+        GhostButton { text: @tr("Abbrechen"); clicked => { AppState.pin-cancel(); } }
         PrimaryButton { text: "OK"; clicked => { AppState.pin-ok(); } }
     }
     init => { pin.focus(); }
@@ -80,7 +80,7 @@ export component PinpadOverlay inherits Modal {
         VerticalLayout {
             alignment: center;
             spacing: 4px;
-            Text { text: "Bitte am Kartenleser bestätigen"; font-size: 16px; font-weight: 700; color: Theme.text; }
+            Text { text: @tr("Bitte am Kartenleser bestätigen"); font-size: 16px; font-weight: 700; color: Theme.text; }
             Text { text: AppState.pinpad-text; wrap: word-wrap; color: Theme.text-muted; }
         }
     }
@@ -139,13 +139,13 @@ export component TanDialog inherits Modal {
         HorizontalLayout {
             spacing: 8px;
             alignment: center;
-            GhostButton { text: "Langsamer"; clicked => { AppState.flicker-speed(-2); } }
-            GhostButton { text: "Schneller"; clicked => { AppState.flicker-speed(2); } }
-            GhostButton { text: "Kleiner"; clicked => { AppState.flicker-width = max(160px, AppState.flicker-width - 20px); } }
-            GhostButton { text: "Größer"; clicked => { AppState.flicker-width = min(480px, AppState.flicker-width + 20px); } }
+            GhostButton { text: @tr("Langsamer"); clicked => { AppState.flicker-speed(-2); } }
+            GhostButton { text: @tr("Schneller"); clicked => { AppState.flicker-speed(2); } }
+            GhostButton { text: @tr("Kleiner"); clicked => { AppState.flicker-width = max(160px, AppState.flicker-width - 20px); } }
+            GhostButton { text: @tr("Größer"); clicked => { AppState.flicker-width = min(480px, AppState.flicker-width + 20px); } }
         }
         Text {
-            text: "Karte in den TAN-Generator stecken, „F“ drücken und das Gerät an die Markierungen halten (" + AppState.flicker-hz + " Hz).";
+            text: @tr("Karte in den TAN-Generator stecken, „F“ drücken und das Gerät an die Markierungen halten (") + AppState.flicker-hz + " Hz).";
             font-size: 12px;
             color: Theme.text-muted;
             horizontal-alignment: center;
@@ -172,14 +172,14 @@ export component TanDialog inherits Modal {
             spacing: 12px;
             Icon { name: Icons.reader; color: Theme.accent; y: (parent.height - self.height) / 2; }
             Text {
-                text: "TAN mit chipTAN-USB-Leser erzeugen (Daten am Leser-Display prüfen)";
+                text: @tr("TAN mit chipTAN-USB-Leser erzeugen (Daten am Leser-Display prüfen)");
                 vertical-alignment: center;
                 wrap: word-wrap;
                 color: Theme.text;
                 font-size: 13px;
             }
             PrimaryButton {
-                text: "Am Leser";
+                text: @tr("Am Leser");
                 y: 9px;
                 clicked => { AppState.tan-usb(); }
             }
@@ -188,9 +188,9 @@ export component TanDialog inherits Modal {
     if AppState.tan-kind == 3: Rectangle {
         height: 60px;
         border-radius: 8px;
-        background: #eef6ff;
+        background: Theme.accent-soft;
         Text {
-            text: "Bitte geben Sie den Auftrag in Ihrer Banking-App frei\nund klicken Sie anschließend auf „Freigegeben“.";
+            text: @tr("Bitte geben Sie den Auftrag in Ihrer Banking-App frei\nund klicken Sie anschließend auf „Freigegeben“.");
             horizontal-alignment: center;
             vertical-alignment: center;
             color: Theme.text;
@@ -204,7 +204,7 @@ export component TanDialog inherits Modal {
             accepted => { AppState.tan-ok(); }
         }
         GhostButton {
-            text: "Einfügen";
+            text: @tr("Einfügen");
             icon: Icons.paste;
             y: (parent.height - self.height) / 2;
             clicked => {
@@ -216,9 +216,9 @@ export component TanDialog inherits Modal {
     HorizontalLayout {
         alignment: end;
         spacing: 10px;
-        GhostButton { text: "Abbrechen"; clicked => { AppState.tan-cancel(); } }
-        if AppState.tan-kind == 3: PrimaryButton { text: "Freigegeben"; icon: Icons.check; clicked => { AppState.tan-confirmed(); } }
-        if AppState.tan-kind != 3: PrimaryButton { text: "TAN senden"; icon: Icons.check; clicked => { AppState.tan-ok(); } }
+        GhostButton { text: @tr("Abbrechen"); clicked => { AppState.tan-cancel(); } }
+        if AppState.tan-kind == 3: PrimaryButton { text: @tr("Freigegeben"); icon: Icons.check; clicked => { AppState.tan-confirmed(); } }
+        if AppState.tan-kind != 3: PrimaryButton { text: @tr("TAN senden"); icon: Icons.check; clicked => { AppState.tan-ok(); } }
     }
 }
 
@@ -243,7 +243,7 @@ export component ChoiceDialog inherits Modal {
     }
     HorizontalLayout {
         alignment: end;
-        GhostButton { text: "Abbrechen"; clicked => { AppState.choice-cancel(); } }
+        GhostButton { text: @tr("Abbrechen"); clicked => { AppState.choice-cancel(); } }
     }
 }
 
@@ -253,8 +253,8 @@ export component ConfirmDialog inherits Modal {
     HorizontalLayout {
         alignment: end;
         spacing: 10px;
-        GhostButton { text: "Abbrechen"; clicked => { AppState.confirm-cancel(); } }
-        PrimaryButton { text: AppState.confirm-ok-text != "" ? AppState.confirm-ok-text : AppState.confirm-danger ? "Löschen" : "Ausführen"; danger: AppState.confirm-danger; clicked => { AppState.confirm-ok(); } }
+        GhostButton { text: @tr("Abbrechen"); clicked => { AppState.confirm-cancel(); } }
+        PrimaryButton { text: AppState.confirm-ok-text != "" ? AppState.confirm-ok-text : AppState.confirm-danger ? @tr("Löschen") : @tr("Ausführen"); danger: AppState.confirm-danger; clicked => { AppState.confirm-ok(); } }
     }
 }
 

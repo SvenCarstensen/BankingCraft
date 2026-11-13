@@ -28,7 +28,8 @@ fn csv_field(s: &str) -> String {
 }
 
 pub(crate) fn csv_content(v: &Vault, idx: &[usize]) -> String {
-    let mut out = String::from("\u{feff}Konto;Buchungstag;Valuta;Name;IBAN;BIC;Verwendungszweck;Buchungstext;Kategorie;Betrag;Währung;Status\r\n");
+    let headers = ["Konto", "Buchungstag", "Valuta", "Name", "IBAN", "BIC", "Verwendungszweck", "Buchungstext", "Kategorie", "Betrag", "Währung", "Status"];
+    let mut out = format!("\u{feff}{}\r\n", headers.map(i18n::tr).join(";"));
     for &i in idx {
         let Some(t) = v.transactions.get(i) else { continue };
         let row = [
@@ -40,10 +41,10 @@ pub(crate) fn csv_content(v: &Vault, idx: &[usize]) -> String {
             t.tx.counterparty_bic.clone(),
             t.tx.purpose.clone(),
             t.tx.posting_text.clone(),
-            categorize(t, &v.rules),
+            crate::view::category_label(&categorize(t, &v.rules)).to_string(),
             format!("{:.2}", t.tx.amount).replace('.', ","),
             t.tx.currency.clone(),
-            if t.tx.pending { "vorgemerkt" } else { "gebucht" }.to_string(),
+            i18n::tr(if t.tx.pending { "vorgemerkt" } else { "gebucht" }).to_string(),
         ];
         // The amount is generated from Decimal, so negative numbers stay numeric.
         out.push_str(&row.iter().enumerate().map(|(column, f)| if column == 9 { f.clone() } else { csv_field(f) }).collect::<Vec<_>>().join(";"));

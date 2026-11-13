@@ -11,10 +11,10 @@ use zeroize::Zeroizing;
 pub const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
 
 pub fn validate_https_url(value: &str) -> Result<()> {
-    let url = url::Url::parse(value).map_err(|_| Error::Security("Ungültige FinTS-Adresse".into()))?;
+    let url = url::Url::parse(value).map_err(|_| Error::Security(i18n::tr("Ungültige FinTS-Adresse").into()))?;
     if url.scheme() != "https" || url.host_str().is_none() || !url.username().is_empty()
         || url.password().is_some() || url.fragment().is_some() || value.contains('\\') || value.chars().any(char::is_control) {
-        return Err(Error::Security("FinTS benötigt eine eindeutige HTTPS-Adresse ohne Benutzerinfo oder Fragment".into()));
+        return Err(Error::Security(i18n::tr("FinTS benötigt eine eindeutige HTTPS-Adresse ohne Benutzerinfo oder Fragment").into()));
     }
     Ok(())
 }
@@ -50,20 +50,20 @@ impl Transport for HttpsTransport {
             .post(&self.url)
             .set("Content-Type", "text/plain")
             .send_string(&body)
-            .map_err(|_| Error::Transport("HTTPS-Anfrage an die Bank fehlgeschlagen".into()))?;
+            .map_err(|_| Error::Transport(i18n::tr("HTTPS-Anfrage an die Bank fehlgeschlagen").into()))?;
         let mut text = String::new();
         let limit = MAX_MESSAGE_SIZE * 2;
         resp.into_reader().take((limit + 1) as u64).read_to_string(&mut text)
             .map_err(|e| Error::Transport(e.to_string()))?;
         if text.len() > limit {
-            return Err(Error::Transport("Antwort der Bank überschreitet die Größenbegrenzung".into()));
+            return Err(Error::Transport(i18n::tr("Antwort der Bank überschreitet die Größenbegrenzung").into()));
         }
         let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
         let raw = base64::engine::general_purpose::STANDARD
             .decode(cleaned)
-            .map_err(|e| Error::Transport(format!("invalid base64 response: {e}")))?;
+            .map_err(|e| Error::Transport(i18n::tr_format!("Ungültige Base64-Antwort: {e}")))?;
         if raw.len() > MAX_MESSAGE_SIZE {
-            return Err(Error::Transport("Antwort der Bank überschreitet die Größenbegrenzung".into()));
+            return Err(Error::Transport(i18n::tr("Antwort der Bank überschreitet die Größenbegrenzung").into()));
         }
         log::debug!("FinTS << {} bytes", raw.len());
         Ok(raw)
@@ -84,7 +84,7 @@ impl TcpTransport {
 impl Transport for TcpTransport {
     fn send(&mut self, message: &[u8]) -> Result<Vec<u8>> {
         let addresses = self.addr.to_socket_addrs().map_err(|e| Error::Transport(e.to_string()))?;
-        let mut connection = Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Keine Serveradresse gefunden"));
+        let mut connection = Err(std::io::Error::new(std::io::ErrorKind::NotFound, i18n::tr("Keine Serveradresse gefunden")));
         for address in addresses {
             connection = TcpStream::connect_timeout(&address, Duration::from_secs(20));
             if connection.is_ok() { break; }
@@ -98,14 +98,14 @@ impl Transport for TcpTransport {
         let mut head = [0u8; 22];
         s.read_exact(&mut head).map_err(|e| Error::Transport(e.to_string()))?;
         if !head.starts_with(b"HNHBK:1:3+") {
-            return Err(Error::Transport("invalid message header".into()));
+            return Err(Error::Transport(i18n::tr("Ungültiger Nachrichtenkopf").into()));
         }
         let size: usize = std::str::from_utf8(&head[10..22])
             .ok()
             .and_then(|t| t.parse().ok())
-            .ok_or_else(|| Error::Transport("invalid message header".into()))?;
+            .ok_or_else(|| Error::Transport(i18n::tr("Ungültiger Nachrichtenkopf").into()))?;
         if !(head.len()..=MAX_MESSAGE_SIZE).contains(&size) {
-            return Err(Error::Transport("Ungültige oder zu große FinTS-Nachricht".into()));
+            return Err(Error::Transport(i18n::tr("Ungültige oder zu große FinTS-Nachricht").into()));
         }
         let mut rest = vec![0u8; size - head.len()];
         s.read_exact(&mut rest).map_err(|e| Error::Transport(e.to_string()))?;

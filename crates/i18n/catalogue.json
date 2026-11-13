@@ -1,0 +1,3297 @@
+{
+  "PIN-Eingabe": [
+    "PIN entry",
+    "Saisie du code PIN",
+    "Introducción del PIN"
+  ],
+  "vorgemerkt": [
+    "pending",
+    "en attente",
+    "pendiente"
+  ],
+  "Noch keine Daten in diesem Zeitraum.": [
+    "No data for this period yet.",
+    "Aucune donnée pour cette période.",
+    "Todavía no hay datos para este período."
+  ],
+  "Einnahmen": [
+    "Income",
+    "Revenus",
+    "Ingresos"
+  ],
+  "Ausgaben": [
+    "Expenses",
+    "Dépenses",
+    "Gastos"
+  ],
+  "Finanzübersicht": [
+    "Financial overview",
+    "Vue d’ensemble des finances",
+    "Resumen financiero"
+  ],
+  "Gesamtsaldo aller Konten": [
+    "Total balance of all accounts",
+    "Solde total de tous les comptes",
+    "Saldo total de todas las cuentas"
+  ],
+  "Gruppensalden": [
+    "Group balances",
+    "Soldes des groupes",
+    "Saldos de los grupos"
+  ],
+  "Umsätze abrufen": [
+    "Retrieve transactions",
+    "Récupérer les opérations",
+    "Consultar movimientos"
+  ],
+  "Konten": [
+    "Accounts",
+    "Comptes",
+    "Cuentas"
+  ],
+  " Konten · Zum Sortieren ziehen": [
+    " accounts · Drag to reorder",
+    " comptes · Glisser pour réorganiser",
+    " cuentas · Arrastra para ordenar"
+  ],
+  "Alle anzeigen": [
+    "Show all",
+    "Tout afficher",
+    "Mostrar todas"
+  ],
+  "Noch kein Bankzugang eingerichtet.": [
+    "No bank connection set up yet.",
+    "Aucun accès bancaire configuré.",
+    "Todavía no se ha configurado ningún acceso bancario."
+  ],
+  "Bankzugang einrichten": [
+    "Set up bank connection",
+    "Configurer un accès bancaire",
+    "Configurar acceso bancario"
+  ],
+  "Demo-Daten laden": [
+    "Load demo data",
+    "Charger les données de démonstration",
+    "Cargar datos de demostración"
+  ],
+  "Letzte Umsätze": [
+    "Recent transactions",
+    "Opérations récentes",
+    "Últimos movimientos"
+  ],
+  "Umsatzliste": [
+    "Transaction list",
+    "Liste des opérations",
+    "Lista de movimientos"
+  ],
+  "Keine Umsätze vorhanden.": [
+    "No transactions available.",
+    "Aucune opération disponible.",
+    "No hay movimientos disponibles."
+  ],
+  "Ausgaben nach Kategorie": [
+    "Expenses by category",
+    "Dépenses par catégorie",
+    "Gastos por categoría"
+  ],
+  "Einnahmen & Ausgaben": [
+    "Income & expenses",
+    "Revenus et dépenses",
+    "Ingresos y gastos"
+  ],
+  "Letzte 6 Monate, alle Konten": [
+    "Last 6 months, all accounts",
+    "6 derniers mois, tous les comptes",
+    "Últimos 6 meses, todas las cuentas"
+  ],
+  "Anstehende Daueraufträge": [
+    "Upcoming standing orders",
+    "Virements permanents à venir",
+    "Próximas transferencias periódicas"
+  ],
+  "Verwalten": [
+    "Manage",
+    "Gérer",
+    "Gestionar"
+  ],
+  "Keine Daueraufträge bekannt. Unter Zahlungsverkehr → Daueraufträge abrufen.": [
+    "No standing orders available. Retrieve them under Payments → Standing orders.",
+    "Aucun virement permanent disponible. Récupérez-les sous Paiements → Virements permanents.",
+    "No hay transferencias periódicas. Consúltalas en Pagos → Transferencias periódicas."
+  ],
+  "Konten nach eigenen Gruppen ordnen": [
+    "Organize accounts into your own groups",
+    "Organiser les comptes en groupes personnalisés",
+    "Organiza las cuentas en grupos personalizados"
+  ],
+  "Kontenrundruf": [
+    "Refresh all accounts",
+    "Actualiser tous les comptes",
+    "Actualizar todas las cuentas"
+  ],
+  "Neue Gruppe, z. B. Privat": [
+    "New group, e.g. Personal",
+    "Nouveau groupe, p. ex. Personnel",
+    "Nuevo grupo, p. ej. Personal"
+  ],
+  "Gruppe anlegen": [
+    "Create group",
+    "Créer un groupe",
+    "Crear grupo"
+  ],
+  "Umbenennen": [
+    "Rename",
+    "Renommer",
+    "Cambiar nombre"
+  ],
+  "Entfernen": [
+    "Remove",
+    "Retirer",
+    "Quitar"
+  ],
+  " Konten": [
+    " accounts",
+    " comptes",
+    " cuentas"
+  ],
+  "Gruppe": [
+    "Group",
+    "Groupe",
+    "Grupo"
+  ],
+  "Umsätze": [
+    "Transactions",
+    "Opérations",
+    "Movimientos"
+  ],
+  "Noch keine Konten in dieser Gruppe. Wählen Sie die Gruppe direkt am gewünschten Konto.": [
+    "No accounts in this group yet. Select this group on the desired account.",
+    "Ce groupe ne contient aucun compte. Sélectionnez ce groupe sur le compte souhaité.",
+    "Este grupo no tiene cuentas. Selecciona este grupo en la cuenta deseada."
+  ],
+  "30 Tage": [
+    "30 days",
+    "30 jours",
+    "30 días"
+  ],
+  "90 Tage": [
+    "90 days",
+    "90 jours",
+    "90 días"
+  ],
+  "Dieses Jahr": [
+    "This year",
+    "Cette année",
+    "Este año"
+  ],
+  "Alle": [
+    "All",
+    "Tout",
+    "Todos"
+  ],
+  "Aktualisieren": [
+    "Refresh",
+    "Actualiser",
+    "Actualizar"
+  ],
+  "Suche nach Name, Zweck, IBAN oder Betrag …": [
+    "Search by name, reference, IBAN or amount …",
+    "Rechercher par nom, motif, IBAN ou montant…",
+    "Buscar por nombre, concepto, IBAN o importe…"
+  ],
+  "Alle Kategorien": [
+    "All categories",
+    "Toutes les catégories",
+    "Todas las categorías"
+  ],
+  "Keine Umsätze für diese Auswahl.": [
+    "No transactions for this selection.",
+    "Aucune opération pour cette sélection.",
+    "No hay movimientos para esta selección."
+  ],
+  "Wählen Sie einen Umsatz aus, um Details zu sehen und die Kategorie zu ändern.": [
+    "Select a transaction to view details and change its category.",
+    "Sélectionnez une opération pour afficher ses détails et modifier sa catégorie.",
+    "Selecciona un movimiento para ver sus detalles y cambiar su categoría."
+  ],
+  "Vorgemerkter Umsatz – noch nicht gebucht": [
+    "Pending transaction – not yet booked",
+    "Opération en attente – non comptabilisée",
+    "Movimiento pendiente de contabilización"
+  ],
+  "Konto": [
+    "Account",
+    "Compte",
+    "Cuenta"
+  ],
+  "Buchungstag": [
+    "Booking date",
+    "Date de comptabilisation",
+    "Fecha de contabilización"
+  ],
+  "Wertstellung": [
+    "Value date",
+    "Date de valeur",
+    "Fecha valor"
+  ],
+  "Verwendungszweck": [
+    "Reference",
+    "Motif",
+    "Concepto"
+  ],
+  "Buchungstext": [
+    "Booking text",
+    "Libellé",
+    "Descripción del movimiento"
+  ],
+  "End-to-End-Referenz": [
+    "End-to-end reference",
+    "Référence de bout en bout",
+    "Referencia de extremo a extremo"
+  ],
+  "Mandatsreferenz": [
+    "Mandate reference",
+    "Référence du mandat",
+    "Referencia del mandato"
+  ],
+  "Gläubiger-ID": [
+    "Creditor ID",
+    "Identifiant du créancier",
+    "Identificador del acreedor"
+  ],
+  "Kategorie": [
+    "Category",
+    "Catégorie",
+    "Categoría"
+  ],
+  "Gleiche Gegenparteien werden künftig automatisch so kategorisiert.": [
+    "Transactions with the same counterparties will be categorized this way automatically.",
+    "Les opérations avec les mêmes contreparties recevront automatiquement cette catégorie.",
+    "Los movimientos con las mismas contrapartes recibirán esta categoría automáticamente."
+  ],
+  "Überweisung": [
+    "Transfer",
+    "Virement",
+    "Transferencia"
+  ],
+  "SEPA-Überweisung, Echtzeitüberweisung oder Terminüberweisung": [
+    "SEPA transfer, instant transfer or scheduled transfer",
+    "Virement SEPA, instantané ou programmé",
+    "Transferencia SEPA, inmediata o programada"
+  ],
+  "Auftraggeberkonto": [
+    "Debit account",
+    "Compte à débiter",
+    "Cuenta de origen"
+  ],
+  "Empfänger": [
+    "Recipient",
+    "Bénéficiaire",
+    "Beneficiario"
+  ],
+  "Name des Empfängers": [
+    "Recipient name",
+    "Nom du bénéficiaire",
+    "Nombre del beneficiario"
+  ],
+  "BIC (optional)": [
+    "BIC (optional)",
+    "BIC (facultatif)",
+    "BIC (opcional)"
+  ],
+  "optional": [
+    "optional",
+    "facultatif",
+    "opcional"
+  ],
+  "Betrag (EUR)": [
+    "Amount (EUR)",
+    "Montant (EUR)",
+    "Importe (EUR)"
+  ],
+  "max. 140 Zeichen": [
+    "max. 140 characters",
+    "140 caractères maximum",
+    "máx. 140 caracteres"
+  ],
+  "Ausführung": [
+    "Execution",
+    "Exécution",
+    "Ejecución"
+  ],
+  "Standard": [
+    "Standard",
+    "Standard",
+    "Estándar"
+  ],
+  "Echtzeit": [
+    "Instant",
+    "Instantané",
+    "Inmediata"
+  ],
+  "Terminüberweisung": [
+    "Scheduled transfer",
+    "Virement programmé",
+    "Transferencia programada"
+  ],
+  "TT.MM.JJJJ": [
+    "DD.MM.YYYY",
+    "JJ.MM.AAAA",
+    "DD.MM.AAAA"
+  ],
+  "Überweisung senden": [
+    "Send transfer",
+    "Envoyer le virement",
+    "Enviar transferencia"
+  ],
+  "Daueraufträge": [
+    "Standing orders",
+    "Virements permanents",
+    "Transferencias periódicas"
+  ],
+  "Bestand abrufen, neue Daueraufträge anlegen, bestehende löschen": [
+    "Retrieve, create and delete standing orders",
+    "Récupérer, créer et supprimer des virements permanents",
+    "Consultar, crear y eliminar transferencias periódicas"
+  ],
+  "Bestand abrufen": [
+    "Retrieve standing orders",
+    "Récupérer les virements permanents",
+    "Consultar transferencias periódicas"
+  ],
+  "Noch keine Daueraufträge geladen.": [
+    "No standing orders loaded yet.",
+    "Aucun virement permanent chargé.",
+    "Todavía no se han cargado transferencias periódicas."
+  ],
+  "Neuer Dauerauftrag": [
+    "New standing order",
+    "Nouveau virement permanent",
+    "Nueva transferencia periódica"
+  ],
+  "Empfänger, Betrag und Zweck werden aus dem Überweisungsformular übernommen.": [
+    "Recipient, amount and reference are taken from the transfer form.",
+    "Le bénéficiaire, le montant et le motif proviennent du formulaire de virement.",
+    "El beneficiario, el importe y el concepto se toman del formulario de transferencia."
+  ],
+  "Name": [
+    "Name",
+    "Nom",
+    "Nombre"
+  ],
+  "z. B. Miete": [
+    "e.g. Rent",
+    "p. ex. Loyer",
+    "p. ej. Alquiler"
+  ],
+  "Turnus": [
+    "Frequency",
+    "Fréquence",
+    "Frecuencia"
+  ],
+  "monatlich": [
+    "monthly",
+    "mensuel",
+    "mensual"
+  ],
+  "vierteljährlich": [
+    "quarterly",
+    "trimestriel",
+    "trimestral"
+  ],
+  "halbjährlich": [
+    "half-yearly",
+    "semestriel",
+    "semestral"
+  ],
+  "jährlich": [
+    "yearly",
+    "annuel",
+    "anual"
+  ],
+  "wöchentlich": [
+    "weekly",
+    "hebdomadaire",
+    "semanal"
+  ],
+  "Erste Ausführung": [
+    "First execution",
+    "Première exécution",
+    "Primera ejecución"
+  ],
+  "Ausführungstag": [
+    "Execution day",
+    "Jour d’exécution",
+    "Día de ejecución"
+  ],
+  "1–31 / 99 = Ultimo": [
+    "1–31 / 99 = month end",
+    "1–31 / 99 = fin du mois",
+    "1–31 / 99 = fin de mes"
+  ],
+  "Letzte Ausführung": [
+    "Last execution",
+    "Dernière exécution",
+    "Última ejecución"
+  ],
+  "Dauerauftrag anlegen": [
+    "Create standing order",
+    "Créer le virement permanent",
+    "Crear transferencia periódica"
+  ],
+  "Auswertungen": [
+    "Reports",
+    "Analyses",
+    "Informes"
+  ],
+  "Einnahmen und Ausgaben nach Kategorien": [
+    "Income and expenses by category",
+    "Revenus et dépenses par catégorie",
+    "Ingresos y gastos por categoría"
+  ],
+  "Jahresverlauf": [
+    "Yearly trend",
+    "Évolution annuelle",
+    "Evolución anual"
+  ],
+  "12 Monate bis ": [
+    "12 months through ",
+    "12 mois jusqu’à ",
+    "12 meses hasta "
+  ],
+  "Bankzugänge": [
+    "Bank connections",
+    "Accès bancaires",
+    "Accesos bancarios"
+  ],
+  "FinTS PIN/TAN oder HBCI-Chipkarte": [
+    "FinTS PIN/TAN or HBCI smart card",
+    "FinTS PIN/TAN ou carte à puce HBCI",
+    "FinTS PIN/TAN o tarjeta inteligente HBCI"
+  ],
+  "Neuer Bankzugang": [
+    "New bank connection",
+    "Nouvel accès bancaire",
+    "Nuevo acceso bancario"
+  ],
+  "HBCI-Chipkarte": [
+    "HBCI smart card",
+    "Carte à puce HBCI",
+    "Tarjeta inteligente HBCI"
+  ],
+  "TAN-Verfahren: ": [
+    "TAN method: ",
+    "Méthode TAN : ",
+    "Método TAN: "
+  ],
+  "  ·  PIN gespeichert (verschlüsselt)": [
+    "  ·  PIN saved (encrypted)",
+    "  ·  Code PIN enregistré (chiffré)",
+    "  ·  PIN guardado (cifrado)"
+  ],
+  "Synchronisieren": [
+    "Synchronize",
+    "Synchroniser",
+    "Sincronizar"
+  ],
+  "TAN-Verfahren wählen": [
+    "Choose TAN method",
+    "Choisir la méthode TAN",
+    "Elegir método TAN"
+  ],
+  "PIN vergessen": [
+    "Forget PIN",
+    "Oublier le code PIN",
+    "Olvidar PIN"
+  ],
+  "HBCI-Chipkarte (DDV)": [
+    "HBCI smart card (DDV)",
+    "Carte à puce HBCI (DDV)",
+    "Tarjeta inteligente HBCI (DDV)"
+  ],
+  "RDH-Chipkarte (VR-NetWorld-Card)": [
+    "RDH smart card (VR-NetWorld-Card)",
+    "Carte à puce RDH (VR-NetWorld-Card)",
+    "Tarjeta inteligente RDH (VR-NetWorld-Card)"
+  ],
+  "Bank suchen": [
+    "Find bank",
+    "Rechercher une banque",
+    "Buscar banco"
+  ],
+  "Name, Ort, BLZ oder BIC – z. B. „Förde Sparkasse“, „ING“, „Volksbank Kiel“": [
+    "Name, city, bank code or BIC – e.g. “Förde Sparkasse”, “ING”, “Volksbank Kiel”",
+    "Nom, ville, code bancaire ou BIC – p. ex. « Förde Sparkasse », « ING », « Volksbank Kiel »",
+    "Nombre, ciudad, código bancario o BIC; p. ej. «Förde Sparkasse», «ING», «Volksbank Kiel»"
+  ],
+  "Bezeichnung": [
+    "Label",
+    "Libellé",
+    "Nombre"
+  ],
+  "z. B. Förde Sparkasse – privat": [
+    "e.g. Förde Sparkasse – personal",
+    "p. ex. Förde Sparkasse – personnel",
+    "p. ej. Förde Sparkasse – personal"
+  ],
+  "Bankleitzahl": [
+    "Bank code",
+    "Code bancaire",
+    "Código bancario"
+  ],
+  "8 Ziffern": [
+    "8 digits",
+    "8 chiffres",
+    "8 dígitos"
+  ],
+  "Anmeldename / Benutzerkennung": [
+    "Login / user ID",
+    "Identifiant de connexion / utilisateur",
+    "Nombre de acceso / identificador de usuario"
+  ],
+  "Kunden-ID (optional)": [
+    "Customer ID (optional)",
+    "Identifiant client (facultatif)",
+    "Identificador de cliente (opcional)"
+  ],
+  "FinTS-Server-URL": [
+    "FinTS server URL",
+    "URL du serveur FinTS",
+    "URL del servidor FinTS"
+  ],
+  "Wird über die Banksuche ausgefüllt. Abweichende Adressen finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“). Die PIN wird nicht gespeichert.": [
+    "Filled in by the bank search. Alternative addresses are available from your bank’s online banking (search for “FinTS”). The PIN is not saved.",
+    "Renseignée par la recherche de banque. Vous trouverez les autres adresses dans votre banque en ligne (recherchez « FinTS »). Le code PIN n’est pas enregistré.",
+    "Se rellena al buscar el banco. Encontrarás otras direcciones en la banca en línea de tu banco (busca «FinTS»). El PIN no se guarda."
+  ],
+  "Kartenleser": [
+    "Card reader",
+    "Lecteur de carte",
+    "Lector de tarjetas"
+  ],
+  "Karteneintrag": [
+    "Card entry",
+    "Entrée de la carte",
+    "Entrada de la tarjeta"
+  ],
+  "Daten von Karte lesen": [
+    "Read data from card",
+    "Lire les données de la carte",
+    "Leer datos de la tarjeta"
+  ],
+  "Benutzerkennung": [
+    "User ID",
+    "Identifiant utilisateur",
+    "Identificador de usuario"
+  ],
+  "Server (Host oder URL)": [
+    "Server (host or URL)",
+    "Serveur (hôte ou URL)",
+    "Servidor (host o URL)"
+  ],
+  "Von der Karte gelesen (RDH, PIN am Leser); HBCI über TCP-Port 3000.": [
+    "Read from card (RDH, PIN on reader); HBCI over TCP port 3000.",
+    "Lu sur la carte (RDH, code PIN sur le lecteur) ; HBCI via le port TCP 3000.",
+    "Leído de la tarjeta (RDH, PIN en el lector); HBCI por el puerto TCP 3000."
+  ],
+  "Von der Karte gelesen; HBCI über TCP-Port 3000.": [
+    "Read from card; HBCI over TCP port 3000.",
+    "Lu sur la carte ; HBCI via le port TCP 3000.",
+    "Leído de la tarjeta; HBCI por el puerto TCP 3000."
+  ],
+  "Abbrechen": [
+    "Cancel",
+    "Annuler",
+    "Cancelar"
+  ],
+  "Speichern & verbinden": [
+    "Save & connect",
+    "Enregistrer et connecter",
+    "Guardar y conectar"
+  ],
+  "PC/SC-Leser für HBCI-Chipkarte und chipTAN USB": [
+    "PC/SC readers for HBCI smart cards and chipTAN USB",
+    "Lecteurs PC/SC pour cartes à puce HBCI et chipTAN USB",
+    "Lectores PC/SC para tarjetas inteligentes HBCI y chipTAN USB"
+  ],
+  "Neu suchen": [
+    "Search again",
+    "Relancer la recherche",
+    "Buscar de nuevo"
+  ],
+  "Leser & Karte prüfen": [
+    "Check reader & card",
+    "Vérifier le lecteur et la carte",
+    "Comprobar lector y tarjeta"
+  ],
+  "REINER SCT cyberJack erkannt. BankingCraft nutzt automatisch die sichere PIN-Eingabe am Pinpad und – sofern der Leser es meldet – chipTAN USB mit Anzeige der Auftragsdaten im Display.": [
+    "REINER SCT cyberJack detected. BankingCraft automatically uses secure PIN entry on the PIN pad and, if reported by the reader, chipTAN USB with transaction details on its display.",
+    "REINER SCT cyberJack détecté. BankingCraft utilise automatiquement la saisie sécurisée du code PIN sur le clavier du lecteur et, si le lecteur le permet, chipTAN USB avec les détails de l’opération sur son écran.",
+    "REINER SCT cyberJack detectado. BankingCraft utiliza automáticamente la introducción segura del PIN en el teclado del lector y, si es compatible, chipTAN USB con los datos de la operación en su pantalla."
+  ],
+  "Leser für chipTAN USB": [
+    "Reader for chipTAN USB",
+    "Lecteur pour chipTAN USB",
+    "Lector para chipTAN USB"
+  ],
+  "Wird im TAN-Dialog verwendet": [
+    "Used in the TAN dialog",
+    "Utilisé dans la boîte de dialogue TAN",
+    "Se utiliza en el diálogo TAN"
+  ],
+  "Diagnose": [
+    "Diagnostics",
+    "Diagnostic",
+    "Diagnóstico"
+  ],
+  "Gefundene Leser, gemeldete Features und erkannte Karte": [
+    "Detected readers, reported features and identified card",
+    "Lecteurs détectés, fonctionnalités signalées et carte identifiée",
+    "Lectores detectados, funciones disponibles y tarjeta identificada"
+  ],
+  "Noch keine Prüfung durchgeführt.": [
+    "No check performed yet.",
+    "Aucune vérification effectuée.",
+    "Todavía no se ha realizado ninguna comprobación."
+  ],
+  "Einstellungen": [
+    "Settings",
+    "Paramètres",
+    "Configuración"
+  ],
+  "Erscheinungsbild": [
+    "Appearance",
+    "Apparence",
+    "Apariencia"
+  ],
+  "Wählen Sie ein helles oder dunkles Design.": [
+    "Choose a light or dark theme.",
+    "Choisissez un thème clair ou sombre.",
+    "Elige un tema claro u oscuro."
+  ],
+  "Systemeinstellung": [
+    "System setting",
+    "Réglage du système",
+    "Configuración del sistema"
+  ],
+  "Hell": [
+    "Light",
+    "Clair",
+    "Claro"
+  ],
+  "Dunkel": [
+    "Dark",
+    "Sombre",
+    "Oscuro"
+  ],
+  "Folgt automatisch dem Design Ihres Betriebssystems. Änderungen werden sofort übernommen.": [
+    "Automatically follows your operating system’s theme. Changes take effect immediately.",
+    "Suit automatiquement le thème du système. Les modifications sont appliquées immédiatement.",
+    "Sigue automáticamente el tema del sistema operativo. Los cambios se aplican de inmediato."
+  ],
+  "Ihre Auswahl wird sofort angewendet und für den nächsten Start gespeichert.": [
+    "Your choice is applied immediately and saved for the next launch.",
+    "Votre choix est appliqué immédiatement et conservé pour le prochain démarrage.",
+    "Tu elección se aplica de inmediato y se guarda para el próximo inicio."
+  ],
+  "FinTS-Produktregistrierung": [
+    "FinTS product registration",
+    "Enregistrement du produit FinTS",
+    "Registro del producto FinTS"
+  ],
+  "Banken akzeptieren FinTS-Zugriffe nur mit einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID. Die Registrierung ist für Software-Hersteller kostenlos (fints.org → Produktregistrierung).": [
+    "Banks only accept FinTS access with a product ID registered with Deutsche Kreditwirtschaft. Registration is free for software vendors (fints.org → product registration).",
+    "Les banques n’acceptent les accès FinTS qu’avec un identifiant de produit enregistré auprès de Deutsche Kreditwirtschaft. L’enregistrement est gratuit pour les éditeurs de logiciels (fints.org → enregistrement du produit).",
+    "Los bancos solo aceptan accesos FinTS con un identificador de producto registrado en Deutsche Kreditwirtschaft. El registro es gratuito para fabricantes de software (fints.org → registro del producto)."
+  ],
+  "Produkt-ID": [
+    "Product ID",
+    "Identifiant du produit",
+    "Identificador del producto"
+  ],
+  "25-stellige Registrierungsnummer": [
+    "25-character registration number",
+    "Numéro d’enregistrement à 25 caractères",
+    "Número de registro de 25 caracteres"
+  ],
+  "Produktversion": [
+    "Product version",
+    "Version du produit",
+    "Versión del producto"
+  ],
+  "Speichern": [
+    "Save",
+    "Enregistrer",
+    "Guardar"
+  ],
+  "Tresor-Passwort ändern": [
+    "Change vault password",
+    "Modifier le mot de passe du coffre",
+    "Cambiar contraseña de la bóveda"
+  ],
+  "Alle Daten werden lokal mit AES-256-GCM verschlüsselt (Schlüssel per Argon2id).": [
+    "All data is encrypted locally with AES-256-GCM (key derived using Argon2id).",
+    "Toutes les données sont chiffrées localement avec AES-256-GCM (clé dérivée avec Argon2id).",
+    "Todos los datos se cifran localmente con AES-256-GCM (clave derivada con Argon2id)."
+  ],
+  "Aktuelles Passwort": [
+    "Current password",
+    "Mot de passe actuel",
+    "Contraseña actual"
+  ],
+  "Neues Passwort": [
+    "New password",
+    "Nouveau mot de passe",
+    "Nueva contraseña"
+  ],
+  "Passwort ändern": [
+    "Change password",
+    "Modifier le mot de passe",
+    "Cambiar contraseña"
+  ],
+  "Daten": [
+    "Data",
+    "Données",
+    "Datos"
+  ],
+  "Speicherort: ": [
+    "Storage location: ",
+    "Emplacement : ",
+    "Ubicación de almacenamiento: "
+  ],
+  "Demo-Bankzugang hinzufügen": [
+    "Add demo bank connection",
+    "Ajouter un accès bancaire de démonstration",
+    "Añadir acceso bancario de demostración"
+  ],
+  "Einfügen": [
+    "Paste",
+    "Coller",
+    "Pegar"
+  ],
+  "PIN für diesen Bankzugang speichern (verschlüsselt im Tresor)": [
+    "Save PIN for this bank connection (encrypted in the vault)",
+    "Enregistrer le code PIN pour cet accès bancaire (chiffré dans le coffre)",
+    "Guardar PIN para este acceso bancario (cifrado en la bóveda)"
+  ],
+  "Die PIN wird mit AES-256-GCM verschlüsselt im Tresor abgelegt und künftig automatisch verwendet.": [
+    "The PIN is stored in the vault with AES-256-GCM encryption and used automatically from now on.",
+    "Le code PIN est enregistré dans le coffre avec un chiffrement AES-256-GCM et sera utilisé automatiquement.",
+    "El PIN se guarda en la bóveda con cifrado AES-256-GCM y se utilizará automáticamente."
+  ],
+  "Die PIN wird nur für diese Sitzung im Arbeitsspeicher gehalten.": [
+    "The PIN is kept in memory for this session only.",
+    "Le code PIN reste en mémoire uniquement pendant cette session.",
+    "El PIN se mantiene en memoria solo durante esta sesión."
+  ],
+  "Wird zusammen mit dem Bankzugang gespeichert.": [
+    "Saved with the bank connection.",
+    "Enregistré avec l’accès bancaire.",
+    "Se guarda junto con el acceso bancario."
+  ],
+  "Bitte am Kartenleser bestätigen": [
+    "Please confirm on the card reader",
+    "Veuillez confirmer sur le lecteur de carte",
+    "Confirma en el lector de tarjetas"
+  ],
+  "Langsamer": [
+    "Slower",
+    "Ralentir",
+    "Más lento"
+  ],
+  "Schneller": [
+    "Faster",
+    "Accélérer",
+    "Más rápido"
+  ],
+  "Kleiner": [
+    "Smaller",
+    "Réduire",
+    "Más pequeño"
+  ],
+  "Größer": [
+    "Larger",
+    "Agrandir",
+    "Más grande"
+  ],
+  "Karte in den TAN-Generator stecken, „F“ drücken und das Gerät an die Markierungen halten (": [
+    "Insert the card into the TAN generator, press “F” and align the device with the markers (",
+    "Insérez la carte dans le générateur TAN, appuyez sur « F » et alignez l’appareil sur les repères (",
+    "Introduce la tarjeta en el generador TAN, pulsa «F» y alinea el dispositivo con las marcas ("
+  ],
+  "TAN mit chipTAN-USB-Leser erzeugen (Daten am Leser-Display prüfen)": [
+    "Generate TAN with a chipTAN USB reader (check details on the reader’s display)",
+    "Générer un code TAN avec un lecteur chipTAN USB (vérifiez les détails sur son écran)",
+    "Generar TAN con un lector chipTAN USB (comprueba los datos en su pantalla)"
+  ],
+  "Am Leser": [
+    "On reader",
+    "Sur le lecteur",
+    "En el lector"
+  ],
+  "Bitte geben Sie den Auftrag in Ihrer Banking-App frei\nund klicken Sie anschließend auf „Freigegeben“.": [
+    "Please approve the order in your banking app\nthen click “Approved”.",
+    "Veuillez autoriser l’ordre dans votre application bancaire,\npuis cliquer sur « Autorisé ».",
+    "Autoriza la orden en tu aplicación bancaria\ny después pulsa «Autorizado»."
+  ],
+  "Freigegeben": [
+    "Approved",
+    "Autorisé",
+    "Autorizado"
+  ],
+  "TAN senden": [
+    "Send TAN",
+    "Envoyer le code TAN",
+    "Enviar TAN"
+  ],
+  "Löschen": [
+    "Delete",
+    "Supprimer",
+    "Eliminar"
+  ],
+  "Ausführen": [
+    "Execute",
+    "Exécuter",
+    "Ejecutar"
+  ],
+  "Online-Banking": [
+    "Online banking",
+    "Banque en ligne",
+    "Banca en línea"
+  ],
+  "Willkommen bei BankingCraft": [
+    "Welcome to BankingCraft",
+    "Bienvenue dans BankingCraft",
+    "Bienvenido a BankingCraft"
+  ],
+  "BankingCraft entsperren": [
+    "Unlock BankingCraft",
+    "Déverrouiller BankingCraft",
+    "Desbloquear BankingCraft"
+  ],
+  "Legen Sie ein Tresor-Passwort fest. Damit werden Konten, Umsätze und Zugangsdaten lokal verschlüsselt.": [
+    "Set a vault password. It will encrypt accounts, transactions and credentials locally.",
+    "Définissez un mot de passe pour le coffre. Il permettra de chiffrer localement les comptes, opérations et identifiants.",
+    "Establece una contraseña para la bóveda. Se utilizará para cifrar localmente cuentas, movimientos y credenciales."
+  ],
+  "Geben Sie Ihr Tresor-Passwort ein.": [
+    "Enter your vault password.",
+    "Saisissez le mot de passe de votre coffre.",
+    "Introduce la contraseña de la bóveda."
+  ],
+  "Tresor-Passwort": [
+    "Vault password",
+    "Mot de passe du coffre",
+    "Contraseña de la bóveda"
+  ],
+  "Passwort wiederholen": [
+    "Repeat password",
+    "Répéter le mot de passe",
+    "Repetir contraseña"
+  ],
+  "Tresor anlegen": [
+    "Create vault",
+    "Créer le coffre",
+    "Crear bóveda"
+  ],
+  "Entsperren": [
+    "Unlock",
+    "Déverrouiller",
+    "Desbloquear"
+  ],
+  "Übersicht": [
+    "Overview",
+    "Vue d’ensemble",
+    "Resumen"
+  ],
+  "ZAHLUNGSVERKEHR": [
+    "PAYMENTS",
+    "PAIEMENTS",
+    "PAGOS"
+  ],
+  "FINANZEN": [
+    "FINANCES",
+    "FINANCES",
+    "FINANZAS"
+  ],
+  "Sprache": [
+    "Language",
+    "Langue",
+    "Idioma"
+  ],
+  "Wählen Sie die Sprache der Anwendung.": [
+    "Choose the application language.",
+    "Choisissez la langue de l’application.",
+    "Elige el idioma de la aplicación."
+  ],
+  "Verwendet die Systemsprache, sofern verfügbar. Andernfalls wird Englisch verwendet.": [
+    "Uses the system language when available. Otherwise, English is used.",
+    "Utilise la langue du système si elle est disponible. Sinon, l’anglais est utilisé.",
+    "Utiliza el idioma del sistema si está disponible. En caso contrario, se utiliza el inglés."
+  ],
+  "chipTAN (optisch / USB)": [
+    "chipTAN (optical / USB)",
+    "chipTAN (optique / USB)",
+    "chipTAN (óptico / USB)"
+  ],
+  "Freigabe in der Banking-App": [
+    "Approval in the banking app",
+    "Autorisation dans l’application bancaire",
+    "Autorización en la aplicación bancaria"
+  ],
+  "TAN-Verfahren": [
+    "TAN method",
+    "Méthode TAN",
+    "Método TAN"
+  ],
+  "{kind} · Verfahren {}": [
+    "{kind} · Method {}",
+    "{kind} · Méthode {}",
+    "{kind} · Método {}"
+  ],
+  "TAN-Medium wählen": [
+    "Choose TAN medium",
+    "Choisir le support TAN",
+    "Elegir medio TAN"
+  ],
+  "Freigabe · {}": [
+    "Approval · {}",
+    "Autorisation · {}",
+    "Autorización · {}"
+  ],
+  "Konto nicht gefunden": [
+    "Account not found",
+    "Compte introuvable",
+    "Cuenta no encontrada"
+  ],
+  "Zielkonto nicht gefunden": [
+    "Target account not found",
+    "Compte cible introuvable",
+    "Cuenta de destino no encontrada"
+  ],
+  "Bitte einen Gruppennamen mit 1 bis 60 Zeichen eingeben.": [
+    "Enter a group name with 1 to 60 characters.",
+    "Saisissez un nom de groupe de 1 à 60 caractères.",
+    "Introduce un nombre de grupo de entre 1 y 60 caracteres."
+  ],
+  "Dieser Gruppenname ist bereits vergeben.": [
+    "This group name is already in use.",
+    "Ce nom de groupe est déjà utilisé.",
+    "Este nombre de grupo ya está en uso."
+  ],
+  "Gruppe nicht gefunden": [
+    "Group not found",
+    "Groupe introuvable",
+    "Grupo no encontrado"
+  ],
+  "Tresor nicht lesbar: {e}": [
+    "Cannot read vault: {e}",
+    "Impossible de lire le coffre : {e}",
+    "No se puede leer la bóveda: {e}"
+  ],
+  "Tresordatei ist ungültig oder zu groß": [
+    "Vault file is invalid or too large",
+    "Le fichier du coffre est invalide ou trop volumineux",
+    "El archivo de la bóveda no es válido o es demasiado grande"
+  ],
+  "Tresordatei ist zu groß": [
+    "Vault file is too large",
+    "Le fichier du coffre est trop volumineux",
+    "El archivo de la bóveda es demasiado grande"
+  ],
+  "Unbekanntes Dateiformat": [
+    "Unknown file format",
+    "Format de fichier inconnu",
+    "Formato de archivo desconocido"
+  ],
+  "Falsches Passwort": [
+    "Incorrect password",
+    "Mot de passe incorrect",
+    "Contraseña incorrecta"
+  ],
+  "Tresor beschädigt: {e}": [
+    "Vault is damaged: {e}",
+    "Le coffre est endommagé : {e}",
+    "La bóveda está dañada: {e}"
+  ],
+  "Aktuelles Passwort ist falsch": [
+    "Current password is incorrect",
+    "Le mot de passe actuel est incorrect",
+    "La contraseña actual es incorrecta"
+  ],
+  "Gespeicherte PIN beschädigt; Passwort wurde nicht geändert": [
+    "Saved PIN is damaged; password was not changed",
+    "Le code PIN enregistré est endommagé ; le mot de passe n’a pas été modifié",
+    "El PIN guardado está dañado; no se ha cambiado la contraseña"
+  ],
+  "Ungültige Bank-X-Importdatei": [
+    "Invalid Bank X import file",
+    "Fichier d’importation Bank X invalide",
+    "Archivo de importación de Bank X no válido"
+  ],
+  "Nicht unterstütztes Bank-X-Importformat": [
+    "Unsupported Bank X import format",
+    "Format d’importation Bank X non pris en charge",
+    "Formato de importación de Bank X no compatible"
+  ],
+  "Unvollständiger RDH-Bankzugang in der Importdatei": [
+    "Incomplete RDH bank connection in import file",
+    "Accès bancaire RDH incomplet dans le fichier d’importation",
+    "Acceso bancario RDH incompleto en el archivo de importación"
+  ],
+  "Ungültige oder widersprüchliche Kontoverbindung in der Importdatei": [
+    "Invalid or conflicting bank details in import file",
+    "Coordonnées bancaires invalides ou contradictoires dans le fichier d’importation",
+    "Datos bancarios no válidos o contradictorios en el archivo de importación"
+  ],
+  "Bank-X-Importdatei ist zu groß": [
+    "Bank X import file is too large",
+    "Le fichier d’importation Bank X est trop volumineux",
+    "El archivo de importación de Bank X es demasiado grande"
+  ],
+  "Sicherung vor Import fehlgeschlagen: {e}": [
+    "Backup before import failed: {e}",
+    "Échec de la sauvegarde avant importation : {e}",
+    "Error en la copia de seguridad previa a la importación: {e}"
+  ],
+  "Bank X: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.": [
+    "Bank X: imported {accesses} bank connections and {accounts} accounts. Refresh the connection for current balances.",
+    "Bank X : {accesses} accès bancaires et {accounts} comptes importés. Actualisez l’accès pour obtenir les soldes actuels.",
+    "Bank X: se han importado {accesses} accesos bancarios y {accounts} cuentas. Actualiza el acceso para obtener los saldos actuales."
+  ],
+  " Die temporäre Importdatei konnte nicht entfernt werden.": [
+    " The temporary import file could not be removed.",
+    " Le fichier d’importation temporaire n’a pas pu être supprimé.",
+    " No se ha podido eliminar el archivo de importación temporal."
+  ],
+  "Design konnte nicht gespeichert werden: {e}": [
+    "Could not save theme: {e}",
+    "Impossible d’enregistrer le thème : {e}",
+    "No se ha podido guardar el tema: {e}"
+  ],
+  "Bestätigen": [
+    "Confirm",
+    "Confirmer",
+    "Confirmar"
+  ],
+  "(kein Kartenleser gefunden)": [
+    "(no card reader found)",
+    "(aucun lecteur de carte détecté)",
+    "(no se ha encontrado ningún lector de tarjetas)"
+  ],
+  "Bank-X-Übernahme fehlgeschlagen: {e}": [
+    "Bank X import failed: {e}",
+    "Échec de l’importation Bank X : {e}",
+    "Error al importar Bank X: {e}"
+  ],
+  "Tresor ist gesperrt": [
+    "Vault is locked",
+    "Le coffre est verrouillé",
+    "La bóveda está bloqueada"
+  ],
+  "Bitte mindestens 8 Zeichen verwenden.": [
+    "Please use at least 8 characters.",
+    "Veuillez utiliser au moins 8 caractères.",
+    "Utiliza al menos 8 caracteres."
+  ],
+  "Die Passwörter stimmen nicht überein.": [
+    "The passwords do not match.",
+    "Les mots de passe ne correspondent pas.",
+    "Las contraseñas no coinciden."
+  ],
+  "Kontenrundruf …": [
+    "Refreshing accounts …",
+    "Actualisation des comptes…",
+    "Actualizando cuentas…"
+  ],
+  "Gruppe entfernen": [
+    "Remove group",
+    "Retirer le groupe",
+    "Quitar grupo"
+  ],
+  "Die Konten bleiben erhalten und werden unter „Ohne Gruppe“ angezeigt.": [
+    "The accounts are kept and will appear under “Ungrouped”.",
+    "Les comptes sont conservés et apparaîtront sous « Sans groupe ».",
+    "Las cuentas se conservarán y aparecerán en «Sin grupo»."
+  ],
+  "{} Umsätze exportiert:\n{}": [
+    "{} transactions exported:\n{}",
+    "{} opérations exportées :\n{}",
+    "{} movimientos exportados:\n{}"
+  ],
+  "{} Umsätze als camt.052 exportiert:\n{}": [
+    "{} transactions exported as camt.052:\n{}",
+    "{} opérations exportées au format camt.052 :\n{}",
+    "{} movimientos exportados como camt.052:\n{}"
+  ],
+  "IBAN gültig": [
+    "Valid IBAN",
+    "IBAN valide",
+    "IBAN válido"
+  ],
+  "Prüfziffer passt nicht – bitte IBAN kontrollieren": [
+    "Check digits do not match – please check the IBAN",
+    "Clé de contrôle incorrecte – vérifiez l’IBAN",
+    "Los dígitos de control no coinciden; comprueba el IBAN"
+  ],
+  "Bitte ein Auftraggeberkonto wählen.": [
+    "Please choose a debit account.",
+    "Veuillez choisir un compte à débiter.",
+    "Selecciona una cuenta de origen."
+  ],
+  "\nAusführung am {}": [
+    "\nExecution on {}",
+    "\nExécution le {}",
+    "\nEjecución el {}"
+  ],
+  "Überweisung senden?": [
+    "Send transfer?",
+    "Envoyer le virement ?",
+    "¿Enviar transferencia?"
+  ],
+  "Überweisung wird übermittelt …": [
+    "Sending transfer …",
+    "Envoi du virement…",
+    "Enviando transferencia…"
+  ],
+  "Bitte das Datum der ersten Ausführung als TT.MM.JJJJ angeben.": [
+    "Enter the first execution date as DD.MM.YYYY.",
+    "Saisissez la première date d’exécution au format JJ.MM.AAAA.",
+    "Introduce la fecha de primera ejecución como DD.MM.AAAA."
+  ],
+  "Bitte ein gültiges Enddatum als TT.MM.JJJJ angeben.": [
+    "Enter a valid end date as DD.MM.YYYY.",
+    "Saisissez une date de fin valide au format JJ.MM.AAAA.",
+    "Introduce una fecha de finalización válida como DD.MM.AAAA."
+  ],
+  "Bitte einen gültigen Ausführungstag angeben.": [
+    "Please enter a valid execution day.",
+    "Veuillez saisir un jour d’exécution valide.",
+    "Introduce un día de ejecución válido."
+  ],
+  "Dauerauftrag anlegen?": [
+    "Create standing order?",
+    "Créer le virement permanent ?",
+    "¿Crear transferencia periódica?"
+  ],
+  "Dauerauftrag wird angelegt …": [
+    "Creating standing order …",
+    "Création du virement permanent…",
+    "Creando transferencia periódica…"
+  ],
+  "Daueraufträge werden abgerufen …": [
+    "Retrieving standing orders …",
+    "Récupération des virements permanents…",
+    "Consultando transferencias periódicas…"
+  ],
+  "Dauerauftrag löschen?": [
+    "Delete standing order?",
+    "Supprimer le virement permanent ?",
+    "¿Eliminar transferencia periódica?"
+  ],
+  "Der Dauerauftrag an {name} wird bei der Bank gelöscht.": [
+    "The standing order to {name} will be deleted at the bank.",
+    "Le virement permanent vers {name} sera supprimé auprès de la banque.",
+    "Se eliminará en el banco la transferencia periódica a {name}."
+  ],
+  "Dauerauftrag wird gelöscht …": [
+    "Deleting standing order …",
+    "Suppression du virement permanent…",
+    "Eliminando transferencia periódica…"
+  ],
+  "BLZ {} · {} · {}": [
+    "Bank code {} · {} · {}",
+    "Code bancaire {} · {} · {}",
+    "Código bancario {} · {} · {}"
+  ],
+  "✓ {} · BLZ {} übernommen{}": [
+    "✓ {} · Bank code {} applied{}",
+    "✓ {} · Code bancaire {} appliqué{}",
+    "✓ {} · Código bancario {} aplicado{}"
+  ],
+  "Kein Kartenleser ausgewählt.": [
+    "No card reader selected.",
+    "Aucun lecteur de carte sélectionné.",
+    "No se ha seleccionado ningún lector de tarjetas."
+  ],
+  "Lese Bankdaten von der Chipkarte …": [
+    "Reading bank details from smart card …",
+    "Lecture des coordonnées bancaires sur la carte à puce…",
+    "Leyendo datos bancarios de la tarjeta inteligente…"
+  ],
+  "BLZ {}": [
+    "Bank code {}",
+    "Code bancaire {}",
+    "Código bancario {}"
+  ],
+  "{bank} (RDH-Chipkarte)": [
+    "{bank} (RDH smart card)",
+    "{bank} (carte à puce RDH)",
+    "{bank} (tarjeta inteligente RDH)"
+  ],
+  "Karte {number} gelesen: RDH-{} · BLZ {} · Kennung {}": [
+    "Card {number} read: RDH-{} · Bank code {} · User ID {}",
+    "Carte {number} lue : RDH-{} · Code bancaire {} · Identifiant {}",
+    "Tarjeta {number} leída: RDH-{} · Código bancario {} · Identificador {}"
+  ],
+  "{} (Chipkarte)": [
+    "{} (smart card)",
+    "{} (carte à puce)",
+    "{} (tarjeta inteligente)"
+  ],
+  "Karte gelesen: {} · BLZ {}": [
+    "Card read: {} · Bank code {}",
+    "Carte lue : {} · Code bancaire {}",
+    "Tarjeta leída: {} · Código bancario {}"
+  ],
+  "Die Bankleitzahl muss 8 Ziffern haben.": [
+    "The bank code must have 8 digits.",
+    "Le code bancaire doit comporter 8 chiffres.",
+    "El código bancario debe tener 8 dígitos."
+  ],
+  "Bitte die Benutzerkennung angeben.": [
+    "Please enter the user ID.",
+    "Veuillez saisir l’identifiant utilisateur.",
+    "Introduce el identificador de usuario."
+  ],
+  "Bitte die FinTS-URL Ihrer Bank (https://…) angeben.": [
+    "Please enter your bank’s FinTS URL (https://…).",
+    "Veuillez saisir l’URL FinTS de votre banque (https://…).",
+    "Introduce la URL FinTS de tu banco (https://…)."
+  ],
+  "Bankzugang wird eingerichtet …": [
+    "Setting up bank connection …",
+    "Configuration de l’accès bancaire…",
+    "Configurando acceso bancario…"
+  ],
+  "Bankzugang entfernen?": [
+    "Remove bank connection?",
+    "Retirer l’accès bancaire ?",
+    "¿Quitar acceso bancario?"
+  ],
+  "„{name}“ mit allen lokal gespeicherten Konten und Umsätzen entfernen? Bei der Bank wird nichts geändert.": [
+    "Remove “{name}” with all locally stored accounts and transactions? Nothing will be changed at the bank.",
+    "Retirer « {name} » avec tous les comptes et opérations stockés localement ? Rien ne sera modifié auprès de la banque.",
+    "¿Quitar «{name}» con todas las cuentas y movimientos guardados localmente? No se modificará nada en el banco."
+  ],
+  "Die gespeicherte PIN wurde gelöscht.": [
+    "The saved PIN has been deleted.",
+    "Le code PIN enregistré a été supprimé.",
+    "Se ha eliminado el PIN guardado."
+  ],
+  "Bankzugang wird synchronisiert …": [
+    "Synchronizing bank connection …",
+    "Synchronisation de l’accès bancaire…",
+    "Sincronizando acceso bancario…"
+  ],
+  "TAN-Verfahren werden abgefragt …": [
+    "Retrieving TAN methods …",
+    "Récupération des méthodes TAN…",
+    "Consultando métodos TAN…"
+  ],
+  "Prüfe Kartenleser …": [
+    "Checking card reader …",
+    "Vérification du lecteur de carte…",
+    "Comprobando lector de tarjetas…"
+  ],
+  "Einstellungen gespeichert.": [
+    "Settings saved.",
+    "Paramètres enregistrés.",
+    "Configuración guardada."
+  ],
+  "Das neue Passwort braucht mindestens 8 Zeichen.": [
+    "The new password must have at least 8 characters.",
+    "Le nouveau mot de passe doit comporter au moins 8 caractères.",
+    "La nueva contraseña debe tener al menos 8 caracteres."
+  ],
+  "Tresor nicht geöffnet": [
+    "Vault not open",
+    "Le coffre n’est pas ouvert",
+    "La bóveda no está abierta"
+  ],
+  "Tresor-Passwort geändert.": [
+    "Vault password changed.",
+    "Mot de passe du coffre modifié.",
+    "Se ha cambiado la contraseña de la bóveda."
+  ],
+  "Demo-Bankzugang mit Beispielumsätzen angelegt.": [
+    "Demo bank connection with sample transactions created.",
+    "Accès bancaire de démonstration créé avec des exemples d’opérations.",
+    "Se ha creado un acceso bancario de demostración con movimientos de ejemplo."
+  ],
+  "Eingefügt.": [
+    "Pasted.",
+    "Collé.",
+    "Pegado."
+  ],
+  "PIN eingefügt – die Zwischenablage wurde aus Sicherheitsgründen geleert.": [
+    "PIN pasted – the clipboard was cleared for security.",
+    "Code PIN collé – le presse-papiers a été vidé par sécurité.",
+    "PIN pegado; se ha vaciado el portapapeles por seguridad."
+  ],
+  "PIN eingefügt.": [
+    "PIN pasted.",
+    "Code PIN collé.",
+    "PIN pegado."
+  ],
+  "Bitte prüfen Sie Empfänger und Betrag im Display des Kartenlesers und bestätigen Sie dort mit OK.": [
+    "Check the recipient and amount on the card reader’s display and confirm there with OK.",
+    "Vérifiez le bénéficiaire et le montant sur l’écran du lecteur de carte, puis confirmez avec OK.",
+    "Comprueba el beneficiario y el importe en la pantalla del lector y confirma allí con OK."
+  ],
+  "Zwischenablage nicht verfügbar: {e}": [
+    "Clipboard unavailable: {e}",
+    "Presse-papiers indisponible : {e}",
+    "Portapapeles no disponible: {e}"
+  ],
+  "Die Zwischenablage enthält keinen Text.": [
+    "The clipboard does not contain text.",
+    "Le presse-papiers ne contient pas de texte.",
+    "El portapapeles no contiene texto."
+  ],
+  "Die Zwischenablage ist leer.": [
+    "The clipboard is empty.",
+    "Le presse-papiers est vide.",
+    "El portapapeles está vacío."
+  ],
+  "Der Inhalt der Zwischenablage sieht nicht nach einer PIN/TAN aus.": [
+    "The clipboard content does not look like a PIN/TAN.",
+    "Le contenu du presse-papiers ne semble pas être un code PIN/TAN.",
+    "El contenido del portapapeles no parece un PIN/TAN."
+  ],
+  "Bitte einen gültigen Betrag angeben.": [
+    "Please enter a valid amount.",
+    "Veuillez saisir un montant valide.",
+    "Introduce un importe válido."
+  ],
+  "Bitte den Empfänger angeben.": [
+    "Please enter the recipient.",
+    "Veuillez saisir le bénéficiaire.",
+    "Introduce el beneficiario."
+  ],
+  "Die IBAN ist ungültig.": [
+    "The IBAN is invalid.",
+    "L’IBAN est invalide.",
+    "El IBAN no es válido."
+  ],
+  "Der Betrag muss größer als 0 sein.": [
+    "The amount must be greater than 0.",
+    "Le montant doit être supérieur à 0.",
+    "El importe debe ser mayor que 0."
+  ],
+  "Der Verwendungszweck ist länger als 140 Zeichen.": [
+    "The reference exceeds 140 characters.",
+    "Le motif dépasse 140 caractères.",
+    "El concepto supera los 140 caracteres."
+  ],
+  "Bitte das Ausführungsdatum als TT.MM.JJJJ angeben.": [
+    "Enter the execution date as DD.MM.YYYY.",
+    "Saisissez la date d’exécution au format JJ.MM.AAAA.",
+    "Introduce la fecha de ejecución como DD.MM.AAAA."
+  ],
+  "Eine Terminüberweisung muss in der Zukunft liegen.": [
+    "A scheduled transfer must be in the future.",
+    "Un virement programmé doit avoir une date future.",
+    "Una transferencia programada debe tener una fecha futura."
+  ],
+  "{msg}\n\nLokales Speichern fehlgeschlagen: {e}": [
+    "{msg}\n\nFailed to save locally: {e}",
+    "{msg}\n\nÉchec de l’enregistrement local : {e}",
+    "{msg}\n\nError al guardar localmente: {e}"
+  ],
+  "{e}\n\nLokales Speichern fehlgeschlagen: {save}": [
+    "{e}\n\nFailed to save locally: {save}",
+    "{e}\n\nÉchec de l’enregistrement local : {save}",
+    "{e}\n\nError al guardar localmente: {save}"
+  ],
+  "\n\nFehlerprotokoll (ohne Nachrichteninhalte): {}": [
+    "\n\nError log (without message contents): {}",
+    "\n\nJournal d’erreurs (sans contenu des messages) : {}",
+    "\n\nRegistro de errores (sin contenido de mensajes): {}"
+  ],
+  "Die gespeicherte PIN wurde von der Bank abgelehnt und gelöscht.": [
+    "The bank rejected the saved PIN and it has been deleted.",
+    "La banque a refusé le code PIN enregistré ; il a été supprimé.",
+    "El banco ha rechazado el PIN guardado y se ha eliminado."
+  ],
+  "PIN verschlüsselt gespeichert.": [
+    "PIN saved with encryption.",
+    "Code PIN enregistré et chiffré.",
+    "PIN guardado con cifrado."
+  ],
+  "Vorgang abgebrochen.": [
+    "Operation cancelled.",
+    "Opération annulée.",
+    "Operación cancelada."
+  ],
+  "Die Bank meldet:\n{text}": [
+    "The bank reports:\n{text}",
+    "La banque indique :\n{text}",
+    "El banco indica:\n{text}"
+  ],
+  "Verbindung zur Bank fehlgeschlagen: {t}": [
+    "Bank connection failed: {t}",
+    "Échec de la connexion à la banque : {t}",
+    "Error de conexión con el banco: {t}"
+  ],
+  "Von der Bank nicht angeboten: {t}": [
+    "Not offered by the bank: {t}",
+    "Non proposé par la banque : {t}",
+    "No ofrecido por el banco: {t}"
+  ],
+  "PIN der HBCI-Chipkarte (Leser ohne PIN-Pad)": [
+    "HBCI smart card PIN (reader without PIN pad)",
+    "Code PIN de la carte HBCI (lecteur sans clavier PIN)",
+    "PIN de la tarjeta HBCI (lector sin teclado PIN)"
+  ],
+  "Verbinde mit Chipkarte …": [
+    "Connecting to smart card …",
+    "Connexion à la carte à puce…",
+    "Conectando con la tarjeta inteligente…"
+  ],
+  "Bitte geben Sie die PIN Ihrer HBCI-Chipkarte am Kartenleser ein und bestätigen Sie mit OK.": [
+    "Enter your HBCI smart card PIN on the card reader and confirm with OK.",
+    "Saisissez le code PIN de votre carte HBCI sur le lecteur et confirmez avec OK.",
+    "Introduce el PIN de tu tarjeta HBCI en el lector y confirma con OK."
+  ],
+  "Demo-Zugang": [
+    "Demo connection",
+    "Accès de démonstration",
+    "Acceso de demostración"
+  ],
+  "PIN der RDH-Chipkarte (Leser ohne PIN-Pad)": [
+    "RDH smart card PIN (reader without PIN pad)",
+    "Code PIN de la carte RDH (lecteur sans clavier PIN)",
+    "PIN de la tarjeta RDH (lector sin teclado PIN)"
+  ],
+  "Verbinde mit RDH-Chipkarte …": [
+    "Connecting to RDH smart card …",
+    "Connexion à la carte à puce RDH…",
+    "Conectando con la tarjeta inteligente RDH…"
+  ],
+  "Bitte geben Sie die PIN Ihrer Chipkarte (z. B. VR-NetWorld-Card) am Kartenleser ein und bestätigen Sie mit OK.": [
+    "Enter your smart card PIN (e.g. VR-NetWorld-Card) on the card reader and confirm with OK.",
+    "Saisissez le code PIN de votre carte à puce (p. ex. VR-NetWorld-Card) sur le lecteur et confirmez avec OK.",
+    "Introduce el PIN de tu tarjeta inteligente (p. ej. VR-NetWorld-Card) en el lector y confirma con OK."
+  ],
+  "Auf der Chipkarte ist kein Bankzugang eingerichtet": [
+    "No bank connection is configured on the smart card",
+    "Aucun accès bancaire n’est configuré sur la carte à puce",
+    "No hay ningún acceso bancario configurado en la tarjeta inteligente"
+  ],
+  "Bankzugang nicht gefunden": [
+    "Bank connection not found",
+    "Accès bancaire introuvable",
+    "Acceso bancario no encontrado"
+  ],
+  "{}: Demo-Daten sind aktuell.": [
+    "{}: demo data is up to date.",
+    "{} : les données de démonstration sont à jour.",
+    "{}: los datos de demostración están actualizados."
+  ],
+  "Saldo {}: {}": [
+    "Balance {}: {}",
+    "Solde {} : {}",
+    "Saldo {}: {}"
+  ],
+  "Kreditkartenumsätze: {e}": [
+    "Credit card transactions: {e}",
+    "Opérations de carte de crédit : {e}",
+    "Movimientos de tarjeta de crédito: {e}"
+  ],
+  "Umsätze {}: Freigabe abgebrochen – Umsätze wurden nicht abgerufen.": [
+    "Transactions {}: approval cancelled – transactions were not retrieved.",
+    "Opérations {} : autorisation annulée – les opérations n’ont pas été récupérées.",
+    "Movimientos {}: autorización cancelada; no se han consultado los movimientos."
+  ],
+  "Umsätze {}: {}": [
+    "Transactions {}: {}",
+    "Opérations {} : {}",
+    "Movimientos {}: {}"
+  ],
+  "{}: {} Konten geprüft, {} neue Umsätze.": [
+    "{}: {} accounts checked, {} new transactions.",
+    "{} : {} comptes vérifiés, {} nouvelles opérations.",
+    "{}: {} cuentas comprobadas, {} movimientos nuevos."
+  ],
+  "TAN-Verfahren: {}": [
+    "TAN method: {}",
+    "Méthode TAN : {}",
+    "Método TAN: {}"
+  ],
+  "Demo: {what}\n\nIm Demo-Modus wird nichts an eine Bank gesendet. Geben Sie eine beliebige TAN ein.": [
+    "Demo: {what}\n\nIn demo mode nothing is sent to a bank. Enter any TAN.",
+    "Démonstration : {what}\n\nEn mode démonstration, rien n’est envoyé à une banque. Saisissez un code TAN quelconque.",
+    "Demostración: {what}\n\nEn el modo de demostración no se envía nada a ningún banco. Introduce cualquier TAN."
+  ],
+  "chipTAN optisch (Demo)": [
+    "Optical chipTAN (demo)",
+    "chipTAN optique (démonstration)",
+    "chipTAN óptico (demostración)"
+  ],
+  "Kontoinhaber": [
+    "Account holder",
+    "Titulaire du compte",
+    "Titular de la cuenta"
+  ],
+  "Überweisung {} an {}": [
+    "Transfer {} to {}",
+    "Virement de {} vers {}",
+    "Transferencia de {} a {}"
+  ],
+  "Demo: Überweisung wurde simuliert und als vorgemerkter Umsatz eingetragen.": [
+    "Demo: transfer simulated and recorded as a pending transaction.",
+    "Démonstration : virement simulé et enregistré comme opération en attente.",
+    "Demostración: transferencia simulada y registrada como movimiento pendiente."
+  ],
+  "Auftrag übermittelt.\n{summary}": [
+    "Order submitted.\n{summary}",
+    "Ordre transmis.\n{summary}",
+    "Orden enviada.\n{summary}"
+  ],
+  "Nur Demo-Daueraufträge vorhanden.": [
+    "Only demo standing orders available.",
+    "Seuls des virements permanents de démonstration sont disponibles.",
+    "Solo hay transferencias periódicas de demostración."
+  ],
+  "Daueraufträge konnten nicht abgerufen werden.": [
+    "Could not retrieve standing orders.",
+    "Impossible de récupérer les virements permanents.",
+    "No se han podido consultar las transferencias periódicas."
+  ],
+  "Abruf teilweise erfolgreich: {total} Daueraufträge aus {loaded_accounts} Konten geladen.": [
+    "Partially successful: {total} standing orders loaded from {loaded_accounts} accounts.",
+    "Réussite partielle : {total} virements permanents chargés depuis {loaded_accounts} comptes.",
+    "Consulta parcialmente correcta: {total} transferencias periódicas cargadas de {loaded_accounts} cuentas."
+  ],
+  "{status}\n{}\nVorhandene Daueraufträge der betroffenen Konten bleiben erhalten.": [
+    "{status}\n{}\nExisting standing orders for the affected accounts are kept.",
+    "{status}\n{}\nLes virements permanents existants des comptes concernés sont conservés.",
+    "{status}\n{}\nSe conservan las transferencias periódicas existentes de las cuentas afectadas."
+  ],
+  "Keines der eingerichteten Konten bietet den Dauerauftragsabruf an.": [
+    "None of the configured accounts supports retrieving standing orders.",
+    "Aucun des comptes configurés ne permet de récupérer les virements permanents.",
+    "Ninguna de las cuentas configuradas permite consultar transferencias periódicas."
+  ],
+  "{total} Daueraufträge geladen.": [
+    "{total} standing orders loaded.",
+    "{total} virements permanents chargés.",
+    "{total} transferencias periódicas cargadas."
+  ],
+  "Dauerauftrag {} an {}": [
+    "Standing order {} to {}",
+    "Virement permanent de {} vers {}",
+    "Transferencia periódica de {} a {}"
+  ],
+  "Demo: Dauerauftrag angelegt.": [
+    "Demo: standing order created.",
+    "Démonstration : virement permanent créé.",
+    "Demostración: transferencia periódica creada."
+  ],
+  "Dauerauftrag angelegt.\n{summary}\n\nDie Liste konnte nicht aktualisiert werden: {}. Bitte die Liste erneut abrufen, den Auftrag nicht erneut anlegen.": [
+    "Standing order created.\n{summary}\n\nCould not refresh the list: {}. Retrieve the list again; do not create the order again.",
+    "Virement permanent créé.\n{summary}\n\nImpossible d’actualiser la liste : {}. Récupérez à nouveau la liste, sans recréer l’ordre.",
+    "Transferencia periódica creada.\n{summary}\n\nNo se ha podido actualizar la lista: {}. Consulta de nuevo la lista; no vuelvas a crear la orden."
+  ],
+  "Dauerauftrag angelegt.\n{summary}": [
+    "Standing order created.\n{summary}",
+    "Virement permanent créé.\n{summary}",
+    "Transferencia periódica creada.\n{summary}"
+  ],
+  "Dauerauftrag nicht gefunden": [
+    "Standing order not found",
+    "Virement permanent introuvable",
+    "Transferencia periódica no encontrada"
+  ],
+  "Dauerauftrag an {} löschen": [
+    "Delete standing order to {}",
+    "Supprimer le virement permanent vers {}",
+    "Eliminar transferencia periódica a {}"
+  ],
+  "Dauerauftrag gelöscht.": [
+    "Standing order deleted.",
+    "Virement permanent supprimé.",
+    "Transferencia periódica eliminada."
+  ],
+  "Januar": [
+    "January",
+    "janvier",
+    "enero"
+  ],
+  "Februar": [
+    "February",
+    "février",
+    "febrero"
+  ],
+  "März": [
+    "March",
+    "mars",
+    "marzo"
+  ],
+  "April": [
+    "April",
+    "avril",
+    "abril"
+  ],
+  "Mai": [
+    "May",
+    "mai",
+    "mayo"
+  ],
+  "Juni": [
+    "June",
+    "juin",
+    "junio"
+  ],
+  "Juli": [
+    "July",
+    "juillet",
+    "julio"
+  ],
+  "August": [
+    "August",
+    "août",
+    "agosto"
+  ],
+  "September": [
+    "September",
+    "septembre",
+    "septiembre"
+  ],
+  "Oktober": [
+    "October",
+    "octobre",
+    "octubre"
+  ],
+  "November": [
+    "November",
+    "novembre",
+    "noviembre"
+  ],
+  "Dezember": [
+    "December",
+    "décembre",
+    "diciembre"
+  ],
+  "Jan": [
+    "Jan",
+    "janv.",
+    "ene"
+  ],
+  "Feb": [
+    "Feb",
+    "févr.",
+    "feb"
+  ],
+  "Mär": [
+    "Mar",
+    "mars",
+    "mar"
+  ],
+  "Apr": [
+    "Apr",
+    "avr.",
+    "abr"
+  ],
+  "Jun": [
+    "Jun",
+    "juin",
+    "jun"
+  ],
+  "Jul": [
+    "Jul",
+    "juil.",
+    "jul"
+  ],
+  "Aug": [
+    "Aug",
+    "août",
+    "ago"
+  ],
+  "Sep": [
+    "Sep",
+    "sept.",
+    "sep"
+  ],
+  "Okt": [
+    "Oct",
+    "oct.",
+    "oct"
+  ],
+  "Nov": [
+    "Nov",
+    "nov.",
+    "nov"
+  ],
+  "Dez": [
+    "Dec",
+    "déc.",
+    "dic"
+  ],
+  "Montag": [
+    "Monday",
+    "lundi",
+    "lunes"
+  ],
+  "Dienstag": [
+    "Tuesday",
+    "mardi",
+    "martes"
+  ],
+  "Mittwoch": [
+    "Wednesday",
+    "mercredi",
+    "miércoles"
+  ],
+  "Donnerstag": [
+    "Thursday",
+    "jeudi",
+    "jueves"
+  ],
+  "Freitag": [
+    "Friday",
+    "vendredi",
+    "viernes"
+  ],
+  "Samstag": [
+    "Saturday",
+    "samedi",
+    "sábado"
+  ],
+  "Sonntag": [
+    "Sunday",
+    "dimanche",
+    "domingo"
+  ],
+  "Heute, ": [
+    "Today, ",
+    "Aujourd’hui, ",
+    "Hoy, "
+  ],
+  "Gestern, ": [
+    "Yesterday, ",
+    "Hier, ",
+    "Ayer, "
+  ],
+  "{prefix}{}. {} {}": [
+    "{prefix}{} {} {}",
+    "{prefix}{} {} {}",
+    "{prefix}{} de {} de {}"
+  ],
+  "Keine Konten": [
+    "No accounts",
+    "Aucun compte",
+    "Sin cuentas"
+  ],
+  "Noch keine Salden abgerufen": [
+    "No balances retrieved yet",
+    "Aucun solde récupéré",
+    "Todavía no se han consultado saldos"
+  ],
+  "Teilsaldo · {known} von {} Kontosalden verfügbar": [
+    "Partial balance · {known} of {} account balances available",
+    "Solde partiel · {known} soldes disponibles sur {} comptes",
+    "Saldo parcial · {known} de {} saldos disponibles"
+  ],
+  "Alle Konten": [
+    "All accounts",
+    "Tous les comptes",
+    "Todas las cuentas"
+  ],
+  "Girokonto": [
+    "Current account",
+    "Compte courant",
+    "Cuenta corriente"
+  ],
+  "Sparkonto": [
+    "Savings account",
+    "Compte d’épargne",
+    "Cuenta de ahorro"
+  ],
+  "Festgeld": [
+    "Fixed-term deposit",
+    "Dépôt à terme",
+    "Depósito a plazo fijo"
+  ],
+  "Depot": [
+    "Securities account",
+    "Compte-titres",
+    "Cuenta de valores"
+  ],
+  "Darlehen": [
+    "Loan",
+    "Prêt",
+    "Préstamo"
+  ],
+  "Kreditkarte": [
+    "Credit card",
+    "Carte de crédit",
+    "Tarjeta de crédito"
+  ],
+  "Ohne Gruppe": [
+    "Ungrouped",
+    "Sans groupe",
+    "Sin grupo"
+  ],
+  "aktualisiert {}": [
+    "updated {}",
+    "actualisé le {}",
+    "actualizado el {}"
+  ],
+  "noch nicht abgerufen": [
+    "not retrieved yet",
+    "non récupéré",
+    "todavía sin consultar"
+  ],
+  "Letzter Kontenrundruf: {}": [
+    "Last account refresh: {}",
+    "Dernière actualisation des comptes : {}",
+    "Última actualización de cuentas: {}"
+  ],
+  "%d.%m.%Y um %H:%M Uhr": [
+    "%d.%m.%Y at %H:%M",
+    "%d.%m.%Y à %H:%M",
+    "%d.%m.%Y a las %H:%M"
+  ],
+  "Willkommen – richten Sie einen Bankzugang ein oder laden Sie die Demo-Daten.": [
+    "Welcome – set up a bank connection or load the demo data.",
+    "Bienvenue – configurez un accès bancaire ou chargez les données de démonstration.",
+    "Bienvenido: configura un acceso bancario o carga los datos de demostración."
+  ],
+  " · {} Uhr": [
+    " · {}",
+    " · {}",
+    " · {}"
+  ],
+  "nächste Ausführung {}": [
+    "next execution {}",
+    "prochaine exécution {}",
+    "próxima ejecución {}"
+  ],
+  "beendet": [
+    "ended",
+    "terminé",
+    "finalizada"
+  ],
+  "BLZ {} · {}": [
+    "Bank code {} · {}",
+    "Code bancaire {} · {}",
+    "Código bancario {} · {}"
+  ],
+  "BLZ {} · Eintrag {record} · {reader}": [
+    "Bank code {} · Entry {record} · {reader}",
+    "Code bancaire {} · Entrée {record} · {reader}",
+    "Código bancario {} · Entrada {record} · {reader}"
+  ],
+  "RDH-Chipkarte": [
+    "RDH smart card",
+    "Carte à puce RDH",
+    "Tarjeta inteligente RDH"
+  ],
+  "BLZ {} · {} · Eintrag {record} · {reader}": [
+    "Bank code {} · {} · Entry {record} · {reader}",
+    "Code bancaire {} · {} · Entrée {record} · {reader}",
+    "Código bancario {} · {} · Entrada {record} · {reader}"
+  ],
+  "lokale Beispieldaten": [
+    "local sample data",
+    "exemples locaux",
+    "datos de ejemplo locales"
+  ],
+  "Signatur mit Chipkarte": [
+    "Smart card signature",
+    "Signature par carte à puce",
+    "Firma con tarjeta inteligente"
+  ],
+  "RSA-Signatur mit Chipkarte (RDH)": [
+    "RSA signature with smart card (RDH)",
+    "Signature RSA par carte à puce (RDH)",
+    "Firma RSA con tarjeta inteligente (RDH)"
+  ],
+  "chipTAN (Demo)": [
+    "chipTAN (demo)",
+    "chipTAN (démonstration)",
+    "chipTAN (demostración)"
+  ],
+  "noch nicht gewählt": [
+    "not selected yet",
+    "non sélectionné",
+    "todavía sin seleccionar"
+  ],
+  "Umbuchung": [
+    "Internal transfer",
+    "Virement interne",
+    "Traspaso"
+  ],
+  "Umsatz": [
+    "Transaction",
+    "Opération",
+    "Movimiento"
+  ],
+  "Vorgemerkte Umsätze": [
+    "Pending transactions",
+    "Opérations en attente",
+    "Movimientos pendientes"
+  ],
+  "Buchungsdatum nicht geliefert": [
+    "Booking date not supplied",
+    "Date de comptabilisation non fournie",
+    "Fecha de contabilización no facilitada"
+  ],
+  "Tagessaldo {}": [
+    "Daily balance {}",
+    "Solde du jour {}",
+    "Saldo diario {}"
+  ],
+  "Tagessumme {}": [
+    "Daily total {}",
+    "Total du jour {}",
+    "Total diario {}"
+  ],
+  "{} Umsätze · Einnahmen {} · Ausgaben {}": [
+    "{} transactions · Income {} · Expenses {}",
+    "{} opérations · Revenus {} · Dépenses {}",
+    "{} movimientos · Ingresos {} · Gastos {}"
+  ],
+  "nicht geliefert": [
+    "not supplied",
+    "non fourni",
+    "no facilitado"
+  ],
+  "alle {n} Wochen": [
+    "every {n} weeks",
+    "toutes les {n} semaines",
+    "cada {n} semanas"
+  ],
+  "alle {n} Monate": [
+    "every {n} months",
+    "tous les {n} mois",
+    "cada {n} meses"
+  ],
+  " zwei Tage vor Ultimo": [
+    " two days before month end",
+    " deux jours avant la fin du mois",
+    " dos días antes de fin de mes"
+  ],
+  " einen Tag vor Ultimo": [
+    " one day before month end",
+    " un jour avant la fin du mois",
+    " un día antes de fin de mes"
+  ],
+  " zum Ultimo": [
+    " at month end",
+    " en fin de mois",
+    " a fin de mes"
+  ],
+  " zum {d}.": [
+    " on day {d}",
+    " le {d}",
+    " el día {d}"
+  ],
+  "Lebensmittel": [
+    "Groceries",
+    "Alimentation",
+    "Alimentación"
+  ],
+  "Wohnen": [
+    "Housing",
+    "Logement",
+    "Vivienda"
+  ],
+  "Energie": [
+    "Energy",
+    "Énergie",
+    "Energía"
+  ],
+  "Mobilität": [
+    "Transport",
+    "Transports",
+    "Transporte"
+  ],
+  "Versicherungen": [
+    "Insurance",
+    "Assurances",
+    "Seguros"
+  ],
+  "Gesundheit": [
+    "Health",
+    "Santé",
+    "Salud"
+  ],
+  "Freizeit": [
+    "Leisure",
+    "Loisirs",
+    "Ocio"
+  ],
+  "Shopping": [
+    "Shopping",
+    "Achats",
+    "Compras"
+  ],
+  "Kommunikation": [
+    "Communication",
+    "Communication",
+    "Comunicación"
+  ],
+  "Bargeld": [
+    "Cash",
+    "Espèces",
+    "Efectivo"
+  ],
+  "Steuern & Abgaben": [
+    "Taxes & duties",
+    "Impôts et taxes",
+    "Impuestos y tasas"
+  ],
+  "Gehalt": [
+    "Salary",
+    "Salaire",
+    "Salario"
+  ],
+  "Sonstiges": [
+    "Other",
+    "Autres",
+    "Otros"
+  ],
+  "Sprache konnte nicht gespeichert werden: {e}": [
+    "Could not save language: {e}",
+    "Impossible d’enregistrer la langue : {e}",
+    "No se ha podido guardar el idioma: {e}"
+  ],
+  "Sichere PIN-Eingabe (VERIFY_PIN_DIRECT)": [
+    "Secure PIN entry (VERIFY_PIN_DIRECT)",
+    "Saisie sécurisée du code PIN (VERIFY_PIN_DIRECT)",
+    "Introducción segura del PIN (VERIFY_PIN_DIRECT)"
+  ],
+  "PIN-Änderung am Leser (MODIFY_PIN_DIRECT)": [
+    "PIN change on reader (MODIFY_PIN_DIRECT)",
+    "Modification du code PIN sur le lecteur (MODIFY_PIN_DIRECT)",
+    "Cambio del PIN en el lector (MODIFY_PIN_DIRECT)"
+  ],
+  "PIN-Pad-Eigenschaften": [
+    "PIN pad properties",
+    "Propriétés du clavier PIN",
+    "Propiedades del teclado PIN"
+  ],
+  "Display beschreibbar": [
+    "Writable display",
+    "Écran accessible en écriture",
+    "Pantalla con escritura disponible"
+  ],
+  "Display-Eigenschaften": [
+    "Display properties",
+    "Propriétés de l’écran",
+    "Propiedades de la pantalla"
+  ],
+  "TLV-Eigenschaften": [
+    "TLV properties",
+    "Propriétés TLV",
+    "Propiedades TLV"
+  ],
+  "PIN-Prüfung (zweistufig)": [
+    "PIN verification (two-step)",
+    "Vérification du code PIN (en deux étapes)",
+    "Verificación del PIN (dos pasos)"
+  ],
+  "PIN-Änderung (zweistufig)": [
+    "PIN change (two-step)",
+    "Modification du code PIN (en deux étapes)",
+    "Cambio del PIN (dos pasos)"
+  ],
+  "Tastenabfrage": [
+    "Key query",
+    "Lecture des touches",
+    "Consulta de teclas"
+  ],
+  "Abbruch": [
+    "Cancel",
+    "Annulation",
+    "Cancelación"
+  ],
+  "SPE-Meldungen": [
+    "SPE messages",
+    "Messages SPE",
+    "Mensajes SPE"
+  ],
+  "PIN mit App-ID": [
+    "PIN with app ID",
+    "Code PIN avec identifiant d’application",
+    "PIN con identificador de aplicación"
+  ],
+  "PC/SC nicht verfügbar: {e}": [
+    "PC/SC unavailable: {e}",
+    "PC/SC indisponible : {e}",
+    "PC/SC no disponible: {e}"
+  ],
+  "Kein Kartenleser gefunden": [
+    "No card reader found",
+    "Aucun lecteur de carte détecté",
+    "No se ha encontrado ningún lector de tarjetas"
+  ],
+  "ungültiger Readername": [
+    "Invalid reader name",
+    "Nom de lecteur invalide",
+    "Nombre del lector no válido"
+  ],
+  "Keine Chipkarte in \"{name}\" gefunden": [
+    "No smart card found in \"{name}\"",
+    "Aucune carte à puce détectée dans « {name} »",
+    "No se ha encontrado ninguna tarjeta inteligente en «{name}»"
+  ],
+  "Verbindung zur Karte fehlgeschlagen: {e}": [
+    "Failed to connect to card: {e}",
+    "Échec de la connexion à la carte : {e}",
+    "Error al conectar con la tarjeta: {e}"
+  ],
+  "Kartenzugriff: {e}": [
+    "Card access: {e}",
+    "Accès à la carte : {e}",
+    "Acceso a la tarjeta: {e}"
+  ],
+  "Antwort der Karte zu kurz": [
+    "Card response too short",
+    "Réponse de la carte trop courte",
+    "Respuesta de la tarjeta demasiado corta"
+  ],
+  "Ungültige APDU für Le-Korrektur": [
+    "Invalid APDU for Le correction",
+    "APDU invalide pour la correction Le",
+    "APDU no válida para la corrección Le"
+  ],
+  "Leser unterstützt {} nicht": [
+    "Reader does not support {}",
+    "Le lecteur ne prend pas en charge {}",
+    "El lector no admite {}"
+  ],
+  "Leser-Steuerbefehl fehlgeschlagen: {e}": [
+    "Reader control command failed: {e}",
+    "Échec de la commande de contrôle du lecteur : {e}",
+    "Error en el comando de control del lector: {e}"
+  ],
+  "Fehler {:04X}: {}": [
+    "Error {:04X}: {}",
+    "Erreur {:04X} : {}",
+    "Error {:04X}: {}"
+  ],
+  "Die zurückgegebenen Daten können fehlerhaft sein": [
+    "Returned data may be incorrect",
+    "Les données renvoyées peuvent être incorrectes",
+    "Los datos recibidos pueden ser incorrectos"
+  ],
+  "Dateiende vorzeitig erreicht": [
+    "End of file reached prematurely",
+    "Fin de fichier atteinte prématurément",
+    "Se ha alcanzado el final del archivo prematuramente"
+  ],
+  "Die ausgewählte Datei ist gesperrt": [
+    "The selected file is locked",
+    "Le fichier sélectionné est verrouillé",
+    "El archivo seleccionado está bloqueado"
+  ],
+  "Länge (Lc oder Le) falsch": [
+    "Incorrect length (Lc or Le)",
+    "Longueur incorrecte (Lc ou Le)",
+    "Longitud incorrecta (Lc o Le)"
+  ],
+  "Sicherheitszustand nicht erfüllt (PIN nicht geprüft?)": [
+    "Security condition not met (PIN not verified?)",
+    "Condition de sécurité non remplie (code PIN non vérifié ?)",
+    "Condición de seguridad no cumplida (¿PIN sin verificar?)"
+  ],
+  "Authentisierungsmethode ist gesperrt": [
+    "Authentication method is blocked",
+    "La méthode d’authentification est bloquée",
+    "El método de autenticación está bloqueado"
+  ],
+  "Referenzierte Daten sind gesperrt": [
+    "Referenced data is locked",
+    "Les données référencées sont verrouillées",
+    "Los datos referenciados están bloqueados"
+  ],
+  "Nutzungsbedingungen sind nicht erfüllt": [
+    "Conditions of use not met",
+    "Conditions d’utilisation non remplies",
+    "No se cumplen las condiciones de uso"
+  ],
+  "Datei nicht gefunden – keine HBCI-Chipkarte?": [
+    "File not found – not an HBCI smart card?",
+    "Fichier introuvable – carte à puce non HBCI ?",
+    "Archivo no encontrado; ¿no es una tarjeta HBCI?"
+  ],
+  "Record nicht gefunden": [
+    "Record not found",
+    "Enregistrement introuvable",
+    "Registro no encontrado"
+  ],
+  "Inkorrekte Parameter P1/P2": [
+    "Incorrect P1/P2 parameters",
+    "Paramètres P1/P2 incorrects",
+    "Parámetros P1/P2 incorrectos"
+  ],
+  "Referenzierte Daten nicht gefunden": [
+    "Referenced data not found",
+    "Données référencées introuvables",
+    "Datos referenciados no encontrados"
+  ],
+  "Kommando wird nicht unterstützt": [
+    "Command not supported",
+    "Commande non prise en charge",
+    "Comando no compatible"
+  ],
+  "Kommandoklasse wird nicht unterstützt": [
+    "Command class not supported",
+    "Classe de commande non prise en charge",
+    "Clase de comando no compatible"
+  ],
+  "PIN falsch, kein Versuch mehr": [
+    "Incorrect PIN, no attempts remaining",
+    "Code PIN incorrect, aucune tentative restante",
+    "PIN incorrecto, no quedan intentos"
+  ],
+  "PIN falsch, noch 1 Versuch": [
+    "Incorrect PIN, 1 attempt remaining",
+    "Code PIN incorrect, 1 tentative restante",
+    "PIN incorrecto, queda 1 intento"
+  ],
+  "PIN falsch, noch 2 Versuche": [
+    "Incorrect PIN, 2 attempts remaining",
+    "Code PIN incorrect, 2 tentatives restantes",
+    "PIN incorrecto, quedan 2 intentos"
+  ],
+  "PIN-Eingabe: Zeitüberschreitung": [
+    "PIN entry timed out",
+    "Délai de saisie du code PIN dépassé",
+    "Tiempo de introducción del PIN agotado"
+  ],
+  "PIN-Eingabe abgebrochen": [
+    "PIN entry cancelled",
+    "Saisie du code PIN annulée",
+    "Introducción del PIN cancelada"
+  ],
+  "Kartenfehler": [
+    "Card error",
+    "Erreur de carte",
+    "Error de tarjeta"
+  ],
+  "Keine HBCI-Chipkarte (DDV) erkannt: {e}": [
+    "No HBCI smart card (DDV) detected: {e}",
+    "Aucune carte à puce HBCI (DDV) détectée : {e}",
+    "No se ha detectado ninguna tarjeta HBCI (DDV): {e}"
+  ],
+  "Leser lieferte keine Antwort auf die PIN-Prüfung": [
+    "Reader did not respond to PIN verification",
+    "Le lecteur n’a pas répondu à la vérification du code PIN",
+    "El lector no ha respondido a la verificación del PIN"
+  ],
+  "Die Karten-PIN muss aus 4 bis 12 Ziffern bestehen": [
+    "The card PIN must contain 4 to 12 digits",
+    "Le code PIN de la carte doit contenir de 4 à 12 chiffres",
+    "El PIN de la tarjeta debe contener entre 4 y 12 dígitos"
+  ],
+  "EF_BNK-Eintrag zu kurz": [
+    "EF_BNK entry too short",
+    "Entrée EF_BNK trop courte",
+    "Entrada EF_BNK demasiado corta"
+  ],
+  "Schlüsselinformationen unvollständig": [
+    "Incomplete key information",
+    "Informations de clé incomplètes",
+    "Información de clave incompleta"
+  ],
+  "Signatur-ID nicht lesbar": [
+    "Cannot read signature ID",
+    "Impossible de lire l’identifiant de signature",
+    "No se puede leer el identificador de firma"
+  ],
+  "Leser ohne PIN-Pad und keine PIN-Abfrage verfügbar": [
+    "Reader has no PIN pad and no PIN prompt is available",
+    "Le lecteur n’a pas de clavier PIN et aucune saisie de code PIN n’est disponible",
+    "El lector no tiene teclado PIN y no se puede solicitar el PIN"
+  ],
+  "MAC-Antwort zu kurz": [
+    "MAC response too short",
+    "Réponse MAC trop courte",
+    "Respuesta MAC demasiado corta"
+  ],
+  "Sitzungsschlüssel unvollständig": [
+    "Incomplete session key",
+    "Clé de session incomplète",
+    "Clave de sesión incompleta"
+  ],
+  "verschlüsselter Schlüssel zu kurz": [
+    "Encrypted key too short",
+    "Clé chiffrée trop courte",
+    "Clave cifrada demasiado corta"
+  ],
+  "Schlüssel zu kurz": [
+    "Key too short",
+    "Clé trop courte",
+    "Clave demasiado corta"
+  ],
+  "Leser lieferte keine TAN": [
+    "Reader returned no TAN",
+    "Le lecteur n’a renvoyé aucun code TAN",
+    "El lector no ha devuelto ningún TAN"
+  ],
+  "Keine TAN vom Leser erhalten (abgebrochen?)": [
+    "No TAN received from reader (cancelled?)",
+    "Aucun code TAN reçu du lecteur (annulation ?)",
+    "No se ha recibido ningún TAN del lector (¿cancelado?)"
+  ],
+  "Kein Kartenleser gefunden. Treiber installiert und Leser angeschlossen?": [
+    "No card reader found. Is the driver installed and the reader connected?",
+    "Aucun lecteur de carte détecté. Le pilote est-il installé et le lecteur connecté ?",
+    "No se ha encontrado ningún lector. ¿Está instalado el controlador y conectado el lector?"
+  ],
+  "Leser: {}{}{} – Karte {}": [
+    "Reader: {}{}{} – card {}",
+    "Lecteur : {}{}{} – carte {}",
+    "Lector: {}{}{} – tarjeta {}"
+  ],
+  "eingesteckt": [
+    "inserted",
+    "insérée",
+    "insertada"
+  ],
+  "nicht eingesteckt": [
+    "not inserted",
+    "non insérée",
+    "no insertada"
+  ],
+  "Für Feature-Abfrage und Kartentest bitte eine Karte einstecken.": [
+    "Insert a card to query features and test the card.",
+    "Insérez une carte pour consulter les fonctionnalités et tester la carte.",
+    "Introduce una tarjeta para consultar las funciones y probar la tarjeta."
+  ],
+  "Verbindung zu {target}: {e}": [
+    "Connection to {target}: {e}",
+    "Connexion à {target} : {e}",
+    "Conexión con {target}: {e}"
+  ],
+  "Protokoll: {:?}": [
+    "Protocol: {:?}",
+    "Protocole : {:?}",
+    "Protocolo: {:?}"
+  ],
+  "Leser meldet keine PC/SC-Part-10-Features (Klasse 1, keine sichere PIN-Eingabe)": [
+    "Reader reports no PC/SC Part 10 features (class 1, no secure PIN entry)",
+    "Le lecteur ne signale aucune fonctionnalité PC/SC Part 10 (classe 1, sans saisie sécurisée du code PIN)",
+    "El lector no indica funciones PC/SC Part 10 (clase 1, sin introducción segura del PIN)"
+  ],
+  "Feature: {} (IOCTL 0x{:08X})": [
+    "Feature: {} (IOCTL 0x{:08X})",
+    "Fonctionnalité : {} (IOCTL 0x{:08X})",
+    "Función: {} (IOCTL 0x{:08X})"
+  ],
+  "Sichere PIN-Eingabe: {} · chipTAN USB: {}": [
+    "Secure PIN entry: {} · chipTAN USB: {}",
+    "Saisie sécurisée du code PIN : {} · chipTAN USB : {}",
+    "Introducción segura del PIN: {} · chipTAN USB: {}"
+  ],
+  "nein": [
+    "no",
+    "non",
+    "no"
+  ],
+  "ja": [
+    "yes",
+    "oui",
+    "sí"
+  ],
+  "ja (MCT)": [
+    "yes (MCT)",
+    "oui (MCT)",
+    "sí (MCT)"
+  ],
+  "über FF91-APDU, falls vom Leser unterstützt": [
+    "via FF91 APDU, if supported by the reader",
+    "via APDU FF91, si le lecteur le permet",
+    "mediante APDU FF91, si el lector lo admite"
+  ],
+  "HBCI-Chipkarte erkannt: {}": [
+    "HBCI smart card detected: {}",
+    "Carte à puce HBCI détectée : {}",
+    "Tarjeta inteligente HBCI detectada: {}"
+  ],
+  "Karten-ID: {}": [
+    "Card ID: {}",
+    "Identifiant de carte : {}",
+    "Identificador de tarjeta: {}"
+  ],
+  "Bankzugang {rec}: {} · BLZ {} · Kennung {} · Host {}": [
+    "Bank connection {rec}: {} · Bank code {} · User ID {} · Host {}",
+    "Accès bancaire {rec} : {} · Code bancaire {} · Identifiant {} · Hôte {}",
+    "Acceso bancario {rec}: {} · Código bancario {} · Identificador {} · Host {}"
+  ],
+  "Signatur-Zähler: {id}": [
+    "Signature counter: {id}",
+    "Compteur de signatures : {id}",
+    "Contador de firmas: {id}"
+  ],
+  "Keine nutzbare HBCI-Chipkarte (DDV/RDH) erkannt. RDH-Prüfung: {e}. Für chipTAN USB genügt die girocard.": [
+    "No usable HBCI smart card (DDV/RDH) detected. RDH check: {e}. A girocard is sufficient for chipTAN USB.",
+    "Aucune carte HBCI (DDV/RDH) utilisable détectée. Vérification RDH : {e}. Une girocard suffit pour chipTAN USB.",
+    "No se ha detectado ninguna tarjeta HBCI (DDV/RDH) utilizable. Comprobación RDH: {e}. Para chipTAN USB basta una girocard."
+  ],
+  "Ungültiger PIN-Fehlversuchszähler der Karte": [
+    "Invalid PIN retry counter on card",
+    "Compteur de tentatives PIN de la carte invalide",
+    "Contador de intentos del PIN de la tarjeta no válido"
+  ],
+  "Die Karten-PIN muss {} bis 8 ASCII-Zeichen lang sein": [
+    "The card PIN must be {} to 8 ASCII characters long",
+    "Le code PIN de la carte doit comporter de {} à 8 caractères ASCII",
+    "El PIN de la tarjeta debe tener entre {} y 8 caracteres ASCII"
+  ],
+  "Die Karten-PIN darf nur Ziffern enthalten": [
+    "The card PIN must contain digits only",
+    "Le code PIN de la carte ne doit contenir que des chiffres",
+    "El PIN de la tarjeta solo puede contener dígitos"
+  ],
+  "Zugriffs-PIN der Karte ist nicht eindeutig beschrieben": [
+    "Card access PIN is not described unambiguously",
+    "La description du code PIN d’accès à la carte est ambiguë",
+    "La descripción del PIN de acceso a la tarjeta es ambigua"
+  ],
+  "PIN-Format der Karte ist unbekannt. Keine PIN-Prüfung ausgeführt.": [
+    "Unknown card PIN format. No PIN verification performed.",
+    "Format du code PIN de la carte inconnu. Aucune vérification du code PIN effectuée.",
+    "Formato del PIN de la tarjeta desconocido. No se ha verificado el PIN."
+  ],
+  "PIN-Fehlversuchszähler ist nicht eindeutig zugeordnet": [
+    "PIN retry counter is not unambiguously assigned",
+    "L’association du compteur de tentatives PIN est ambiguë",
+    "La asignación del contador de intentos del PIN es ambigua"
+  ],
+  "Zugriffs-PIN (Referenz 3) fehlt in den Kartendaten. Keine PIN-Prüfung ausgeführt.": [
+    "Access PIN (reference 3) missing from card data. No PIN verification performed.",
+    "Code PIN d’accès (référence 3) absent des données de la carte. Aucune vérification du code PIN effectuée.",
+    "Falta el PIN de acceso (referencia 3) en los datos de la tarjeta. No se ha verificado el PIN."
+  ],
+  "Keine RDH-Chipkarte (ZKA/SECCOS-Signaturanwendung fehlt): {e}": [
+    "Not an RDH smart card (ZKA/SECCOS signature application missing): {e}",
+    "Carte à puce non RDH (application de signature ZKA/SECCOS absente) : {e}",
+    "No es una tarjeta RDH (falta la aplicación de firma ZKA/SECCOS): {e}"
+  ],
+  "RDH-Chipkarte (ZKA/SECCOS) · Kartennummer {}": [
+    "RDH smart card (ZKA/SECCOS) · Card number {}",
+    "Carte à puce RDH (ZKA/SECCOS) · Numéro de carte {}",
+    "Tarjeta RDH (ZKA/SECCOS) · Número de tarjeta {}"
+  ],
+  "PIN: ID {} · {} · {}–8 Zeichen": [
+    "PIN: ID {} · {} · {}–8 characters",
+    "PIN : ID {} · {} · {}–8 caractères",
+    "PIN: ID {} · {} · {}–8 caracteres"
+  ],
+  "PIN-Versuche verbleibend: {} von {} (nur gelesen, keine PIN-Prüfung)": [
+    "PIN attempts remaining: {} of {} (read only, no PIN verification)",
+    "Tentatives PIN restantes : {} sur {} (lecture seule, sans vérification du code PIN)",
+    "Intentos de PIN restantes: {} de {} (solo lectura, sin verificar el PIN)"
+  ],
+  "PIN-Fehlversuchszähler: von dieser Karte nicht zugeordnet": [
+    "PIN retry counter: not assigned by this card",
+    "Compteur de tentatives PIN : non attribué par cette carte",
+    "Contador de intentos del PIN: esta tarjeta no lo asigna"
+  ],
+  "PIN-Fehlversuchszähler nicht lesbar: {e}": [
+    "Cannot read PIN retry counter: {e}",
+    "Impossible de lire le compteur de tentatives PIN : {e}",
+    "No se puede leer el contador de intentos del PIN: {e}"
+  ],
+  "Schlüssel #{} Version {} · {} Bit{}": [
+    "Key #{} version {} · {} bits{}",
+    "Clé n° {} version {} · {} bits{}",
+    "Clave n.º {} versión {} · {} bits{}"
+  ],
+  " · Signatur-Zähler {c}": [
+    " · Signature counter {c}",
+    " · Compteur de signatures {c}",
+    " · Contador de firmas {c}"
+  ],
+  "PIN-Beschreibung nicht lesbar ({sw:04X}). Keine PIN-Prüfung ausgeführt.": [
+    "Cannot read PIN description ({sw:04X}). No PIN verification performed.",
+    "Impossible de lire la description du code PIN ({sw:04X}). Aucune vérification du code PIN effectuée.",
+    "No se puede leer la descripción del PIN ({sw:04X}). No se ha verificado el PIN."
+  ],
+  "Auf der Chipkarte wurden keine RDH-Schlüssel gefunden": [
+    "No RDH keys found on the smart card",
+    "Aucune clé RDH trouvée sur la carte à puce",
+    "No se han encontrado claves RDH en la tarjeta inteligente"
+  ],
+  "Schlüssel #{num} nicht auf der Chipkarte": [
+    "Key #{num} is not on the smart card",
+    "La clé n° {num} n’est pas sur la carte à puce",
+    "La clave n.º {num} no está en la tarjeta inteligente"
+  ],
+  "PIN-Prüfung dieser Kartenverbindung ist bereits fehlgeschlagen oder wurde abgebrochen. Keine automatische Wiederholung.": [
+    "PIN verification for this card connection has already failed or was cancelled. No automatic retry.",
+    "La vérification du code PIN pour cette connexion a déjà échoué ou a été annulée. Aucun nouvel essai automatique.",
+    "La verificación del PIN de esta conexión ya ha fallado o se ha cancelado. No se reintentará automáticamente."
+  ],
+  "Ungültige Antwort des Lesers auf die PIN-Prüfung. Kein weiterer Versuch ausgeführt.": [
+    "Invalid reader response to PIN verification. No further attempt performed.",
+    "Réponse du lecteur invalide lors de la vérification du code PIN. Aucun autre essai effectué.",
+    "Respuesta del lector no válida al verificar el PIN. No se ha realizado ningún otro intento."
+  ],
+  "Karten-PIN gesperrt (0 Versuche verbleibend, {sw:04X}). Keine automatische Wiederholung.": [
+    "Card PIN blocked (0 attempts remaining, {sw:04X}). No automatic retry.",
+    "Code PIN de la carte bloqué (0 tentative restante, {sw:04X}). Aucun nouvel essai automatique.",
+    "PIN de la tarjeta bloqueado (0 intentos restantes, {sw:04X}). No se reintentará automáticamente."
+  ],
+  "Die Chipkarte hat die PIN abgelehnt. Verbleibende PIN-Versuche: {} ({sw:04X}). Keine automatische Wiederholung.": [
+    "The smart card rejected the PIN. PIN attempts remaining: {} ({sw:04X}). No automatic retry.",
+    "La carte à puce a refusé le code PIN. Tentatives PIN restantes : {} ({sw:04X}). Aucun nouvel essai automatique.",
+    "La tarjeta ha rechazado el PIN. Intentos restantes: {} ({sw:04X}). No se reintentará automáticamente."
+  ],
+  "PIN-Prüfung: {} ({:04X})": [
+    "PIN verification: {} ({:04X})",
+    "Vérification du code PIN : {} ({:04X})",
+    "Verificación del PIN: {} ({:04X})"
+  ],
+  "Die Karten-PIN ist gesperrt (0 Versuche verbleibend). Keine weitere PIN-Prüfung ausgeführt.": [
+    "The card PIN is blocked (0 attempts remaining). No further PIN verification performed.",
+    "Le code PIN de la carte est bloqué (0 tentative restante). Aucune autre vérification du code PIN effectuée.",
+    "El PIN de la tarjeta está bloqueado (0 intentos restantes). No se ha vuelto a verificar el PIN."
+  ],
+  "Signatur-Zähler der Chipkarte nicht lesbar": [
+    "Cannot read smart card signature counter",
+    "Impossible de lire le compteur de signatures de la carte",
+    "No se puede leer el contador de firmas de la tarjeta"
+  ],
+  "Unerwartete Länge der Kartensignatur": [
+    "Unexpected card signature length",
+    "Longueur de signature de carte inattendue",
+    "Longitud inesperada de la firma de la tarjeta"
+  ],
+  " am {}": [
+    " on {}",
+    " le {}",
+    " el {}"
+  ],
+  "Unvollständige oder widersprüchliche FinTS-Nachrichtenhülle": [
+    "Incomplete or inconsistent FinTS message envelope",
+    "Enveloppe de message FinTS incomplète ou incohérente",
+    "Envoltura de mensaje FinTS incompleta o incoherente"
+  ],
+  "DDV-Antwort ist nicht vollständig verschlüsselt": [
+    "DDV response is not fully encrypted",
+    "La réponse DDV n’est pas entièrement chiffrée",
+    "La respuesta DDV no está completamente cifrada"
+  ],
+  "Ungültiges DDV-Padding": [
+    "Invalid DDV padding",
+    "Remplissage DDV invalide",
+    "Relleno DDV no válido"
+  ],
+  "RDH-Antwort ist nicht vollständig verschlüsselt – Antwort verworfen": [
+    "RDH response is not fully encrypted – response discarded",
+    "La réponse RDH n’est pas entièrement chiffrée – réponse rejetée",
+    "La respuesta RDH no está completamente cifrada; respuesta descartada"
+  ],
+  "Unerwartetes RDH-Verschlüsselungsverfahren": [
+    "Unexpected RDH encryption method",
+    "Méthode de chiffrement RDH inattendue",
+    "Método de cifrado RDH inesperado"
+  ],
+  "RDH-Nachrichtenschlüssel fehlt": [
+    "RDH message key missing",
+    "Clé de message RDH absente",
+    "Falta la clave del mensaje RDH"
+  ],
+  "RDH-Nachrichteninhalt fehlt": [
+    "RDH message content missing",
+    "Contenu du message RDH absent",
+    "Falta el contenido del mensaje RDH"
+  ],
+  "Die RDH-Antwort enthält keine Banksignatur – Antwort verworfen": [
+    "RDH response has no bank signature – response discarded",
+    "La réponse RDH ne contient aucune signature bancaire – réponse rejetée",
+    "La respuesta RDH no contiene firma del banco; respuesta descartada"
+  ],
+  "Der geprüfte Signaturschlüssel der Bank fehlt – Antwort verworfen": [
+    "Verified bank signature key missing – response discarded",
+    "Clé de signature bancaire vérifiée absente – réponse rejetée",
+    "Falta la clave de firma verificada del banco; respuesta descartada"
+  ],
+  "Widersprüchlicher RDH-Nachrichtenaufbau": [
+    "Inconsistent RDH message structure",
+    "Structure de message RDH incohérente",
+    "Estructura del mensaje RDH incoherente"
+  ],
+  "Der gewählte Bankzugang wurde auf der Chipkarte nicht gefunden": [
+    "The selected bank connection was not found on the smart card",
+    "L’accès bancaire sélectionné est introuvable sur la carte à puce",
+    "No se ha encontrado en la tarjeta el acceso bancario seleccionado"
+  ],
+  "RDH-Profil {}": [
+    "RDH profile {}",
+    "Profil RDH {}",
+    "Perfil RDH {}"
+  ],
+  "PIN für {} ({})": [
+    "PIN for {} ({})",
+    "Code PIN pour {} ({})",
+    "PIN de {} ({})"
+  ],
+  "Der öffentliche Schlüssel der Bank fehlt": [
+    "The bank’s public key is missing",
+    "La clé publique de la banque est absente",
+    "Falta la clave pública del banco"
+  ],
+  "FinTS Rückmeldung {}": [
+    "FinTS response {}",
+    "Réponse FinTS {}",
+    "Respuesta FinTS {}"
+  ],
+  " ({sg}, Element {el})": [
+    " ({sg}, element {el})",
+    " ({sg}, élément {el})",
+    " ({sg}, elemento {el})"
+  ],
+  " (Element {el})": [
+    " (element {el})",
+    " (élément {el})",
+    " (elemento {el})"
+  ],
+  "FinTS (anonym) Rückmeldung {}": [
+    "FinTS (anonymous) response {}",
+    "Réponse FinTS (anonyme) {}",
+    "Respuesta FinTS (anónima) {}"
+  ],
+  "Lade Bankparameter …": [
+    "Loading bank parameters …",
+    "Chargement des paramètres bancaires…",
+    "Cargando parámetros bancarios…"
+  ],
+  "Die Bank fordert eine Freigabe, die nicht abgeschlossen wurde": [
+    "The bank requires approval that has not been completed",
+    "La banque exige une autorisation qui n’a pas été effectuée",
+    "El banco requiere una autorización que no se ha completado"
+  ],
+  "TAN-Auftragsreferenz fehlt": [
+    "TAN order reference missing",
+    "Référence d’ordre TAN absente",
+    "Falta la referencia de la orden TAN"
+  ],
+  "Die Freigabe ist noch nicht erfolgt. Bitte bestätigen Sie den Auftrag in Ihrer App.\n\n{}": [
+    "Approval is still pending. Please approve the order in your app.\n\n{}",
+    "L’autorisation est toujours en attente. Veuillez autoriser l’ordre dans votre application.\n\n{}",
+    "La autorización sigue pendiente. Autoriza la orden en tu aplicación.\n\n{}"
+  ],
+  "Synchronisiere Bankzugang …": [
+    "Synchronizing bank connection …",
+    "Synchronisation de l’accès bancaire…",
+    "Sincronizando acceso bancario…"
+  ],
+  "Synchronisiere Bankzugang (Chipkarte) …": [
+    "Synchronizing bank connection (smart card) …",
+    "Synchronisation de l’accès bancaire (carte à puce)…",
+    "Sincronizando acceso bancario (tarjeta inteligente)…"
+  ],
+  "Lade öffentliche Schlüssel der Bank …": [
+    "Loading the bank’s public keys …",
+    "Chargement des clés publiques de la banque…",
+    "Cargando las claves públicas del banco…"
+  ],
+  "Die Bank hat keinen Verschlüsselungsschlüssel geliefert": [
+    "The bank supplied no encryption key",
+    "La banque n’a fourni aucune clé de chiffrement",
+    "El banco no ha facilitado ninguna clave de cifrado"
+  ],
+  "Die Bank hat keinen Signaturschlüssel geliefert; RDH ohne geprüfte Banksignatur wird nicht unterstützt": [
+    "The bank supplied no signature key; RDH without a verified bank signature is not supported",
+    "La banque n’a fourni aucune clé de signature ; RDH sans signature bancaire vérifiée n’est pas pris en charge",
+    "El banco no ha facilitado ninguna clave de firma; no se admite RDH sin firma bancaria verificada"
+  ],
+  "\n{} (Nr. {}, Version {}, {} Bit), SHA-256:\n{}\n": [
+    "\n{} (no. {}, version {}, {} bits), SHA-256:\n{}\n",
+    "\n{} (n° {}, version {}, {} bits), SHA-256 :\n{}\n",
+    "\n{} (n.º {}, versión {}, {} bits), SHA-256:\n{}\n"
+  ],
+  "Verschlüsselungsschlüssel": [
+    "Encryption key",
+    "Clé de chiffrement",
+    "Clave de cifrado"
+  ],
+  "Signaturschlüssel": [
+    "Signature key",
+    "Clé de signature",
+    "Clave de firma"
+  ],
+  "Ungültige FinTS-Adresse": [
+    "Invalid FinTS address",
+    "Adresse FinTS invalide",
+    "Dirección FinTS no válida"
+  ],
+  "FinTS benötigt eine eindeutige HTTPS-Adresse ohne Benutzerinfo oder Fragment": [
+    "FinTS requires an unambiguous HTTPS address without user info or fragment",
+    "FinTS exige une adresse HTTPS non ambiguë, sans identifiants ni fragment",
+    "FinTS requiere una dirección HTTPS inequívoca sin información de usuario ni fragmento"
+  ],
+  "HTTPS-Anfrage an die Bank fehlgeschlagen": [
+    "HTTPS request to the bank failed",
+    "Échec de la requête HTTPS vers la banque",
+    "Error en la solicitud HTTPS al banco"
+  ],
+  "Antwort der Bank überschreitet die Größenbegrenzung": [
+    "Bank response exceeds the size limit",
+    "La réponse de la banque dépasse la taille maximale",
+    "La respuesta del banco supera el límite de tamaño"
+  ],
+  "Keine Serveradresse gefunden": [
+    "No server address found",
+    "Aucune adresse de serveur trouvée",
+    "No se ha encontrado ninguna dirección de servidor"
+  ],
+  "Ungültige oder zu große FinTS-Nachricht": [
+    "Invalid or oversized FinTS message",
+    "Message FinTS invalide ou trop volumineux",
+    "Mensaje FinTS no válido o demasiado grande"
+  ],
+  "Ungültiges Datum im Kreditkartenumsatz": [
+    "Invalid date in credit card transaction",
+    "Date invalide dans l’opération de carte de crédit",
+    "Fecha no válida en el movimiento de tarjeta de crédito"
+  ],
+  "Ungültiger Kreditkartenbetrag": [
+    "Invalid credit card amount",
+    "Montant de carte de crédit invalide",
+    "Importe de tarjeta de crédito no válido"
+  ],
+  "Ungültiges Soll-/Haben-Kennzeichen im Kreditkartenumsatz": [
+    "Invalid debit/credit indicator in credit card transaction",
+    "Indicateur débit/crédit invalide dans l’opération de carte de crédit",
+    "Indicador de débito/crédito no válido en el movimiento de tarjeta"
+  ],
+  "Währung des Kreditkartensaldos fehlt": [
+    "Credit card balance currency missing",
+    "Devise du solde de carte de crédit absente",
+    "Falta la moneda del saldo de la tarjeta de crédito"
+  ],
+  "Version der Kreditkartenumsatzantwort": [
+    "Credit card transaction response version",
+    "Version de la réponse des opérations de carte de crédit",
+    "Versión de respuesta de movimientos de tarjeta de crédito"
+  ],
+  "Währung des Kreditkartenumsatzes fehlt": [
+    "Credit card transaction currency missing",
+    "Devise de l’opération de carte de crédit absente",
+    "Falta la moneda del movimiento de tarjeta de crédito"
+  ],
+  "Unbekannter Buchungsstatus im Kreditkartenumsatz": [
+    "Unknown booking status in credit card transaction",
+    "Statut comptable inconnu dans l’opération de carte de crédit",
+    "Estado contable desconocido en el movimiento de tarjeta de crédito"
+  ],
+  "Kreditkartenumsatz": [
+    "Credit card transaction",
+    "Opération de carte de crédit",
+    "Movimiento de tarjeta de crédito"
+  ],
+  "ungültiger Bankschlüssel: {e}": [
+    "invalid bank key: {e}",
+    "clé bancaire invalide : {e}",
+    "clave bancaria no válida: {e}"
+  ],
+  "Die Chipkarte hat keine Signatur geliefert": [
+    "The smart card returned no signature",
+    "La carte à puce n’a fourni aucune signature",
+    "La tarjeta inteligente no ha devuelto ninguna firma"
+  ],
+  "Verschlüsselung des Nachrichtenschlüssels: {e}": [
+    "Message key encryption: {e}",
+    "Chiffrement de la clé de message : {e}",
+    "Cifrado de la clave del mensaje: {e}"
+  ],
+  "Ungültiger RDH-Nachrichtenschlüssel": [
+    "Invalid RDH message key",
+    "Clé de message RDH invalide",
+    "Clave del mensaje RDH no válida"
+  ],
+  "RDH-Schlüsseltransport fehlgeschlagen": [
+    "RDH key transport failed",
+    "Échec du transport de clé RDH",
+    "Error en el transporte de la clave RDH"
+  ],
+  "Ungültige Größe der verschlüsselten RDH-Antwort": [
+    "Invalid size of encrypted RDH response",
+    "Taille de la réponse RDH chiffrée invalide",
+    "Tamaño no válido de la respuesta RDH cifrada"
+  ],
+  "Nachrichtenschlüssel der Bank zu kurz": [
+    "Bank message key too short",
+    "Clé de message de la banque trop courte",
+    "Clave del mensaje del banco demasiado corta"
+  ],
+  "Antwort der Bank ließ sich nicht entschlüsseln (Padding)": [
+    "Could not decrypt bank response (padding)",
+    "Impossible de déchiffrer la réponse de la banque (remplissage)",
+    "No se ha podido descifrar la respuesta del banco (relleno)"
+  ],
+  "Signatur der Bank: unvollständige oder ungeschützte Segmentfolge": [
+    "Bank signature: incomplete or unprotected segment sequence",
+    "Signature bancaire : séquence de segments incomplète ou non protégée",
+    "Firma bancaria: secuencia de segmentos incompleta o sin proteger"
+  ],
+  "Signaturabschluss der Bank fehlt": [
+    "Bank signature trailer missing",
+    "Fin de signature bancaire absente",
+    "Falta el cierre de la firma bancaria"
+  ],
+  "Signatur der Bank: Segmentfolge ungültig": [
+    "Bank signature: invalid segment sequence",
+    "Signature bancaire : séquence de segments invalide",
+    "Firma bancaria: secuencia de segmentos no válida"
+  ],
+  "Kontrollreferenzen der Banksignatur stimmen nicht überein": [
+    "Bank signature control references do not match",
+    "Les références de contrôle de la signature bancaire ne correspondent pas",
+    "Las referencias de control de la firma bancaria no coinciden"
+  ],
+  "Unerwartetes Verfahren der Banksignatur": [
+    "Unexpected bank signature method",
+    "Méthode de signature bancaire inattendue",
+    "Método de firma bancaria inesperado"
+  ],
+  "Signatur der Bank fehlt": [
+    "Bank signature missing",
+    "Signature bancaire absente",
+    "Falta la firma bancaria"
+  ],
+  "Die Signatur der Bank ist ungültig – Antwort verworfen": [
+    "The bank signature is invalid – response discarded",
+    "La signature bancaire est invalide – réponse rejetée",
+    "La firma bancaria no es válida; respuesta descartada"
+  ],
+  "Ungültiges camt-Datum": [
+    "Invalid camt date",
+    "Date camt invalide",
+    "Fecha camt no válida"
+  ],
+  "Ungültiges oder zu umfangreiches camt-Dokument": [
+    "Invalid or oversized camt document",
+    "Document camt invalide ou trop volumineux",
+    "Documento camt no válido o demasiado grande"
+  ],
+  "camt enthält keinen Kontoauszug": [
+    "camt contains no account statement",
+    "camt ne contient aucun relevé de compte",
+    "camt no contiene ningún extracto de cuenta"
+  ],
+  "Ungültiger camt-Saldo": [
+    "Invalid camt balance",
+    "Solde camt invalide",
+    "Saldo camt no válido"
+  ],
+  "camt-Betrag fehlt": [
+    "camt amount missing",
+    "Montant camt absent",
+    "Falta el importe camt"
+  ],
+  "Ungültiger camt-Betrag": [
+    "Invalid camt amount",
+    "Montant camt invalide",
+    "Importe camt no válido"
+  ],
+  "Ungültiges camt-Soll/Haben-Kennzeichen": [
+    "Invalid camt debit/credit indicator",
+    "Indicateur débit/crédit camt invalide",
+    "Indicador de débito/crédito camt no válido"
+  ],
+  "FinTS-Nachricht zu groß": [
+    "FinTS message too large",
+    "Message FinTS trop volumineux",
+    "Mensaje FinTS demasiado grande"
+  ],
+  "FinTS-Strukturgrenze überschritten": [
+    "FinTS structure limit exceeded",
+    "Limite de structure FinTS dépassée",
+    "Se ha superado el límite de estructura FinTS"
+  ],
+  "Zu viele Felder im FinTS-Segment": [
+    "Too many fields in FinTS segment",
+    "Trop de champs dans le segment FinTS",
+    "Demasiados campos en el segmento FinTS"
+  ],
+  "ACHTUNG: Der von der Bank übermittelte Schlüssel stimmt NICHT mit dem Hashwert auf Ihrer Chipkarte überein. Fahren Sie nur fort, wenn der Hashwert exakt mit Ihrem INI-Brief übereinstimmt – andernfalls brechen Sie ab und wenden Sie sich an Ihre Bank.\n": [
+    "WARNING: The key sent by the bank does NOT match the hash on your smart card. Continue only if the hash matches your INI letter exactly – otherwise cancel and contact your bank.\n",
+    "ATTENTION : La clé transmise par la banque ne correspond PAS à l’empreinte de votre carte à puce. Continuez uniquement si l’empreinte correspond exactement à votre lettre INI ; sinon, annulez et contactez votre banque.\n",
+    "ATENCIÓN: La clave enviada por el banco NO coincide con el hash de tu tarjeta. Continúa solo si el hash coincide exactamente con tu carta INI; de lo contrario, cancela y contacta con tu banco.\n"
+  ],
+  "\nHashwert auf der Chipkarte:\n{}\n": [
+    "\nHash on the smart card:\n{}\n",
+    "\nEmpreinte sur la carte à puce :\n{}\n",
+    "\nHash en la tarjeta inteligente:\n{}\n"
+  ],
+  "Bankschlüssel stimmt nicht überein": [
+    "Bank key does not match",
+    "La clé bancaire ne correspond pas",
+    "La clave bancaria no coincide"
+  ],
+  "Der Schlüssel der Bank stimmt nicht mit dem Hashwert auf der Chipkarte überein und wurde nicht übernommen.": [
+    "The bank key does not match the hash on the smart card and was not accepted.",
+    "La clé bancaire ne correspond pas à l’empreinte de la carte à puce et n’a pas été acceptée.",
+    "La clave bancaria no coincide con el hash de la tarjeta y no se ha aceptado."
+  ],
+  "Bitte vergleichen Sie die Hashwerte mit dem INI-Brief Ihrer Bank. Nur bei exakter Übereinstimmung bestätigen.\n": [
+    "Compare the hashes with your bank’s INI letter. Confirm only if they match exactly.\n",
+    "Comparez les empreintes avec la lettre INI de votre banque. Confirmez uniquement si elles correspondent exactement.\n",
+    "Compara los hashes con la carta INI de tu banco. Confirma solo si coinciden exactamente.\n"
+  ],
+  "Bankschlüssel prüfen": [
+    "Verify bank key",
+    "Vérifier la clé bancaire",
+    "Verificar clave bancaria"
+  ],
+  "Dialog wird eröffnet …": [
+    "Opening dialog …",
+    "Ouverture du dialogue…",
+    "Abriendo diálogo…"
+  ],
+  "Lade TAN-Medien …": [
+    "Loading TAN media …",
+    "Chargement des supports TAN…",
+    "Cargando medios TAN…"
+  ],
+  "TAN-Medium": [
+    "TAN medium",
+    "Support TAN",
+    "Medio TAN"
+  ],
+  "Die Bank verlangt für „{name}“ die Bezeichnung Ihres TAN-Mediums (z. B. den Gerätenamen aus der BestSign- bzw. photoTAN-App). Bitte genau so eingeben, wie er in der App bzw. im Onlinebanking angezeigt wird.": [
+    "For “{name}”, the bank requires the name of your TAN medium (e.g. the device name in the BestSign or photoTAN app). Enter it exactly as shown in the app or online banking.",
+    "Pour « {name} », la banque exige le nom de votre support TAN (p. ex. le nom de l’appareil dans BestSign ou photoTAN). Saisissez-le exactement comme il apparaît dans l’application ou la banque en ligne.",
+    "Para «{name}», el banco requiere el nombre de tu medio TAN (p. ej. el nombre del dispositivo en BestSign o photoTAN). Introdúcelo exactamente como aparece en la aplicación o la banca en línea."
+  ],
+  "Lade SEPA-Kontoverbindungen …": [
+    "Loading SEPA account details …",
+    "Chargement des coordonnées de comptes SEPA…",
+    "Cargando datos de cuentas SEPA…"
+  ],
+  "Kreditkartensaldo {} …": [
+    "Credit card balance {} …",
+    "Solde de carte de crédit {}…",
+    "Saldo de tarjeta de crédito {}…"
+  ],
+  "Kreditkartensaldo fehlt in der Bankantwort": [
+    "Credit card balance missing from bank response",
+    "Solde de carte de crédit absent de la réponse bancaire",
+    "Falta el saldo de la tarjeta de crédito en la respuesta bancaria"
+  ],
+  "Version der Kreditkartensaldenantwort": [
+    "Credit card balance response version",
+    "Version de la réponse du solde de carte de crédit",
+    "Versión de respuesta del saldo de tarjeta de crédito"
+  ],
+  "Saldo für dieses Konto": [
+    "Balance for this account",
+    "Solde de ce compte",
+    "Saldo de esta cuenta"
+  ],
+  "Saldenabfrage (HKSAL)": [
+    "Balance request (HKSAL)",
+    "Consultation du solde (HKSAL)",
+    "Consulta de saldo (HKSAL)"
+  ],
+  "Saldo {} …": [
+    "Balance {} …",
+    "Solde {}…",
+    "Saldo {}…"
+  ],
+  "Umsätze für dieses Konto": [
+    "Transactions for this account",
+    "Opérations de ce compte",
+    "Movimientos de esta cuenta"
+  ],
+  "Umsätze {} …": [
+    "Transactions {} …",
+    "Opérations {}…",
+    "Movimientos {}…"
+  ],
+  "Umsatzabruf (HKKAZ/HKCAZ)": [
+    "Transaction retrieval (HKKAZ/HKCAZ)",
+    "Récupération des opérations (HKKAZ/HKCAZ)",
+    "Consulta de movimientos (HKKAZ/HKCAZ)"
+  ],
+  "Umsatzdaten fehlen in der Bankantwort": [
+    "Transaction data missing from bank response",
+    "Données d’opérations absentes de la réponse bancaire",
+    "Faltan los datos de movimientos en la respuesta bancaria"
+  ],
+  "Abruf unvollständig: Seitenlimit erreicht; lokale Daten wurden nicht ersetzt": [
+    "Retrieval incomplete: page limit reached; local data was not replaced",
+    "Récupération incomplète : limite de pages atteinte ; les données locales n’ont pas été remplacées",
+    "Consulta incompleta: se ha alcanzado el límite de páginas; no se han sustituido los datos locales"
+  ],
+  "Keine gemeinsame Version für {code}": [
+    "No common version for {code}",
+    "Aucune version commune pour {code}",
+    "No hay una versión común para {code}"
+  ],
+  "Kreditkartenumsätze {} …": [
+    "Credit card transactions {} …",
+    "Opérations de carte de crédit {}…",
+    "Movimientos de tarjeta de crédito {}…"
+  ],
+  "Kreditkartenumsätze fehlen in der Bankantwort": [
+    "Credit card transactions missing from bank response",
+    "Opérations de carte de crédit absentes de la réponse bancaire",
+    "Faltan los movimientos de tarjeta de crédito en la respuesta bancaria"
+  ],
+  "Aufsetzpunkt des Kreditkartenabrufs fehlt": [
+    "Credit card retrieval continuation token missing",
+    "Jeton de continuation de la consultation de carte de crédit absent",
+    "Falta el marcador de continuación de la consulta de tarjeta de crédito"
+  ],
+  "Kreditkartenabruf unvollständig; lokale Umsätze wurden nicht ersetzt": [
+    "Credit card retrieval incomplete; local transactions were not replaced",
+    "Consultation de carte de crédit incomplète ; les opérations locales n’ont pas été remplacées",
+    "Consulta de tarjeta de crédito incompleta; no se han sustituido los movimientos locales"
+  ],
+  "Echtzeitüberweisung (HKIPZ)": [
+    "Instant transfer (HKIPZ)",
+    "Virement instantané (HKIPZ)",
+    "Transferencia inmediata (HKIPZ)"
+  ],
+  "Terminüberweisung benötigt ein zukünftiges Ausführungsdatum": [
+    "Scheduled transfer requires a future execution date",
+    "Un virement programmé nécessite une date d’exécution future",
+    "La transferencia programada requiere una fecha de ejecución futura"
+  ],
+  "Terminüberweisung (HKCSE)": [
+    "Scheduled transfer (HKCSE)",
+    "Virement programmé (HKCSE)",
+    "Transferencia programada (HKCSE)"
+  ],
+  "\nAuftrags-ID: {id}": [
+    "\nOrder ID: {id}",
+    "\nIdentifiant de l’ordre : {id}",
+    "\nIdentificador de la orden: {id}"
+  ],
+  "Dauerauftrag anlegen (HKCDE)": [
+    "Create standing order (HKCDE)",
+    "Créer un virement permanent (HKCDE)",
+    "Crear transferencia periódica (HKCDE)"
+  ],
+  "Daueraufträge abrufen: keine gemeinsame HKCDB-Version": [
+    "Retrieve standing orders: no common HKCDB version",
+    "Récupération des virements permanents : aucune version HKCDB commune",
+    "Consulta de transferencias periódicas: no hay una versión HKCDB común"
+  ],
+  "Kein unterstütztes Zahlungsformat für Daueraufträge": [
+    "No supported payment format for standing orders",
+    "Aucun format de paiement pris en charge pour les virements permanents",
+    "No hay un formato de pago compatible para transferencias periódicas"
+  ],
+  "Lade Daueraufträge …": [
+    "Loading standing orders …",
+    "Chargement des virements permanents…",
+    "Cargando transferencias periódicas…"
+  ],
+  "Unbekannte Version der Dauerauftragsantwort": [
+    "Unknown standing order response version",
+    "Version inconnue de la réponse des virements permanents",
+    "Versión desconocida de la respuesta de transferencias periódicas"
+  ],
+  "Dauerauftrag enthält ungültige Zahlungsdaten": [
+    "Standing order contains invalid payment details",
+    "Le virement permanent contient des données de paiement invalides",
+    "La transferencia periódica contiene datos de pago no válidos"
+  ],
+  "Ungültiges erstes Ausführungsdatum im Dauerauftrag": [
+    "Invalid first execution date in standing order",
+    "Première date d’exécution du virement permanent invalide",
+    "Fecha de primera ejecución no válida en la transferencia periódica"
+  ],
+  "Ungültige Ausführungszeit im Dauerauftrag": [
+    "Invalid execution time in standing order",
+    "Heure d’exécution du virement permanent invalide",
+    "Hora de ejecución no válida en la transferencia periódica"
+  ],
+  "Dauerauftrag löschen (HKCDL)": [
+    "Delete standing order (HKCDL)",
+    "Supprimer un virement permanent (HKCDL)",
+    "Eliminar transferencia periódica (HKCDL)"
+  ],
+  "Weitere Daten angekündigt, aber Aufsetzpunkt fehlt": [
+    "More data announced but continuation token missing",
+    "Données supplémentaires annoncées mais jeton de continuation absent",
+    "Se han anunciado más datos pero falta el marcador de continuación"
+  ],
+  "Wiederholter Aufsetzpunkt; Abruf ist unvollständig": [
+    "Repeated continuation token; retrieval is incomplete",
+    "Jeton de continuation répété ; récupération incomplète",
+    "Marcador de continuación repetido; consulta incompleta"
+  ],
+  "Keine abschließende Auftragsbestätigung der Bank; Status bitte bei der Bank prüfen und Auftrag nicht erneut senden": [
+    "No final order confirmation from the bank; check the status with the bank and do not resend the order",
+    "Aucune confirmation définitive de la banque ; vérifiez le statut auprès de la banque et ne renvoyez pas l’ordre",
+    "No hay confirmación definitiva del banco; consulta el estado con el banco y no vuelvas a enviar la orden"
+  ],
+  "Auftraggeber-IBAN stimmt nicht mit dem ausgewählten Konto überein": [
+    "Debtor IBAN does not match the selected account",
+    "L’IBAN du donneur d’ordre ne correspond pas au compte sélectionné",
+    "El IBAN del ordenante no coincide con la cuenta seleccionada"
+  ],
+  "[ungültig]": [
+    "[invalid]",
+    "[invalide]",
+    "[no válido]"
+  ],
+  "[ungültiger Segmentkopf]": [
+    "[invalid segment header]",
+    "[en-tête de segment invalide]",
+    "[cabecera de segmento no válida]"
+  ],
+  "[nicht lesbare Nachricht: {} Bytes]": [
+    "[unreadable message: {} bytes]",
+    "[message illisible : {} octets]",
+    "[mensaje ilegible: {} bytes]"
+  ],
+  "Ungültige Auftraggeber- oder Empfänger-IBAN": [
+    "Invalid debtor or recipient IBAN",
+    "IBAN du donneur d’ordre ou du bénéficiaire invalide",
+    "IBAN del ordenante o beneficiario no válido"
+  ],
+  "Betrag muss positiv sein und darf höchstens zwei Nachkommastellen haben": [
+    "Amount must be positive and have at most two decimal places",
+    "Le montant doit être positif et comporter au maximum deux décimales",
+    "El importe debe ser positivo y tener como máximo dos decimales"
+  ],
+  "Auftraggeber und Empfänger benötigen einen Namen mit höchstens 70 SEPA-Zeichen": [
+    "Debtor and recipient require names of at most 70 SEPA characters",
+    "Le donneur d’ordre et le bénéficiaire doivent avoir un nom d’au plus 70 caractères SEPA",
+    "El ordenante y el beneficiario deben tener nombres de un máximo de 70 caracteres SEPA"
+  ],
+  "Verwendungszweck oder Ende-zu-Ende-Referenz ist zu lang": [
+    "Reference or end-to-end reference is too long",
+    "Le motif ou la référence de bout en bout est trop long",
+    "El concepto o la referencia de extremo a extremo es demasiado largo"
+  ],
+  "Ungültiger Ausführungsrhythmus oder Zeitraum des Dauerauftrags": [
+    "Invalid standing order frequency or period",
+    "Fréquence ou période du virement permanent invalide",
+    "Frecuencia o período de la transferencia periódica no válido"
+  ],
+  "Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); TAN per BestSign oder photoTAN": [
+    "Login: your Postbank ID, with profile if applicable (PostbankID#ProfileName); TAN via BestSign or photoTAN",
+    "Identifiant : votre Postbank ID, avec profil si nécessaire (PostbankID#NomDuProfil) ; TAN via BestSign ou photoTAN",
+    "Acceso: tu Postbank ID, con perfil si corresponde (PostbankID#NombreDelPerfil); TAN mediante BestSign o photoTAN"
+  ],
+  "Anmeldename: Filiale + Konto + Unterkonto (10-stellig), TAN per BestSign oder photoTAN": [
+    "Login: branch + account + subaccount (10 digits), TAN via BestSign or photoTAN",
+    "Identifiant : agence + compte + sous-compte (10 chiffres), TAN via BestSign ou photoTAN",
+    "Acceso: sucursal + cuenta + subcuenta (10 dígitos), TAN mediante BestSign o photoTAN"
+  ],
+  "Valuta": [
+    "Value date",
+    "Date de valeur",
+    "Fecha valor"
+  ],
+  "Betrag": [
+    "Amount",
+    "Montant",
+    "Importe"
+  ],
+  "Währung": [
+    "Currency",
+    "Devise",
+    "Moneda"
+  ],
+  "Status": [
+    "Status",
+    "Statut",
+    "Estado"
+  ],
+  "gebucht": [
+    "booked",
+    "comptabilisé",
+    "contabilizado"
+  ],
+  "BankingCraft {} – {}\n\nTechnische Segmentübersicht (Fehlerdetails werden nur in der App angezeigt):\n{}\n": [
+    "BankingCraft {} – {}\n\nTechnical segment overview (error details are shown only in the app):\n{}\n",
+    "BankingCraft {} – {}\n\nVue technique des segments (les détails des erreurs sont affichés uniquement dans l’application) :\n{}\n",
+    "BankingCraft {} – {}\n\nResumen técnico de segmentos (los detalles de errores solo se muestran en la aplicación):\n{}\n"
+  ],
+  "{} an {}\n{}\n„{}“{}": [
+    "{} to {}\n{}\n“{}”{}",
+    "{} à {}\n{}\n« {} »{}",
+    "{} a {}\n{}\n«{}»{}"
+  ],
+  "{} an {}, {}": [
+    "{} to {}, {}",
+    "{} à {}, {}",
+    "{} a {}, {}"
+  ],
+  "FinTS-Syntaxfehler: {0}": [
+    "FinTS syntax error: {0}",
+    "Erreur de syntaxe FinTS : {0}",
+    "Error de sintaxis FinTS: {0}"
+  ],
+  "Übertragungsfehler: {0}": [
+    "Transport error: {0}",
+    "Erreur de transport : {0}",
+    "Error de transporte: {0}"
+  ],
+  "Die Bank meldet Fehler {code}: {text}": [
+    "Bank reported error {code}: {text}",
+    "La banque a signalé l’erreur {code} : {text}",
+    "El banco ha comunicado el error {code}: {text}"
+  ],
+  "Vom Benutzer abgebrochen": [
+    "Cancelled by user",
+    "Annulé par l’utilisateur",
+    "Cancelado por el usuario"
+  ],
+  "Von der Bank nicht unterstützt: {0}": [
+    "Not supported by bank: {0}",
+    "Non pris en charge par la banque : {0}",
+    "No compatible con el banco: {0}"
+  ],
+  "Entschlüsselung fehlgeschlagen": [
+    "decryption failed",
+    "échec du déchiffrement",
+    "error de descifrado"
+  ],
+  "Chipkarte nicht initialisiert": [
+    "chip card not initialized",
+    "carte à puce non initialisée",
+    "tarjeta inteligente no inicializada"
+  ],
+  "TAN erforderlich, aber HITAN fehlt": [
+    "TAN required but no HITAN",
+    "Code TAN requis mais HITAN absent",
+    "Se requiere TAN pero falta HITAN"
+  ],
+  "Ungültige Base64-Antwort: {e}": [
+    "invalid base64 response: {e}",
+    "réponse base64 invalide : {e}",
+    "respuesta base64 no válida: {e}"
+  ],
+  "Ungültiger Nachrichtenkopf": [
+    "invalid message header",
+    "en-tête de message invalide",
+    "cabecera de mensaje no válida"
+  ],
+  "Escape-Zeichen ohne Folgezeichen": [
+    "dangling escape character",
+    "caractère d’échappement isolé",
+    "carácter de escape sin continuación"
+  ],
+  "Nicht abgeschlossene Binärlänge": [
+    "unterminated binary length",
+    "longueur binaire non terminée",
+    "longitud binaria sin terminar"
+  ],
+  "Ungültige Binärlänge": [
+    "invalid binary length",
+    "longueur binaire invalide",
+    "longitud binaria no válida"
+  ],
+  "Binärdaten überschreiten die Nachrichtenlänge": [
+    "binary data exceeds message",
+    "les données binaires dépassent le message",
+    "los datos binarios superan el mensaje"
+  ]
+}
