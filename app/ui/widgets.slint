@@ -223,6 +223,7 @@ export component Avatar inherits Rectangle {
 }
 
 export component LabeledField inherits VerticalLayout {
+    min-width: 0px;
     in property <string> label;
     in property <string> placeholder;
     in property <string> hint;
@@ -239,6 +240,7 @@ export component LabeledField inherits VerticalLayout {
         font-weight: 600;
     }
     LineEdit {
+        min-width: 0px;
         text <=> root.text;
         placeholder-text: placeholder;
         input-type: root.input-type;

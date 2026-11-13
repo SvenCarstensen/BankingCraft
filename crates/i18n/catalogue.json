@@ -104,6 +104,16 @@
     "6 derniers mois, tous les comptes",
     "Últimos 6 meses, todas las cuentas"
   ],
+  "Letzte 6 Monate": [
+    "Last 6 months",
+    "6 derniers mois",
+    "Últimos 6 meses"
+  ],
+  "Keine anstehenden Daueraufträge für diese Gruppe.": [
+    "No upcoming standing orders for this group.",
+    "Aucun virement permanent à venir pour ce groupe.",
+    "No hay transferencias periódicas próximas para este grupo."
+  ],
   "Anstehende Daueraufträge": [
     "Upcoming standing orders",
     "Virements permanents à venir",

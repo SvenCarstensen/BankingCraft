@@ -88,6 +88,15 @@ vertikal zentriert und überlappen sich nicht; Hinweistexte haben eine eigene Ze
 
 ## Englische Demo-Screenshots
 
+Die Gruppenfilter der vier Übersichtskacheln werden in `view::overview::tests` mit unabhängigen
+Auswahlen geprüft: Gruppen über mehrere Bankzugänge, Konten ohne Gruppe, leere Gruppen,
+Filterung vor Zeilenbegrenzung, Monats-/Kategoriesummen ohne vorgemerkte Umsätze und Umbuchungen,
+Umbenennen/Umordnen/Löschen von Gruppen, Kontenzuweisung, Sprach- und Tresorwechsel.
+Globale Summen, andere Kacheln, vollständige Dauerauftragsliste und Tresordaten bleiben erhalten.
+Der vorhandene Sichtprüfungsexport zeigt die gesamte Übersicht bei 1100 und 1360 Pixel Breite.
+`render_payment_pages` umfasst außerdem das Dauerauftragsformular mit einer gemeinsamen,
+vertikal zentrierten Zeile für Turnus und Ausführungsdaten in Deutsch und Französisch.
+
 Die fünf README-Ansichten werden mit den echten Slint-Seiten und ausschließlich synthetischen,
 englisch beschrifteten Demo-Daten gerendert:
 

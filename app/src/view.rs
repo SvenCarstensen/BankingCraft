@@ -7,7 +7,10 @@ use chrono::{Datelike, Duration, Local, Months, NaiveDate};
 use fints::{Interval, StandingOrder};
 use rust_decimal::Decimal;
 use slint::{ComponentHandle, Color, ModelRc, SharedString, VecModel};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+
+mod overview;
+pub use overview::change_group as change_overview_group;
 
 pub fn fmt_eur(d: Decimal) -> String {
     fmt_money(d, "€")
@@ -117,6 +120,7 @@ pub struct ViewState {
     pub account_filter: Vec<u32>,
     pub sepa_accounts: Vec<u32>,
     pub standing_index: Vec<usize>,
+    overview: overview::Filters,
 }
 
 fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> AccountGroupRow {
@@ -230,44 +234,20 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
 
     // overview month figures
     let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
-    let (inc, exp, cats) = month_stats(v, month_start);
+    let (inc, exp, _) = month_stats(v, month_start);
     st.set_month_label(ss(format!("{} {}", i18n::tr(MONTHS[today.month0() as usize]), today.year())));
     st.set_month_income(ss(fmt_eur(inc)));
     st.set_month_expense(ss(fmt_eur(-exp)));
-    st.set_category_stats(model(bar_stats(&cats, 6)));
-    st.set_months(model(month_series(v, month_start, 6)));
-
-    // recent
-    let mut idx: Vec<usize> = (0..v.transactions.len()).collect();
-    idx.sort_by(|&a, &b| v.transactions[b].tx.booking_date.cmp(&v.transactions[a].tx.booking_date));
-    let recent: Vec<TxRow> = idx.iter().take(6).map(|&i| tx_row(v, i, true)).collect();
-    st.set_recent(model(recent));
 
     // standing orders
     vs.standing_index.clear();
     let mut standing = Vec::new();
-    let mut upcoming: Vec<(NaiveDate, StandingRow)> = Vec::new();
-    for (i, s) in v.standing.iter().enumerate() {
-        let next = next_execution(&s.order, today);
-        let row = StandingRow {
-            index: i as i32,
-            name: ss(&s.order.transfer.creditor_name),
-            iban: ss(short_iban(&s.order.transfer.creditor_iban)),
-            amount: ss(fmt_eur(-s.order.transfer.amount)),
-            purpose: ss(&s.order.transfer.purpose),
-            schedule: ss(format!("{}{}", schedule_text(&s.order), s.order.execution_time.map(|t| i18n::tr_format!(" · {} Uhr", t.format("%H:%M"))).unwrap_or_default())),
-            next: ss(next.map(|d| i18n::tr_format!("nächste Ausführung {}", fmt_date(d))).unwrap_or_else(|| i18n::tr("beendet").into())),
-            account: ss(account_label(v, s.account_id)),
-        };
-        if let Some(n) = next {
-            upcoming.push((n, row.clone()));
-        }
-        standing.push(row);
+    for i in 0..v.standing.len() {
+        standing.push(standing_row(v, i, today));
         vs.standing_index.push(i);
     }
-    upcoming.sort_by_key(|x| x.0);
     st.set_standing(model(standing));
-    st.set_upcoming(model(upcoming.into_iter().take(5).map(|x| x.1).collect()));
+    overview::refresh(app, v, &mut vs.overview);
 
     // accesses
     let accesses = v
@@ -311,12 +291,16 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
 }
 
 fn month_stats(v: &Vault, month_start: NaiveDate) -> (Decimal, Decimal, BTreeMap<String, Decimal>) {
+    month_stats_for(v, month_start, None)
+}
+
+fn month_stats_for(v: &Vault, month_start: NaiveDate, accounts: Option<&HashSet<u32>>) -> (Decimal, Decimal, BTreeMap<String, Decimal>) {
     let month_end = month_start + Months::new(1);
     let mut inc = Decimal::ZERO;
     let mut exp = Decimal::ZERO;
     let mut cats: BTreeMap<String, Decimal> = BTreeMap::new();
     for t in &v.transactions {
-        if t.tx.pending || t.tx.date_unknown || t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
+        if accounts.is_some_and(|ids| !ids.contains(&t.account_id)) || t.tx.pending || t.tx.date_unknown || t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
             continue;
         }
         let cat = categorize(t, &v.rules);
@@ -349,10 +333,14 @@ fn bar_stats(cats: &BTreeMap<String, Decimal>, limit: usize) -> Vec<BarStat> {
 }
 
 fn month_series(v: &Vault, last_month_start: NaiveDate, count: u32) -> Vec<MonthStat> {
+    month_series_for(v, last_month_start, count, None)
+}
+
+fn month_series_for(v: &Vault, last_month_start: NaiveDate, count: u32, accounts: Option<&HashSet<u32>>) -> Vec<MonthStat> {
     let mut data = Vec::new();
     for k in (0..count).rev() {
         let start = last_month_start - Months::new(k);
-        let (inc, exp, _) = month_stats(v, start);
+        let (inc, exp, _) = month_stats_for(v, start, accounts);
         data.push((start, inc, -exp));
     }
     let max = data.iter().map(|x| x.1.max(x.2)).max().unwrap_or(Decimal::ONE).max(Decimal::ONE);
@@ -551,6 +539,21 @@ pub fn show_detail(app: &AppWindow, v: &Vault, i: usize) {
         account: ss(account_label(v, t.account_id)),
         pending: t.tx.pending,
     });
+}
+
+fn standing_row(v: &Vault, index: usize, today: NaiveDate) -> StandingRow {
+    let s = &v.standing[index];
+    let next = next_execution(&s.order, today);
+    StandingRow {
+        index: index as i32,
+        name: ss(&s.order.transfer.creditor_name),
+        iban: ss(short_iban(&s.order.transfer.creditor_iban)),
+        amount: ss(fmt_eur(-s.order.transfer.amount)),
+        purpose: ss(&s.order.transfer.purpose),
+        schedule: ss(format!("{}{}", schedule_text(&s.order), s.order.execution_time.map(|t| i18n::tr_format!(" · {} Uhr", t.format("%H:%M"))).unwrap_or_default())),
+        next: ss(next.map(|d| i18n::tr_format!("nächste Ausführung {}", fmt_date(d))).unwrap_or_else(|| i18n::tr("beendet").into())),
+        account: ss(account_label(v, s.account_id)),
+    }
 }
 
 pub fn schedule_text(o: &StandingOrder) -> String {

@@ -193,6 +193,15 @@ fn main() {
     st.on_refresh_group(|id| ctx().run(i18n::tr("Gruppe wird aktualisiert …"), move |c| jobs::sync_group(c, id as u32)));
     {
         let weak = app.as_weak();
+        st.on_overview_group_changed(move |tile, index| {
+            let app = weak.unwrap();
+            let c = ctx();
+            let v = c.vault.lock().unwrap();
+            VIEW.with(|vs| view::change_overview_group(&app, &v, &mut vs.borrow_mut(), tile, index));
+        });
+    }
+    {
+        let weak = app.as_weak();
         st.on_move_account(move |source, target, after| {
             edit_vault(&weak.unwrap(), |v| v.move_account(source as u32, target as u32, after))
         });

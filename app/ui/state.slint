@@ -33,6 +33,11 @@ export global AppState {
     in-out property <[BarStat]> category-stats;
     in-out property <[MonthStat]> months;
     in-out property <[StandingRow]> upcoming;
+    in-out property <[string]> overview-group-names;
+    in-out property <int> recent-group;
+    in-out property <int> category-group;
+    in-out property <int> months-group;
+    in-out property <int> upcoming-group;
 
     // ---- local account display names
     in-out property <bool> show-account-name;
@@ -174,6 +179,7 @@ export global AppState {
     callback refresh-all();
     callback refresh-transactions();
     callback refresh-group(int);
+    callback overview-group-changed(int, int);
     callback open-account(int);
     callback edit-account-name(int);
     callback save-account-name();

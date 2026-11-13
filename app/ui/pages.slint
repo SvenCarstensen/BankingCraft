@@ -260,6 +260,25 @@ component PageTitle inherits HorizontalLayout {
 
 // ------------------------------------------------------------------ overview
 
+component OverviewGroupSelector inherits HorizontalLayout {
+    in property <int> tile;
+    in-out property <int> selected;
+    height: 40px;
+    spacing: 10px;
+    Text { text: @tr("Gruppe"); font-size: 12px; color: Theme.text-muted; vertical-alignment: center; }
+    Rectangle {
+        horizontal-stretch: 1;
+        ComboBox {
+            width: parent.width;
+            min-width: 0px;
+            y: (parent.height - self.height) / 2;
+            model: AppState.overview-group-names;
+            current-index <=> root.selected;
+            selected => { AppState.overview-group-changed(root.tile, self.current-index); }
+        }
+    }
+}
+
 export component OverviewPage inherits ScrollView {
     mouse-drag-pan-enabled: false;
     property <int> drag-source: -1;
@@ -566,6 +585,12 @@ export component OverviewPage inherits ScrollView {
                             clicked => { AppState.navigate(2); }
                         }
                     }
+                    OverviewGroupSelector {
+                        padding-left: 18px;
+                        padding-right: 18px;
+                        tile: 0;
+                        selected <=> AppState.recent-group;
+                    }
                     for r in AppState.recent: TxLine {
                         item: r;
                         compact: true;
@@ -587,6 +612,7 @@ export component OverviewPage inherits ScrollView {
                         title: @tr("Ausgaben nach Kategorie");
                         subtitle: AppState.month-label;
                     }
+                    OverviewGroupSelector { tile: 1; selected <=> AppState.category-group; }
                     BarList { stats: AppState.category-stats; }
                     Rectangle { vertical-stretch: 1; }
                 }
@@ -600,8 +626,9 @@ export component OverviewPage inherits ScrollView {
                     padding: 18px;
                     CardHeader {
                         title: @tr("Einnahmen & Ausgaben");
-                        subtitle: @tr("Letzte 6 Monate, alle Konten");
+                        subtitle: @tr("Letzte 6 Monate");
                     }
+                    OverviewGroupSelector { tile: 2; selected <=> AppState.months-group; }
                     MonthChart { months: AppState.months; }
                 }
             }
@@ -617,6 +644,7 @@ export component OverviewPage inherits ScrollView {
                             clicked => { AppState.navigate(4); }
                         }
                     }
+                    OverviewGroupSelector { tile: 3; selected <=> AppState.upcoming-group; }
                     for s in AppState.upcoming: HorizontalLayout {
                         height: 44px;
                         spacing: 10px;
@@ -649,7 +677,9 @@ export component OverviewPage inherits ScrollView {
                         }
                     }
                     if AppState.upcoming.length == 0: Text {
-                        text: @tr("Keine Daueraufträge bekannt. Unter Zahlungsverkehr → Daueraufträge abrufen.");
+                        text: AppState.upcoming-group == 0
+                            ? @tr("Keine Daueraufträge bekannt. Unter Zahlungsverkehr → Daueraufträge abrufen.")
+                            : @tr("Keine anstehenden Daueraufträge für diese Gruppe.");
                         wrap: word-wrap;
                         color: Theme.text-faint;
                         font-size: 13px;
@@ -1102,6 +1132,30 @@ export component OrdersPage inherits ScrollView {
 
 // ------------------------------------------------------------------ standing orders
 
+component ScheduleLabel inherits Text {
+    font-size: 12px;
+    font-weight: 600;
+    color: Theme.text-muted;
+    wrap: word-wrap;
+    vertical-alignment: bottom;
+    min-width: 0px;
+}
+
+component ScheduleDateField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    height: 40px;
+    min-width: 0px;
+    horizontal-stretch: 1;
+    LineEdit {
+        width: parent.width;
+        min-width: 0px;
+        y: (parent.height - self.height) / 2;
+        text <=> root.text;
+        placeholder-text: root.placeholder;
+    }
+}
+
 export component StandingPage inherits ScrollView {
     VerticalLayout {
         padding: 24px;
@@ -1188,21 +1242,30 @@ export component StandingPage inherits ScrollView {
                     LabeledField { width: 140px; label: @tr("Betrag (EUR)"); text <=> AppState.tf-amount; placeholder: "0,00"; }
                 }
                 LabeledField { label: @tr("Verwendungszweck"); text <=> AppState.tf-purpose; placeholder: @tr("z. B. Miete"); }
-                HorizontalLayout {
+                GridLayout {
                     spacing: 12px;
-                    VerticalLayout {
-                        spacing: 4px;
-                        Text { text: @tr("Turnus"); font-size: 12px; font-weight: 600; color: Theme.text-muted; }
-                        ComboBox {
-                            width: 200px;
-                            model: [@tr("monatlich"), @tr("vierteljährlich"), @tr("halbjährlich"), @tr("jährlich"), @tr("wöchentlich")];
-                            current-index <=> AppState.so-interval;
-                        }
+                    Row {
+                        ScheduleLabel { text: @tr("Turnus"); }
+                        ScheduleLabel { text: @tr("Erste Ausführung"); }
+                        ScheduleLabel { text: @tr("Ausführungstag"); }
+                        ScheduleLabel { text: @tr("Letzte Ausführung"); }
                     }
-                    LabeledField { width: 150px; label: @tr("Erste Ausführung"); text <=> AppState.so-first; placeholder: @tr("TT.MM.JJJJ"); }
-                    LabeledField { width: 120px; label: @tr("Ausführungstag"); text <=> AppState.so-day; placeholder: @tr("1–31 / 99 = Ultimo"); }
-                    LabeledField { width: 150px; label: @tr("Letzte Ausführung"); text <=> AppState.so-last; placeholder: @tr("optional"); }
-                    Rectangle { }
+                    Row {
+                        Rectangle {
+                            width: 200px;
+                            height: 40px;
+                            ComboBox {
+                                width: parent.width;
+                                min-width: 0px;
+                                y: (parent.height - self.height) / 2;
+                                model: [@tr("monatlich"), @tr("vierteljährlich"), @tr("halbjährlich"), @tr("jährlich"), @tr("wöchentlich")];
+                                current-index <=> AppState.so-interval;
+                            }
+                        }
+                        ScheduleDateField { text <=> AppState.so-first; placeholder: @tr("TT.MM.JJJJ"); }
+                        ScheduleDateField { text <=> AppState.so-day; placeholder: @tr("1–31 / 99 = Ultimo"); }
+                        ScheduleDateField { text <=> AppState.so-last; placeholder: @tr("optional"); }
+                    }
                 }
                 HorizontalLayout {
                     alignment: end;

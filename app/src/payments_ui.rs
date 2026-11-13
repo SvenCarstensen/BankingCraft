@@ -212,7 +212,7 @@ mod visual_review {
             slint::select_bundled_translation(code).unwrap();
             i18n::with_language(language, || {
                 view::refresh_all(&app, &vault, &mut vs);
-                for (page, name) in [(3, "transfer"), (9, "orders"), (2, "transactions")] {
+                for (page, name) in [(3, "transfer"), (9, "orders"), (2, "transactions"), (4, "standing")] {
                     st.set_page(page);
                     for width in [1100, 1360] {
                         window.set_size(slint::PhysicalSize::new(width, 860));

@@ -296,7 +296,7 @@ mod visual_review {
                     st.set_account_name_context("Demo-Bank · DE00 1234 5678 0000 0000 00".into());
                     st.set_account_name_draft("Meine Reisekarte".into());
                     for width in [1100, 1360] {
-                        let height = if page < 0 || name.starts_with("vop-") { 680 } else { 860 };
+                        let height = if name == "overview" { 1360 } else if page < 0 || name.starts_with("vop-") { 680 } else { 860 };
                         window.set_size(slint::PhysicalSize::new(width, height));
                         app.show().unwrap();
                         let mut buffer = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(width, height);

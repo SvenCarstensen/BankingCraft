@@ -215,6 +215,12 @@ bank dialog per connection. This also works for **Ungrouped** and does not send 
 Assign an account using its group selector; **Ungrouped** removes the assignment.
 Groups are encrypted along with the vault.
 
+On the overview, **Recent transactions**, **Expenses by category**, **Income & expenses** and
+**Upcoming standing orders** each have their own group selector. Choose **All accounts**,
+**Ungrouped** or a named group. Each choice affects only its tile and is retained while working
+in the current vault, including after group renaming or account updates. Switching vaults or
+restarting the app resets the selectors to **All accounts**.
+
 The overview shows each group’s known booked balances, separately by currency. Missing balances
 are marked as missing rather than treated as zero. Drag accounts within the overview account list
 to reorder them; an insertion line shows the destination. The order survives application restarts

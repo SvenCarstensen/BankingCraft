@@ -266,6 +266,11 @@ fn reset_vault_view(app: &AppWindow) {
     st.set_category_stats(Default::default());
     st.set_months(Default::default());
     st.set_upcoming(Default::default());
+    st.set_overview_group_names(Default::default());
+    st.set_recent_group(0);
+    st.set_category_group(0);
+    st.set_months_group(0);
+    st.set_upcoming_group(0);
     st.set_show_account_name(Default::default());
     st.set_editing_account_id(Default::default());
     st.set_account_name_draft(Default::default());
