@@ -1441,28 +1441,6 @@ export component SettingsPage inherits ScrollView {
             VerticalLayout {
                 padding: 22px;
                 spacing: 14px;
-                CardHeader { title: @tr("FinTS-Produktregistrierung"); }
-                Text {
-                    wrap: word-wrap;
-                    font-size: 13px;
-                    color: Theme.text-muted;
-                    text: @tr("Banken akzeptieren FinTS-Zugriffe nur mit einer bei der Deutschen Kreditwirtschaft registrierten Produkt-ID. Die Registrierung ist für Software-Hersteller kostenlos (fints.org → Produktregistrierung).");
-                }
-                HorizontalLayout {
-                    spacing: 12px;
-                    LabeledField { label: @tr("Produkt-ID"); text <=> AppState.product-id; placeholder: @tr("25-stellige Registrierungsnummer"); }
-                    LabeledField { width: 140px; label: @tr("Produktversion"); text <=> AppState.product-version; }
-                }
-                HorizontalLayout {
-                    alignment: end;
-                    PrimaryButton { text: @tr("Speichern"); clicked => { AppState.save-settings(); } }
-                }
-            }
-        }
-        Card {
-            VerticalLayout {
-                padding: 22px;
-                spacing: 14px;
                 CardHeader { title: @tr("Tresor-Passwort ändern"); subtitle: @tr("Alle Daten werden lokal mit AES-256-GCM verschlüsselt (Schlüssel per Argon2id)."); }
                 HorizontalLayout {
                     spacing: 12px;

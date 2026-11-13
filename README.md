@@ -70,12 +70,14 @@ Error reports contain technical segment summaries, without free-form bank messag
 ## Getting started
 
 1. Set a vault password.
-2. Under **Settings → FinTS product registration**, enter a product ID registered with
-   Deutsche Kreditwirtschaft. See [the official registration page](https://www.fints.org/de/hersteller/produktregistrierung).
-3. Open **Bank connections → New bank connection** and find the bank by name, city,
+2. Open **Bank connections → New bank connection** and find the bank by name, city,
    bank code or BIC. The bank code and FinTS URL or HBCI host are filled in automatically.
    Enter the PIN/TAN user ID, or select a smart card reader and choose **Read data from card**.
-4. Choose **Retrieve transactions** on the overview page.
+3. Choose **Retrieve transactions** on the overview page.
+
+[FinTS product registration](https://www.fints.org/de/hersteller/produktregistrierung) is handled
+by the software publisher. Once assigned, BankingCraft’s product ID will be embedded in a future
+release. Product registration fields are not shown in Settings.
 
 Without a bank connection, **Load demo data** creates a local demo connection. Demo transfers
 show a sample flicker code and are simulated locally; they do not contact a bank.
