@@ -37,17 +37,18 @@ offline test coverage. **This does not expand the live-tested bank list above.**
   repository nor embedded in builds. See [Build](#build) for the separation of local test settings.
 - **Real payments remain untested.** Transfers, instant and scheduled transfers, standing order
   changes and Verification of Payee have not been validated by submitting real payment orders.
-  Their automated tests use simulated bank responses.
+  Their automated tests use simulated bank responses. **Synchronize transactions sends saved
+  orders for the selected accounts before retrieving balances and transactions.**
 - **The interface has just migrated to egui/eframe 0.36.** Automated UI tests and a native macOS
   startup check have passed, but broad hands-on validation is still pending. Some font rendering
   and spacing differ from the previous interface.
-- **Platform validation is limited to macOS.** Windows and Linux are intended targets; the
-  current application has not yet been validated on those platforms. Automated GitHub checks
-  across all three platforms are still to be added.
+- **Interactive platform validation is limited to macOS.** GitHub CI is configured to test, lint
+  and build normal releases on macOS, Windows and Linux. This does not replace hands-on
+  validation with real readers, graphics drivers or bank connections on each platform.
 - **Security testing is limited.** Passing tests and dependency scans are not an independent
-  security audit or banking certification. A `SECURITY.md` and a documented confidential
-  vulnerability-reporting channel are still to be added. Do not post credentials or bank data
-  in public issues.
+  security audit or banking certification. See [SECURITY.md](SECURITY.md) for confidential
+  reporting through GitHub. Private vulnerability reporting must be enabled after the repository
+  becomes public. Do not post vulnerabilities, credentials or bank data in public issues.
 - **Release source packaging remains to be prepared.** Third-party license and attribution
   notices, including the LGPL-2.1 bank directory, are included in
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Binary releases must also provide their
@@ -134,7 +135,7 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | RDH smart cards | ZKA/SECCOS cards such as VR-NetWorld-Card, RDH-7/9/10 profiles, card notepad access, HKISA bank keys checked against the card hash, card-generated RSA-PSS signatures and signature counters, two-key 3DES and RSA key transport (PKCS#1 v1.5 for RDH-7/9, mode 2 for RDH-10), bank signature verification |
 | Secure PIN entry | `FEATURE_VERIFY_PIN_DIRECT` for class 2/3 readers; the PIN stays on the reader. Software PIN entry is available only for readers without a PIN pad |
 | Payments | SEPA transfers (HKCCS), instant transfers (HKIPZ), scheduled transfers (HKCSE), standing order creation/retrieval/deletion (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
-| Payment orders and recipients | Encrypted outgoing queue, automatic dispatch when the bank connection is synchronized, immediate sending on request, and a separate opt-in address book per account |
+| Payment orders and recipients | Encrypted outgoing queue, saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month reports |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
 | Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
@@ -194,17 +195,32 @@ The former `BANKINGCRAFT_DEFAULT_PRODUCT_ID` build variable is no longer used.
 Set `RUST_LOG=debug` for protocol diagnostics. Message contents and PINs/TANs are not logged.
 Error reports contain technical segment summaries, without free-form bank messages.
 
+## Automated checks
+
+[CI](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/ci.yml) runs license-bundle
+verification, all workspace tests, Clippy with warnings treated as errors, and a normal release
+build on macOS, Windows and Linux for pushes and pull requests. It uses Rust 1.99.1, synthetic
+data and mocked bank responses. No bank credentials or local test product ID are supplied.
+
+The [dependency audit](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/dependencies.yml)
+checks current RustSec advisories on pushes, pull requests and every week. Known vulnerabilities,
+unsoundness and yanked packages fail the check. Unmaintained-package warnings remain visible;
+no advisories are suppressed. The current lockfile still contains unmaintained `zbus_names`,
+`zvariant` and `zvariant_derive` dependencies. See [test documentation](docs/testing.md).
+
 ## Getting started
 
 1. Set a vault password.
 2. Open **Bank connections → New bank connection** and find the bank by name, city,
    bank code or BIC. The bank code and FinTS URL or HBCI host are filled in automatically.
    Enter the PIN/TAN user ID, or select a smart card reader and choose **Read data from card**.
-3. Choose **Retrieve transactions** on the overview page.
+3. Choose **Synchronize transactions** on the overview page.
 
-On **Transactions**, **Refresh** retrieves only the balance and transactions of the selected
-account. It does not send queued payments. Selecting **All accounts** explicitly retains the
-full account refresh. **Back to accounts** at the top left returns to the account list.
+On **Transactions**, **Synchronize transactions** first sends the saved orders for the selected
+account, then retrieves its balance and transactions. Group synchronization does the same for
+only the accounts in that group. The global button and **All accounts** synchronize all bank
+connections: all their saved orders are sent before any balance or transaction retrieval starts.
+**Back to accounts** at the top left returns to the account list.
 
 [FinTS product registration](https://www.fints.org/de/hersteller/produktregistrierung) is handled
 by the software publisher. Once assigned, BankingCraft’s product ID will be embedded in a future
@@ -214,9 +230,9 @@ Without a bank connection, **Load demo data** creates a local demo connection. D
 show a sample flicker code and are simulated locally; they do not contact a bank.
 
 **Save transfer** is the default payment action, including Enter in the transfer fields. It adds
-the transfer to **Payment orders** without contacting the bank. Synchronizing the corresponding
-bank connection, individually or in the account refresh, sends its saved orders with the normal
-bank authorization. **Send transfer** sends only the current transfer immediately after confirmation.
+the transfer to **Payment orders** without contacting the bank. Synchronizing an
+account, group or all accounts sends the matching saved orders first, with the normal
+bank authorization. If a submission fails or is cancelled, synchronization stops before retrieval. **Send transfer** sends only the current transfer immediately after confirmation.
 Sent orders remain visible in the list and are not sent again. Interrupted or failed attempts are
 marked **Review required** and are not retried automatically; check the bank status before creating
 a replacement. Removing a local entry does not cancel an order already received by the bank.

@@ -244,22 +244,25 @@ fn allowed(acc: &Account, codes: &[&str]) -> bool {
     acc.allowed.is_empty() || codes.iter().any(|c| acc.allowed.iter().any(|a| a == c))
 }
 
-/// Kontenrundruf for one access: accounts, balances, transactions.
+/// Send this access's saved orders first, then refresh accounts, balances and transactions.
 pub fn sync_access(ctx: &Ctx, access_id: u32) -> JobResult {
-    let access = ctx.vault.lock().unwrap().access(access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
-    sync_scope(ctx, access, None)
+    ctx.vault.lock().unwrap().access(access_id).ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
+    sync_targets(ctx, vec![SyncTarget::access(access_id)])
 }
 
-/// Read balances and transactions only for the selected account; never dispatch payments.
+/// Synchronize saved orders, balances and transactions only for the selected account.
 pub fn sync_account(ctx: &Ctx, account_id: u32) -> JobResult {
     let (account, access) = account_and_access(ctx, account_id)?;
-    sync_scope(ctx, access, Some(vec![(account, account_id)]))
+    sync_targets(ctx, vec![SyncTarget { access_id: access.id, accounts: Some(vec![(account, account_id)]) }])
 }
 
 type AccountBatch = Vec<(Account, u32)>;
-struct GroupTarget { access: BankAccess, accounts: AccountBatch }
+struct SyncTarget { access_id: u32, accounts: Option<AccountBatch> }
+impl SyncTarget {
+    fn access(access_id: u32) -> Self { Self { access_id, accounts: None } }
+}
 
-fn group_targets(ctx: &Ctx, group_id: u32) -> Result<Vec<GroupTarget>, String> {
+fn group_targets(ctx: &Ctx, group_id: u32) -> Result<Vec<SyncTarget>, String> {
     let ids = {
         let v = ctx.vault.lock().unwrap();
         let group = if group_id == 0 { None } else {
@@ -271,30 +274,48 @@ fn group_targets(ctx: &Ctx, group_id: u32) -> Result<Vec<GroupTarget>, String> {
         }).map(|a| a.id).collect::<Vec<_>>()
     };
     if ids.is_empty() { return Err(i18n::tr("Keine Konten").into()); }
-    let mut targets: Vec<GroupTarget> = Vec::new();
+    let mut targets: Vec<SyncTarget> = Vec::new();
     for id in ids {
         let (account, access) = account_and_access(ctx, id)?;
-        if let Some(target) = targets.iter_mut().find(|target| target.access.id == access.id) {
-            target.accounts.push((account, id));
+        if let Some(target) = targets.iter_mut().find(|target| target.access_id == access.id) {
+            target.accounts.as_mut().expect("group accounts are selected").push((account, id));
         } else {
-            targets.push(GroupTarget { access, accounts: vec![(account, id)] });
+            targets.push(SyncTarget { access_id: access.id, accounts: Some(vec![(account, id)]) });
         }
     }
     Ok(targets)
 }
 
-/// Refresh only a group's accounts, sharing one dialog per access and never sending payments.
+/// Send the group's saved orders before refreshing only its accounts.
 pub fn sync_group(ctx: &Ctx, group_id: u32) -> JobResult {
-    let targets = group_targets(ctx, group_id)?;
+    sync_targets(ctx, group_targets(ctx, group_id)?)
+}
+
+fn sync_targets(ctx: &Ctx, targets: Vec<SyncTarget>) -> JobResult {
+    sync_targets_with(ctx, targets, perform_transfer, sync_scope)
+}
+
+fn sync_targets_with(
+    ctx: &Ctx, targets: Vec<SyncTarget>,
+    send: impl FnMut(&Ctx, u32, SepaTransfer, bool) -> JobResult,
+    mut fetch: impl FnMut(&Ctx, BankAccess, Option<AccountBatch>) -> JobResult,
+) -> JobResult {
+    // Complete the entire outgoing phase before opening any retrieval dialog,
+    // including when a group or the global synchronization spans several banks.
+    let sent = dispatch_queued_with(ctx, &targets, send)?;
     let mut messages = Vec::new();
     let mut failed = false;
     for target in targets {
-        match sync_scope(ctx, target.access, Some(target.accounts)) {
+        if ctx.bridge.cancelled.load(Ordering::Acquire) { return Err(i18n::tr("Vorgang abgebrochen.").into()); }
+        // Sending can update TAN/dialog state. Never reuse the pre-send snapshot.
+        let access = ctx.vault.lock().unwrap().access(target.access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
+        match fetch(ctx, access, target.accounts) {
             Ok(message) => messages.push(message),
             Err(error) if ctx.bridge.cancelled.load(Ordering::Acquire) => return Err(error),
             Err(error) => { failed = true; messages.push(error); },
         }
     }
+    if sent > 0 { messages.push(i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent).trim_start().into()); }
     if failed { Err(messages.join("\n")) } else { Ok(messages.join("\n")) }
 }
 
@@ -306,13 +327,9 @@ fn scope_name(ctx: &Ctx, access: &BankAccess, selected: Option<&AccountBatch>) -
 }
 
 fn sync_scope(ctx: &Ctx, access: BankAccess, selected: Option<AccountBatch>) -> JobResult {
-    let access_id = access.id;
     if access.kind == AccessKind::Demo {
-        let sent = if selected.is_none() { dispatch_queued(ctx, access_id)? } else { 0 };
         let name = scope_name(ctx, &access, selected.as_ref());
-        let mut message = i18n::tr_format!("{}: Demo-Daten sind aktuell.", name);
-        if sent > 0 { message.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)); }
-        return Ok(message);
+        return Ok(i18n::tr_format!("{}: Demo-Daten sind aktuell.", name));
     }
     let bridge = ctx.bridge.clone();
     let client = make_client(ctx, &access, &bridge).map_err(|e| format!("{}:\n{e}", access.name))?;
@@ -321,7 +338,6 @@ fn sync_scope(ctx: &Ctx, access: BankAccess, selected: Option<AccountBatch>) -> 
 
 fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatch>, mut client: Client) -> JobResult {
     let access_id = access.id;
-    let scoped = selected.is_some();
     let single_account = selected.as_ref().is_some_and(|accounts| accounts.len() == 1);
     let name = scope_name(ctx, access, selected.as_ref());
     let mut warnings: Vec<String> = Vec::new();
@@ -399,13 +415,6 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
     } else {
         i18n::tr_format!("{}: {} Konten geprüft, {} neue Umsätze.", name, count, new_tx)
     };
-    if !scoped {
-        match dispatch_queued(ctx, access_id) {
-            Ok(sent) if sent > 0 => msg.push_str(&i18n::tr_format!("\n{} gespeicherte Überweisungen gesendet.", sent)),
-            Ok(_) => {},
-            Err(e) => warnings.push(e),
-        }
-    }
     if !warnings.is_empty() {
         msg.push('\n');
         msg.push_str(&warnings.join("\n"));
@@ -418,16 +427,7 @@ pub fn sync_all(ctx: &Ctx) -> JobResult {
     if ids.is_empty() {
         return Err(i18n::tr("Noch kein Bankzugang eingerichtet.").into());
     }
-    let mut msgs = Vec::new();
-    let mut failed = false;
-    for id in ids {
-        match sync_access(ctx, id) {
-            Ok(m) => msgs.push(m),
-            Err(e) if ctx.bridge.cancelled.load(Ordering::Acquire) => return Err(e),
-            Err(e) => { failed = true; msgs.push(e); },
-        }
-    }
-    if failed { Err(msgs.join("\n")) } else { Ok(msgs.join("\n")) }
+    sync_targets(ctx, ids.into_iter().map(SyncTarget::access).collect())
 }
 
 pub fn reset_tan(ctx: &Ctx, access_id: u32) -> JobResult {
@@ -490,15 +490,18 @@ pub fn transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool, sa
     submit_order_with(ctx, id, perform_transfer)
 }
 
-fn dispatch_queued(ctx: &Ctx, access_id: u32) -> Result<usize, String> {
-    dispatch_queued_with(ctx, access_id, perform_transfer)
-}
-
 fn dispatch_queued_with(
-    ctx: &Ctx, access_id: u32,
+    ctx: &Ctx, targets: &[SyncTarget],
     mut send: impl FnMut(&Ctx, u32, SepaTransfer, bool) -> JobResult,
 ) -> Result<usize, String> {
-    let ids = ctx.vault.lock().unwrap().queued_orders_for_access(access_id);
+    let ids: Vec<_> = {
+        let v = ctx.vault.lock().unwrap();
+        v.payment_orders.iter().filter(|order| order.status == OrderStatus::Queued
+            && v.account(order.account_id).is_some_and(|account| targets.iter().any(|target|
+                target.access_id == account.access_id && target.accounts.as_ref().is_none_or(|accounts|
+                    accounts.iter().any(|(_, id)| *id == account.id)))))
+            .map(|order| order.id).collect()
+    };
     let mut sent = 0;
     for id in ids {
         if ctx.bridge.cancelled.load(Ordering::Acquire) { return Err(i18n::tr("Vorgang abgebrochen.").into()); }
@@ -512,6 +515,7 @@ fn submit_order_with(
     ctx: &Ctx, id: u32,
     send: impl FnOnce(&Ctx, u32, SepaTransfer, bool) -> JobResult,
 ) -> JobResult {
+    if ctx.bridge.cancelled.load(Ordering::Acquire) { return Err(i18n::tr("Vorgang abgebrochen.").into()); }
     // If persistence fails, no bank request is made. A crash or lost reply leaves a
     // non-queued record on disk, so a later synchronization cannot send it twice.
     let order: PaymentOrder = ctx.edit_vault(|v| {
@@ -809,12 +813,103 @@ mod outgoing_order_tests {
     impl Drop for Fixture { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.dir); } }
 
     #[test]
+    fn global_sync_sends_all_orders_before_any_retrieval_and_uses_updated_bank_state() {
+        let f = Fixture::new();
+        f.queue();
+        let other_access = f.ctx.edit_vault(|v| {
+            let mut access = v.accesses[0].clone(); access.id = v.new_id();
+            let mut account = v.accounts[0].clone(); account.id = v.new_id(); account.access_id = access.id;
+            let access_id = access.id; let account_id = account.id;
+            v.accesses.push(access); v.accounts.push(account);
+            v.queue_transfer(account_id, crate::business_tests::standing().transfer, false, false)?;
+            Ok(access_id)
+        }).unwrap();
+        let events = std::cell::RefCell::new(Vec::new());
+        let result = sync_targets_with(&f.ctx, vec![SyncTarget::access(f.access), SyncTarget::access(other_access)],
+            |ctx, account, _, _| {
+                let mut v = ctx.vault.lock().unwrap();
+                let access_id = v.account(account).unwrap().access_id;
+                events.borrow_mut().push(format!("send:{access_id}"));
+                v.accesses.iter_mut().find(|a| a.id == access_id).unwrap().state.system_id = "AFTER_PAYMENT".into();
+                Ok("Accepted".into())
+            },
+            |ctx, access, selected| {
+                assert!(selected.is_none());
+                assert_eq!(access.state.system_id, "AFTER_PAYMENT");
+                assert!(ctx.vault.lock().unwrap().payment_orders.iter().all(|o| o.status == OrderStatus::Sent));
+                events.borrow_mut().push(format!("fetch:{}", access.id));
+                Ok("Retrieved".into())
+            }).unwrap();
+        assert!(result.contains("Retrieved"));
+        assert_eq!(*events.borrow(), [format!("send:{}", f.access), format!("send:{other_access}"),
+            format!("fetch:{}", f.access), format!("fetch:{other_access}")]);
+        *f.ctx.vault.lock().unwrap() = f.reload();
+        sync_targets_with(&f.ctx, vec![SyncTarget::access(f.access), SyncTarget::access(other_access)],
+            |_, _, _, _| panic!("accepted orders must not be sent again"), |_, _, _| Ok("Retrieved again".into())).unwrap();
+    }
+
+    #[test]
+    fn account_and_group_sync_send_only_the_selected_accounts_orders_before_retrieval() {
+        for group in [false, true] {
+            let f = Fixture::new();
+            let targets = f.ctx.edit_vault(|v| {
+                let mut access = v.accesses[0].clone(); access.id = v.new_id();
+                let mut account = v.accounts[0].clone(); account.id = v.new_id(); account.access_id = access.id;
+                let other_id = account.id;
+                v.accesses.push(access); v.accounts.push(account);
+                let account_ids: Vec<_> = v.accounts.iter().map(|a| a.id).collect();
+                for id in account_ids { v.queue_transfer(id, crate::business_tests::standing().transfer, false, false)?; }
+                let group_id = v.create_group("Selected accounts")?;
+                v.assign_group(f.account, Some(group_id))?;
+                v.assign_group(other_id, Some(group_id))?;
+                Ok(group_id)
+            }).map(|group_id| if group { group_targets(&f.ctx, group_id).unwrap() } else {
+                let (account, access) = account_and_access(&f.ctx, f.account).unwrap();
+                vec![SyncTarget { access_id: access.id, accounts: Some(vec![(account, f.account)]) }]
+            }).unwrap();
+            let selected: Vec<_> = targets.iter().flat_map(|t| t.accounts.as_ref().unwrap().iter().map(|(_, id)| *id)).collect();
+            let sent = std::cell::RefCell::new(Vec::new());
+            sync_targets_with(&f.ctx, targets, |_, account, _, _| {
+                assert!(selected.contains(&account)); sent.borrow_mut().push(account); Ok("Accepted".into())
+            }, |_, _, accounts| {
+                assert_eq!(sent.borrow().len(), selected.len(), "finish all selected payments before retrieval");
+                assert!(accounts.unwrap().iter().all(|(_, id)| selected.contains(id)));
+                Ok("Retrieved".into())
+            }).unwrap();
+            for order in f.reload().payment_orders {
+                assert_eq!(order.status, if selected.contains(&order.account_id) { OrderStatus::Sent } else { OrderStatus::Queued });
+            }
+        }
+    }
+
+    #[test]
+    fn failed_or_cancelled_payment_phase_stops_before_retrieval() {
+        for cancel in [false, true] {
+            let f = Fixture::new(); f.queue(); f.queue();
+            let mut calls = 0;
+            assert!(sync_targets_with(&f.ctx, vec![SyncTarget::access(f.access)], |ctx, _, _, _| {
+                calls += 1;
+                if cancel { ctx.bridge.cancelled.store(true, Ordering::Release); Ok("Accepted before cancellation".into()) }
+                else { Err("Bank reply lost".into()) }
+            }, |_, _, _| panic!("retrieval must wait for a successful payment phase")).is_err());
+            assert_eq!(calls, 1);
+            let saved = f.reload();
+            assert_eq!(saved.payment_orders[0].status, if cancel { OrderStatus::Sent } else { OrderStatus::NeedsReview });
+            assert_eq!(saved.payment_orders[1].status, OrderStatus::Queued);
+        }
+        let f = Fixture::new();
+        f.ctx.bridge.cancelled.store(true, Ordering::Release);
+        assert!(sync_targets_with(&f.ctx, vec![SyncTarget::access(f.access)],
+            |_, _, _, _| panic!("cancelled"), |_, _, _| panic!("no retrieval even with an empty queue")).is_err());
+    }
+
+    #[test]
     fn queue_survives_restart_sends_once_and_only_for_matching_access() {
         let f = Fixture::new(); let id = f.queue();
         *f.ctx.vault.lock().unwrap() = f.reload();
-        assert_eq!(dispatch_queued_with(&f.ctx, 9999, |_, _, _, _| panic!("wrong account")).unwrap(), 0);
+        assert_eq!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(9999)], |_, _, _, _| panic!("wrong account")).unwrap(), 0);
         let mut calls = 0;
-        assert_eq!(dispatch_queued_with(&f.ctx, f.access, |_, account, t, scheduled| {
+        assert_eq!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(f.access)], |_, account, t, scheduled| {
             calls += 1; assert_eq!(account, f.account); assert!(!scheduled);
             let saved = f.reload();
             assert_eq!(saved.payment_orders[0].status, OrderStatus::Submitting);
@@ -824,14 +919,14 @@ mod outgoing_order_tests {
         }).unwrap(), 1);
         assert_eq!(calls, 1); assert_eq!(f.reload().payment_orders[0].status, OrderStatus::Sent);
         *f.ctx.vault.lock().unwrap() = f.reload();
-        assert_eq!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("duplicate payment")).unwrap(), 0);
+        assert_eq!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(f.access)], |_, _, _, _| panic!("duplicate payment")).unwrap(), 0);
         assert!(submit_order_with(&f.ctx, id, |_, _, _, _| panic!("duplicate payment")).is_err());
     }
     #[test]
     fn lost_reply_stops_batch_and_never_retries_uncertain_order() {
         let f = Fixture::new(); let first = f.queue(); let second = f.queue();
         let mut calls = 0;
-        assert!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| { calls += 1; Err("Reply lost".into()) }).is_err());
+        assert!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(f.access)], |_, _, _, _| { calls += 1; Err("Reply lost".into()) }).is_err());
         assert_eq!(calls, 1);
         let loaded = f.reload();
         assert_eq!(loaded.payment_orders[0].status, OrderStatus::NeedsReview);
@@ -846,7 +941,7 @@ mod outgoing_order_tests {
         // Simulate a crash after persisting the dispatch marker.
         f.ctx.edit_vault(|v| { v.payment_orders[0].status = OrderStatus::Submitting; Ok(()) }).unwrap();
         *f.ctx.vault.lock().unwrap() = f.reload();
-        assert_eq!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("crashed order retried")).unwrap(), 0);
+        assert_eq!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(f.access)], |_, _, _, _| panic!("crashed order retried")).unwrap(), 0);
         f.ctx.edit_vault(|v| { v.payment_orders[0].status = OrderStatus::Queued; Ok(()) }).unwrap();
         *f.ctx.file.lock().unwrap() = Some(VaultFile::create(f.path.join("invalid-child"), "test").unwrap());
         assert!(submit_order_with(&f.ctx, id, |_, _, _, _| panic!("sent without durable marker")).is_err());
@@ -867,14 +962,14 @@ mod outgoing_order_tests {
     fn cancelled_sync_and_expired_scheduled_orders_do_not_send() {
         let f = Fixture::new(); f.queue();
         f.ctx.bridge.cancelled.store(true, Ordering::Release);
-        assert!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("cancelled")).is_err());
+        assert!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(f.access)], |_, _, _, _| panic!("cancelled")).is_err());
         assert_eq!(f.reload().payment_orders[0].status, OrderStatus::Queued);
         f.ctx.bridge.cancelled.store(false, Ordering::Release);
         f.ctx.edit_vault(|v| {
             v.payment_orders[0].scheduled = true;
             v.payment_orders[0].transfer.execution_date = Some(Local::now().date_naive()); Ok(())
         }).unwrap();
-        assert!(dispatch_queued_with(&f.ctx, f.access, |_, _, _, _| panic!("expired scheduled order")).is_err());
+        assert!(dispatch_queued_with(&f.ctx, &[SyncTarget::access(f.access)], |_, _, _, _| panic!("expired scheduled order")).is_err());
         assert_eq!(f.reload().payment_orders[0].status, OrderStatus::NeedsReview);
     }
     #[test]

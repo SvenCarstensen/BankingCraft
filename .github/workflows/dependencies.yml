@@ -1,0 +1,44 @@
+name: Dependency audit
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: '23 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: RustSec audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/cargo-audit
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/registry
+          key: audit-${{ runner.os }}-${{ runner.arch }}-1.99.1-0.23.0
+      - name: Install pinned audit tool
+        run: cargo install cargo-audit --version 0.23.0 --locked
+      - name: Check current RustSec advisories
+        # Vulnerabilities, unsoundness and yanked crates fail the check.
+        # Unmaintained-package warnings remain visible; no advisories are ignored.
+        run: cargo audit --deny unsound --deny yanked

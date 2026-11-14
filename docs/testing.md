@@ -11,6 +11,23 @@ Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnu
 Vorab prüft es mit Python 3 die Aktualität und Vollständigkeit der Lizenzbeilagen
 gegen Lockdatei, Paketmanifeste und gespeicherte Prüfsummen.
 
+## Automatisierung und Synchronisierung (2026-11-14)
+
+Die GitHub-Workflows unter `.github/workflows/` prüfen macOS 15, Windows 2025 und
+Ubuntu 24.04 mit Rust 1.99.1: Lizenzprüfsummen, Workspace-Tests, Clippy und normale
+Release-Builds ohne `local-fints-test`. Sie verwenden keine echten Bankdaten und
+keine Test-Produkt-ID. Die RustSec-Prüfung läuft zusätzlich wöchentlich; bekannte
+Sicherheitslücken, Unsoundness und zurückgezogene Pakete lassen sie fehlschlagen.
+Hinweise auf nicht mehr gepflegte Pakete bleiben sichtbar.
+
+„Umsätze synchronisieren“ sendet zuerst die gespeicherten Aufträge der Auswahl.
+Beim globalen Synchronisieren werden alle Aufträge vor dem ersten Saldo-/Umsatzabruf
+verarbeitet, auch über mehrere Bankzugänge hinweg. Einzelkonto und Gruppe bleiben
+auf ihre Konten begrenzt. Fehler oder Abbruch beenden die Synchronisierung vor dem
+Abruf; unklare Aufträge werden nicht erneut versendet. Regressionstests prüfen die
+Reihenfolge, den aktuellen Bankzustand nach dem Versand und die dauerhafte Absicherung
+gegen Doppelversand mit synthetischen Tresoren und simuliertem Versand.
+
 ## Schriftabhängigkeiten und Lizenzbeilagen (2026-11-13)
 
 - Systemschriftsuche auf Fontique umgestellt; egui rendert weiterhin mit skrifa 0.44.
@@ -58,11 +75,11 @@ cargo test -p bankingcraft --locked render_balance_review -- --ignored --nocaptu
 | Giro-Umsätze | MT940/MT942, CAMT, mehrere Seiten, vorgemerkte Daten, leeres Ergebnis gegenüber fehlenden Daten, fehlender/wiederholter Aufsetzpunkt | `client::business_flow_tests`, `business_data_tests` |
 | Kreditkarten-Umsätze | HKKKU/DKKKU, Feldpositionen, Buchungs-/Valutadatum, Vorzeichen, Referenzen, vorgemerkt, Saldo im Bericht, mehrere Seiten, beschädigte/unvollständige Antworten | `credit_card::tests`, `client::credit_card_regressions` |
 | Lokales Zusammenführen | Wiederholte und überlappende Abrufe, legitime gleiche Buchungen, vorgemerkt zu gebucht, kontenbezogenes Ersetzen, manuelle Kategorien erhalten | `business_tests` |
-| Einzelkonto aktualisieren | Saldo-/Umsatzanfragen nur für das ausgewählte Konto, keine Kontoermittlung oder Zahlungsübermittlung, andere Konten/Zugänge/Aufträge unverändert, Demo und ungültige Konto-ID | `jobs::account_refresh_tests` |
-| Gruppenabruf | Nur Konten der gewählten Gruppe, ein Dialog pro Bankzugang, getrennte Banken, „Ohne Gruppe“, leere/ungültige Gruppen, unveränderte Zahlungsaufträge | `jobs::account_refresh_tests` |
-| Umsatznavigation | Aktualisieren verwendet die aktuelle Auswahl und stabile Konto-ID; ungültige Auswahl löst keinen Rundruf aus; Zurück führt zur Kontenliste | `transactions_ui::tests` |
+| Einzelkonto aktualisieren | Saldo-/Umsatzanfragen nur für das ausgewählte Konto, keine Kontoermittlung, übrige Konten/Zugänge unverändert; Zahlungsphase separat vor dem Abruf geprüft, Demo und ungültige Konto-ID | `jobs::account_refresh_tests` |
+| Gruppenabruf | Nur Konten der gewählten Gruppe, ein Dialog pro Bankzugang, getrennte Banken, „Ohne Gruppe“, leere/ungültige Gruppen, Aufträge außerhalb der Gruppe unverändert | `jobs::account_refresh_tests` |
+| Umsatznavigation | „Umsätze synchronisieren“ verwendet die aktuelle Auswahl und stabile Konto-ID; ungültige Auswahl löst keinen Rundruf aus; Zurück führt zur Kontenliste | `transactions_ui::tests` |
 | Überweisung | Betrags-, IBAN- und Textvalidierung, normale und Echtzeitüberweisung, kein Rückfall auf normale Überweisung, keine automatische Wiederholung bei Bankfehler/Antwortverlust | `client::business_flow_tests`, `business_data_tests`, `regression_tests` |
-| Auftragsliste | Verschlüsselte Persistenz und Neustart, Versand nur für den synchronisierten Zugang, einzelner Sofortversand, persistente Markierung vor Versand, keine Doppelüberweisung bei Antwortverlust/Absturz/Schreibfehler, Abbruch und abgelaufene Termine | `jobs::outgoing_order_tests`, `payments::tests` |
+| Auftragsliste | Verschlüsselte Persistenz und Neustart, Versand nur für die gewählten Konten/Zugänge, sämtliche Zahlungen vor dem ersten Abruf, aktualisierter Dialogzustand nach dem Versand, einzelner Sofortversand, persistente Markierung vor Versand, keine Doppelüberweisung bei Antwortverlust/Absturz/Schreibfehler, Abbruch und abgelaufene Termine | `jobs::outgoing_order_tests`, `payments::tests` |
 | Empfängeradressbuch | Ausschließlich per Checkbox speichern/aktualisieren, gleiche IBAN je Konto getrennt, Namens-/IBAN-Prüfung, unabhängige Auftragssnapshots, Auswahl und Kontowechsel, Rücksetzen der Checkbox, alte Tresore und Entfernen eines Zugangs | `payments::tests`, `payments_ui::tests` |
 | Standardaktion | Eingabetaste im Überweisungsformular speichert ohne Bankaufruf, Empfängerauswahl füllt Name/IBAN/BIC, verschlüsselter Rundlauf von Aufträgen und Adressbuch | `payments_ui::tests` |
 | Terminüberweisung | Fehlendes/heutiges Datum abweisen, zukünftiges Datum im Zahlungsdokument, Auftrags-ID auswerten, nicht unterstützte Bankfunktion | `client::business_flow_tests` |

@@ -72,6 +72,7 @@ impl Vault {
         Ok(id)
     }
 
+    #[cfg(test)]
     pub fn queued_orders_for_access(&self, access_id: u32) -> Vec<u32> {
         self.payment_orders.iter().filter(|o| o.status == OrderStatus::Queued
             && self.account(o.account_id).is_some_and(|a| a.access_id == access_id))

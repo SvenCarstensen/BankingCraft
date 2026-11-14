@@ -51,9 +51,9 @@ mod tests {
         st.on_navigate(move |page| weak.unwrap().global::<AppState>().set_page(page));
         let mut harness=crate::ui::testing::harness(&app,1100.,860.);
         st.set_tx_account(1);
-        harness.get_by_label(i18n::tr("Aktualisieren")).click(); harness.run_steps(3);
+        harness.get_by_label(i18n::tr("Umsätze synchronisieren")).click(); harness.run_steps(3);
         st.set_tx_account(2);
-        harness.get_by_label(i18n::tr("Aktualisieren")).click(); harness.run_steps(3);
+        harness.get_by_label(i18n::tr("Umsätze synchronisieren")).click(); harness.run_steps(3);
         assert_eq!(*calls.borrow(), [Some(42), Some(7)]);
         harness.get_by_label(i18n::tr("Zurück zu den Konten")).click(); harness.run_steps(3);
         assert_eq!(st.get_page(), 1);
@@ -61,7 +61,7 @@ mod tests {
         st.set_page(2);
         st.set_tx_account(0);
         harness.run_steps(3);
-        harness.get_by_label(i18n::tr("Aktualisieren")).click(); harness.run_steps(3);
+        harness.get_by_label(i18n::tr("Umsätze synchronisieren")).click(); harness.run_steps(3);
         assert_eq!(*calls.borrow(), [Some(42), Some(7), None]);
         for index in [-1, 99] {
             st.set_tx_account(index);

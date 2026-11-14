@@ -8,14 +8,15 @@ fn context() -> Ctx {
 }
 
 #[test]
-fn selected_demo_refresh_leaves_queued_payments_and_other_accounts_untouched() {
+fn selected_demo_refresh_leaves_other_accounts_orders_untouched() {
     let ctx = context();
     assert!(sync_account(&ctx, 999).is_err());
     let id = {
         let mut v = ctx.vault.lock().unwrap();
         demo::add_demo(&mut v);
         let id = v.accounts[1].id;
-        v.queue_transfer(id, crate::business_tests::standing().transfer, false, false).unwrap();
+        let other = v.accounts[0].id;
+        v.queue_transfer(other, crate::business_tests::standing().transfer, false, false).unwrap();
         id
     };
     let before = serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap();
@@ -109,7 +110,7 @@ fn verify_scope(group: bool) {
         };
         let mut targets = group_targets(&ctx, group_id).unwrap();
         assert_eq!(targets.len(), 1);
-        targets.remove(0).accounts
+        targets.remove(0).accounts.unwrap()
     } else { vec![(account, id)] };
     let ids: Vec<_> = selected.iter().map(|(_, id)| *id).collect();
     let numbers: Vec<_> = selected.iter().map(|(a, _)| a.account_number.clone()).collect();
@@ -173,19 +174,19 @@ fn group_targets_split_by_bank_handle_ungrouped_and_never_expand_invalid_or_empt
         let group_id = v.create_group("Selected group").unwrap();
         let empty = v.create_group("Empty group").unwrap();
         for id in [first, same_bank, other_bank] { v.assign_group(id, Some(group_id)).unwrap(); }
-        v.queue_transfer(first, crate::business_tests::standing().transfer, false, false).unwrap();
+        v.queue_transfer(ungrouped, crate::business_tests::standing().transfer, false, false).unwrap();
         (group_id, first, same_bank, other_bank, ungrouped, empty)
     };
     let targets = group_targets(&ctx, group_id).unwrap();
     assert_eq!(targets.len(), 2);
-    assert_eq!(targets[0].accounts.iter().map(|(_, id)| *id).collect::<Vec<_>>(), [first, same_bank]);
-    assert_eq!(targets[1].accounts.iter().map(|(_, id)| *id).collect::<Vec<_>>(), [other_bank]);
+    assert_eq!(targets[0].accounts.as_ref().unwrap().iter().map(|(_, id)| *id).collect::<Vec<_>>(), [first, same_bank]);
+    assert_eq!(targets[1].accounts.as_ref().unwrap().iter().map(|(_, id)| *id).collect::<Vec<_>>(), [other_bank]);
     let targets = group_targets(&ctx, 0).unwrap();
     assert_eq!(targets.len(), 1);
-    assert_eq!(targets[0].accounts.iter().map(|(_, id)| *id).collect::<Vec<_>>(), [ungrouped]);
+    assert_eq!(targets[0].accounts.as_ref().unwrap().iter().map(|(_, id)| *id).collect::<Vec<_>>(), [ungrouped]);
     assert!(group_targets(&ctx, 99999).is_err());
     assert!(group_targets(&ctx, empty).is_err());
     let before = serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap();
-    sync_group(&ctx, group_id).unwrap(); // demo path also must not send queued orders
+    sync_group(&ctx, group_id).unwrap(); // orders outside the group remain untouched
     assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
 }

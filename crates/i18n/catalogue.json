@@ -54,10 +54,10 @@
     "Soldes des groupes",
     "Saldos de los grupos"
   ],
-  "Umsätze abrufen": [
-    "Retrieve transactions",
-    "Récupérer les opérations",
-    "Consultar movimientos"
+  "Umsätze synchronisieren": [
+    "Synchronize transactions",
+    "Synchroniser les opérations",
+    "Sincronizar movimientos"
   ],
   "Konten": [
     "Accounts",
@@ -3454,10 +3454,10 @@
     "Enregistrer le virement",
     "Guardar transferencia"
   ],
-  "Gespeicherte Überweisungen werden bei der nächsten Synchronisierung des Kontos gesendet.": [
-    "Saved transfers will be sent when the account is next synchronized.",
-    "Les virements enregistrés seront envoyés à la prochaine synchronisation du compte.",
-    "Las transferencias guardadas se enviarán cuando se vuelva a sincronizar la cuenta."
+  "Beim Synchronisieren werden zuerst die gespeicherten Aufträge der gewählten Konten gesendet, danach die Umsätze abgerufen.": [
+    "Synchronization sends saved orders for the selected accounts first, then retrieves transactions.",
+    "La synchronisation envoie d’abord les ordres enregistrés des comptes sélectionnés, puis récupère les opérations.",
+    "La sincronización envía primero las órdenes guardadas de las cuentas seleccionadas y después obtiene los movimientos."
   ],
   "Auftragsliste": [
     "Payment orders",

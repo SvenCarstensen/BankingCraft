@@ -1,0 +1,4 @@
+# Keep source and checksum inputs stable across desktop platforms.
+* text=auto eol=lf
+# Upstream license files retain their original bytes, including line endings.
+licenses/** -text

@@ -185,7 +185,7 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                     }
                 }
 
-                if pill(ui, tr("Umsätze abrufen")).clicked() {
+                if pill(ui, tr("Umsätze synchronisieren")).clicked() {
                     action!(a, invoke_refresh_all);
                 }
             });
@@ -823,7 +823,7 @@ fn accounts(
         "Konten",
         tr("Konten nach eigenen Gruppen ordnen"),
         |ui| {
-            if primary(ui, t, "Umsätze abrufen", icons::REFRESH, !d.busy) {
+            if primary(ui, t, "Umsätze synchronisieren", icons::REFRESH, !d.busy) {
                 action!(a, invoke_refresh_all);
             }
         },
@@ -857,7 +857,7 @@ fn accounts(
             card(ui, t, 16, |ui| {
                 let count = format!("{}{}", g.accounts.row_count(), tr(" Konten"));
                 let count_width = ui.painter().layout_no_wrap(count.clone(), font(12., false), t.text_muted).size().x;
-                let actions_width = count_width + 10. + button_width(ui, tr("Umsätze aktualisieren"), icons::REFRESH, false);
+                let actions_width = count_width + 10. + button_width(ui, tr("Umsätze synchronisieren"), icons::REFRESH, false);
                 let w = ui.available_width();
                 columns(ui, &[w - actions_width - 12., actions_width], 12., |ui, col| {
                     if col == 0 {
@@ -877,7 +877,7 @@ fn accounts(
                     } else {
                         ui.horizontal(|ui| {
                             text(ui, &count, 12., false, t.text_muted);
-                            if button(ui, t, tr("Umsätze aktualisieren"), icons::REFRESH, false, !d.busy && g.accounts.row_count() > 0).clicked() {
+                            if button(ui, t, tr("Umsätze synchronisieren"), icons::REFRESH, false, !d.busy && g.accounts.row_count() > 0).clicked() {
                                 action!(a, invoke_refresh_group, g.id);
                             }
                         });
@@ -940,7 +940,7 @@ fn transactions(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
         if primary(
             ui,
             t,
-            "Aktualisieren",
+            "Umsätze synchronisieren",
             icons::REFRESH,
             !d.busy && d.account_names.row_count() > 1,
         ) {
@@ -1295,7 +1295,7 @@ fn transfer(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
         ui.add_space(14.);
 
-        text(ui,tr("Gespeicherte Überweisungen werden bei der nächsten Synchronisierung des Kontos gesendet."),12.,false,t.text_muted);
+        text(ui,tr("Beim Synchronisieren werden zuerst die gespeicherten Aufträge der gewählten Konten gesendet, danach die Umsätze abgerufen."),12.,false,t.text_muted);
 
         ui.add_space(20.);
 
@@ -1593,7 +1593,7 @@ fn standing(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 }
 
 fn orders(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
-    title(ui,t,"Auftragsliste",tr("Gespeicherte Überweisungen werden bei der nächsten Synchronisierung des Kontos gesendet."),|_|{
+    title(ui,t,"Auftragsliste",tr("Beim Synchronisieren werden zuerst die gespeicherten Aufträge der gewählten Konten gesendet, danach die Umsätze abgerufen."),|_|{
 }
 );
 
@@ -1751,7 +1751,7 @@ fn access_actions(ui: &mut Ui, t: &Theme, access: &AccessRow, a: &mut Actions) {
         if access.kind == "PIN/TAN" && ghost(ui, t, "TAN-Verfahren wählen", "") {
             action!(a, invoke_reset_tan, access.id);
         }
-        if ghost(ui, t, "Synchronisieren", icons::REFRESH) {
+        if ghost(ui, t, "Umsätze synchronisieren", icons::REFRESH) {
             action!(a, invoke_sync_access, access.id);
         }
     });
@@ -1774,7 +1774,7 @@ fn accesses(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
         ui.push_id(access.id, |ui| {
             card(ui, t, 18, |ui| {
                 let mut actions_width =
-                    button_width(ui, tr("Synchronisieren"), icons::REFRESH, false) + 44.;
+                    button_width(ui, tr("Umsätze synchronisieren"), icons::REFRESH, false) + 44.;
                 if access.kind == "PIN/TAN" {
                     actions_width += button_width(ui, tr("TAN-Verfahren wählen"), "", false) + 10.;
                 }
