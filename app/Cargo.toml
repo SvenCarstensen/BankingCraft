@@ -38,6 +38,8 @@ zeroize = "1"
 arboard = { version = "3.7", default-features = false }
 sha2 = "0.10"
 rfd = "0.18"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+url = "2"
 
 [package.metadata.bundle]
 name = "BankingCraft"

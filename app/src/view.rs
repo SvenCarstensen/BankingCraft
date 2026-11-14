@@ -130,6 +130,7 @@ fn balance_currency(currency: &str) -> &str {
 /// Display balance only: the bank's booked balance remains the accounting source.
 /// Bank-provided `available` can include a credit facility and is not this value.
 fn balance_including_pending(v: &Vault, account_id: u32, balance: &fints::Balance) -> Decimal {
+    if crate::paypal::is_paypal(v, account_id) { return balance.available.unwrap_or_default(); }
     balance.booked + v.transactions.iter()
         .filter(|t| t.account_id == account_id && t.tx.pending
             && balance_currency(&t.tx.currency) == balance_currency(&balance.currency))
@@ -137,14 +138,15 @@ fn balance_including_pending(v: &Vault, account_id: u32, balance: &fints::Balanc
 }
 
 fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> AccountGroupRow {
-    let mut totals = BTreeMap::<String, (Decimal, Decimal)>::new();
+    let mut totals = BTreeMap::<String, (Decimal, Decimal, bool, bool)>::new();
     let mut known = 0;
     for row in &rows {
         if let Some(balance) = v.account(row.id as u32).and_then(|a| a.balance.as_ref()) {
             let currency = balance_currency(&balance.currency);
             let total = totals.entry(currency.to_string()).or_default();
             total.0 += balance_including_pending(v, row.id as u32, balance);
-            total.1 += balance.booked;
+            if crate::paypal::is_paypal(v, row.id as u32) { total.2 = true; }
+            else { total.1 += balance.booked; total.3 = true; }
             known += 1;
         }
     }
@@ -157,9 +159,10 @@ fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> Accou
     } else {
         format!("{} {}", rows.len(), if rows.len() == 1 { i18n::tr("Konto") } else { i18n::tr("Konten") })
     };
-    let balances = totals.into_iter().map(|(currency, (amount, booked))| GroupBalanceRow {
+    let balances = totals.into_iter().map(|(currency, (amount, booked, has_paypal, has_booked))| GroupBalanceRow {
         amount: ss(fmt_money(amount, &currency)), negative: amount.is_sign_negative(),
-        booked_amount: ss(fmt_money(booked, &currency)),
+        booked_amount: ss(if has_booked { fmt_money(booked, &currency) } else { "–".into() }),
+        has_paypal,
     }).collect();
     AccountGroupRow { id: id as i32, name: ss(name), accounts: model(rows), balances: model(balances), balance_note: ss(note) }
 }
@@ -179,10 +182,11 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     for a in &v.accounts {
         let c = ACCOUNT_COLORS[a.id as usize % ACCOUNT_COLORS.len()];
         let bank = v.access(a.access_id).map(|x| x.name.clone()).unwrap_or_default();
+        let paypal = crate::paypal::is_paypal(v, a.id);
         let (balance, booked_balance, negative, available) = match &a.balance {
             Some(b) => {
                 let current = balance_including_pending(v, a.id, b);
-                (fmt_money(current, &b.currency), fmt_money(b.booked, &b.currency), current.is_sign_negative(), b.available.map(|x| fmt_money(x, &b.currency)).unwrap_or_default())
+                (fmt_money(current, &b.currency), if paypal { "–".into() } else { fmt_money(b.booked, &b.currency) }, current.is_sign_negative(), b.available.map(|x| fmt_money(x, &b.currency)).unwrap_or_default())
             }
             None => ("–".into(), "–".into(), false, String::new()),
         };
@@ -199,6 +203,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             owner: ss(&a.account.owner),
             balance: ss(balance),
             booked_balance: ss(booked_balance),
+            paypal,
             available: ss(available),
             negative,
             last_sync: ss(a.last_sync.map(|t| i18n::tr_format!("aktualisiert {}", t.format("%d.%m.%Y %H:%M"))).unwrap_or_else(|| i18n::tr("noch nicht abgerufen").into())),
@@ -231,6 +236,8 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
         total_amounts.iter().map(|b| b.booked_amount.as_str()).collect::<Vec<_>>().join("\n")
     });
     st.set_total_balance_note(totals.balance_note);
+    st.set_total_has_paypal(rows.iter().any(|a| a.paypal));
+    st.set_has_foreign_currency(v.transactions.iter().any(|t| balance_currency(&t.tx.currency) != "EUR"));
     st.set_total_negative(total_amounts.iter().any(|b| b.negative));
     st.set_accounts(model(rows));
     st.set_account_names(model(names));
@@ -282,12 +289,14 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
                 AccessKind::PinTan => ("PIN/TAN", i18n::tr_format!("BLZ {} · {}", a.config.blz, a.config.user_id)),
                 AccessKind::ChipCard { reader, record } => (i18n::tr("HBCI-Chipkarte"), i18n::tr_format!("BLZ {} · Eintrag {record} · {reader}", a.config.blz)),
                 AccessKind::RdhCard { reader, record } => (i18n::tr("RDH-Chipkarte"), i18n::tr_format!("BLZ {} · {} · Eintrag {record} · {reader}", a.config.blz, a.config.user_id)),
+                AccessKind::PayPal { sandbox, .. } => ("PayPal", if *sandbox { "Sandbox" } else { "Live" }.into()),
                 AccessKind::Demo => ("Demo", i18n::tr("lokale Beispieldaten").to_string()),
             };
             let method = match &a.kind {
                 AccessKind::ChipCard { .. } => i18n::tr("Signatur mit Chipkarte").to_string(),
                 AccessKind::RdhCard { .. } => i18n::tr("RSA-Signatur mit Chipkarte (RDH)").to_string(),
                 AccessKind::Demo => i18n::tr("chipTAN (Demo)").to_string(),
+                AccessKind::PayPal { .. } => i18n::tr("API-Signatur · Nur Lesezugriff").into(),
                 AccessKind::PinTan => a
                     .state
                     .tan_method
@@ -324,7 +333,7 @@ fn month_stats_for(v: &Vault, month_start: NaiveDate, accounts: Option<&HashSet<
     let mut exp = Decimal::ZERO;
     let mut cats: BTreeMap<String, Decimal> = BTreeMap::new();
     for t in &v.transactions {
-        if accounts.is_some_and(|ids| !ids.contains(&t.account_id)) || t.tx.pending || t.tx.date_unknown || t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
+        if balance_currency(&t.tx.currency) != "EUR" || accounts.is_some_and(|ids| !ids.contains(&t.account_id)) || t.tx.pending || t.tx.date_unknown || t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
             continue;
         }
         let cat = categorize(t, &v.rules);
@@ -392,7 +401,7 @@ pub fn refresh_analysis(app: &AppWindow, v: &Vault) {
     let end = start + Months::new(1);
     let mut inc: BTreeMap<String, Decimal> = BTreeMap::new();
     for t in &v.transactions {
-        if !t.tx.pending && !t.tx.date_unknown && t.tx.booking_date >= start && t.tx.booking_date < end && !t.tx.amount.is_sign_negative() {
+        if balance_currency(&t.tx.currency) == "EUR" && !t.tx.pending && !t.tx.date_unknown && t.tx.booking_date >= start && t.tx.booking_date < end && !t.tx.amount.is_sign_negative() {
             let c = categorize(t, &v.rules);
             if c != "Umbuchung" {
                 *inc.entry(c).or_default() += t.tx.amount;
@@ -483,10 +492,9 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
     let idx = transaction_indices(v, account, since, &search, &cat_filter);
 
     // running end-of-day balance (only meaningful for a single account with known balance)
-    let mut running = account.and_then(|a| v.account(a)).and_then(|a| a.balance.as_ref()).map(|b| b.booked);
+    let mut running = account.filter(|id| !crate::paypal::is_paypal(v, *id)).and_then(|a| v.account(a)).and_then(|a| a.balance.as_ref()).map(|b| b.booked);
     let mut rows = Vec::new();
-    let mut sum_in = Decimal::ZERO;
-    let mut sum_out = Decimal::ZERO;
+    let mut sums = BTreeMap::<String, (Decimal, Decimal)>::new();
     let mut i = 0;
     while i < idx.len() {
         let first = &v.transactions[idx[i]].tx;
@@ -495,20 +503,22 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
         let unknown = first.date_unknown;
         if unknown && !pending { running = None; }
         let mut j = i;
-        let mut day_sum = Decimal::ZERO;
+        let mut day_sums = BTreeMap::<String, Decimal>::new();
         while j < idx.len() && v.transactions[idx[j]].tx.pending == pending && (pending || (v.transactions[idx[j]].tx.date_unknown == unknown && (unknown || v.transactions[idx[j]].tx.booking_date == date))) {
-            day_sum += v.transactions[idx[j]].tx.amount;
+            let tx = &v.transactions[idx[j]].tx;
+            *day_sums.entry(balance_currency(&tx.currency).into()).or_default() += tx.amount;
             j += 1;
         }
         let label = if pending { i18n::tr("Vorgemerkte Umsätze").to_string() } else if unknown { i18n::tr("Buchungsdatum nicht geliefert").to_string() } else { day_label(date) };
         let balance_text = if pending {
             String::new()
         } else if let Some(r) = running {
-            let s = i18n::tr_format!("Gebuchter Tagessaldo {}", fmt_eur(r));
-            running = Some(r - day_sum);
+            let currency = account.and_then(|id| v.account(id)).map(|a| balance_currency(&a.account.currency)).unwrap_or("EUR");
+            let s = i18n::tr_format!("Gebuchter Tagessaldo {}", fmt_money(r, currency));
+            running = Some(r - day_sums.get(currency).copied().unwrap_or_default());
             s
         } else {
-            i18n::tr_format!("Tagessumme {}", fmt_eur(day_sum))
+            i18n::tr_format!("Tagessumme {}", day_sums.iter().map(|(c, n)| fmt_money(*n, c)).collect::<Vec<_>>().join(" · "))
         };
         rows.push(TxRow {
             is_header: true,
@@ -519,10 +529,11 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
         for &k in &idx[i..j] {
             let a = v.transactions[k].tx.amount;
             if !v.transactions[k].tx.pending {
+                let total = sums.entry(balance_currency(&v.transactions[k].tx.currency).into()).or_default();
                 if a.is_sign_negative() {
-                    sum_out += a;
+                    total.1 += -a;
                 } else {
-                    sum_in += a;
+                    total.0 += a;
                 }
             }
             rows.push(tx_row(v, k, account.is_none()));
@@ -532,8 +543,8 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
     st.set_tx_summary(ss(i18n::tr_format!(
         "{} Umsätze · Einnahmen {} · Ausgaben {}",
         idx.len(),
-        fmt_eur(sum_in),
-        fmt_eur(-sum_out)
+        if sums.is_empty() { fmt_eur(Decimal::ZERO) } else { sums.iter().map(|(c, n)| fmt_money(n.0, c)).collect::<Vec<_>>().join(" / ") },
+        if sums.is_empty() { fmt_eur(Decimal::ZERO) } else { sums.iter().map(|(c, n)| fmt_money(n.1, c)).collect::<Vec<_>>().join(" / ") }
     )));
     st.set_tx_rows(model(rows));
 }

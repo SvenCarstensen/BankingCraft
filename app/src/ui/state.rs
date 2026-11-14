@@ -14,6 +14,7 @@ pub struct AccountRow {
     pub owner: SharedString,
     pub balance: SharedString,
     pub booked_balance: SharedString,
+    pub paypal: bool,
     pub available: SharedString,
     pub negative: bool,
     pub last_sync: SharedString,
@@ -26,6 +27,7 @@ pub struct AccountRow {
 pub struct GroupBalanceRow {
     pub amount: SharedString,
     pub booked_amount: SharedString,
+    pub has_paypal: bool,
     pub negative: bool,
 }
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -230,6 +232,11 @@ pub struct Data {
     pub af_name: SharedString,
     pub af_blz: SharedString,
     pub af_user: SharedString,
+    pub af_paypal_password: SharedString,
+    pub af_paypal_signature: SharedString,
+    pub af_paypal_sandbox: bool,
+    pub has_foreign_currency: bool,
+    pub total_has_paypal: bool,
     pub af_customer: SharedString,
     pub af_url: SharedString,
     pub af_reader: i32,
@@ -376,6 +383,11 @@ impl Default for Data {
             af_name: Default::default(),
             af_blz: Default::default(),
             af_user: Default::default(),
+            af_paypal_password: Default::default(),
+            af_paypal_signature: Default::default(),
+            af_paypal_sandbox: Default::default(),
+            has_foreign_currency: Default::default(),
+            total_has_paypal: Default::default(),
             af_customer: Default::default(),
             af_url: Default::default(),
             af_reader: Default::default(),
@@ -776,6 +788,19 @@ impl AppState {
         }
         if before.af_user != after.af_user {
             data.af_user = after.af_user.clone();
+        }
+        if before.af_paypal_password != after.af_paypal_password {
+            data.af_paypal_password = after.af_paypal_password.clone();
+        }
+        if before.af_paypal_signature != after.af_paypal_signature {
+            data.af_paypal_signature = after.af_paypal_signature.clone();
+        }
+        if before.af_paypal_sandbox != after.af_paypal_sandbox {
+            data.af_paypal_sandbox = after.af_paypal_sandbox;
+        }
+        if before.has_foreign_currency != after.has_foreign_currency { data.has_foreign_currency = after.has_foreign_currency; }
+        if before.total_has_paypal != after.total_has_paypal {
+            data.total_has_paypal = after.total_has_paypal;
         }
         if before.af_customer != after.af_customer {
             data.af_customer = after.af_customer.clone();
@@ -1452,6 +1477,31 @@ impl AppState {
     }
     pub fn set_af_user(&self, value: SharedString) {
         self.data.borrow_mut().af_user = value;
+    }
+    pub fn get_af_paypal_password(&self) -> SharedString {
+        self.data.borrow().af_paypal_password.clone()
+    }
+    pub fn set_af_paypal_password(&self, value: SharedString) {
+        self.data.borrow_mut().af_paypal_password = value;
+    }
+    pub fn get_af_paypal_signature(&self) -> SharedString {
+        self.data.borrow().af_paypal_signature.clone()
+    }
+    pub fn set_af_paypal_signature(&self, value: SharedString) {
+        self.data.borrow_mut().af_paypal_signature = value;
+    }
+    pub fn get_af_paypal_sandbox(&self) -> bool {
+        self.data.borrow().af_paypal_sandbox
+    }
+    pub fn set_af_paypal_sandbox(&self, value: bool) {
+        self.data.borrow_mut().af_paypal_sandbox = value;
+    }
+    pub fn set_has_foreign_currency(&self, value: bool) { self.data.borrow_mut().has_foreign_currency = value; }
+    pub fn get_total_has_paypal(&self) -> bool {
+        self.data.borrow().total_has_paypal
+    }
+    pub fn set_total_has_paypal(&self, value: bool) {
+        self.data.borrow_mut().total_has_paypal = value;
     }
     pub fn get_af_customer(&self) -> SharedString {
         self.data.borrow().af_customer.clone()

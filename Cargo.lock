@@ -540,6 +540,8 @@ dependencies = [
  "sha2 0.10.9",
  "svgtypes",
  "sys-locale",
+ "ureq",
+ "url",
  "winit",
  "zeroize",
 ]

@@ -41,6 +41,7 @@ impl Vault {
     pub fn prepare_transfer(&self, account_id: u32, mut t: SepaTransfer, scheduled: bool) -> Result<SepaTransfer, String> {
         let account = self.account(account_id).ok_or(i18n::tr("Konto nicht gefunden"))?;
         self.access(account.access_id).ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
+        if crate::paypal::is_paypal(self, account_id) { return Err(crate::paypal::read_only_error()); }
         t.debtor_iban = account.account.iban.clone();
         t.debtor_bic = account.account.bic.clone();
         t.debtor_name = if account.account.owner.is_empty() { i18n::tr("Kontoinhaber").into() } else { account.account.owner.clone() };

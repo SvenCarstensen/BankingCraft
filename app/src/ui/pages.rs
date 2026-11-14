@@ -83,6 +83,11 @@ fn group(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, tile: usize) {
 }
 
 fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Option<i32>) {
+    if d.has_foreign_currency {
+        text(ui, tr("Analysen zeigen ausschließlich EUR-Umsätze. Andere Währungen finden Sie getrennt in der Umsatzliste."), 12., false, t.text_muted);
+        ui.add_space(12.);
+    }
+
     title(ui, t, "Finanzübersicht", &d.last_sync, |_| {});
 
     let w = ui.available_width();
@@ -111,10 +116,10 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
 
                 ui.add_space(10.);
 
-                text(ui, tr("Saldo inkl. vorgemerkter Umsätze"), 12., false, hex(0xc9d9f2));
+                text(ui, balance_labels(d.total_has_paypal, true)[0], 12., false, hex(0xc9d9f2));
                 text(ui, &d.total_balance, 30., true, Color32::WHITE);
                 ui.add_space(8.);
-                text(ui, tr("Gebuchter Saldo"), 12., false, hex(0xc9d9f2));
+                text(ui, balance_labels(d.total_has_paypal, true)[1], 12., false, hex(0xc9d9f2));
                 text(ui, &d.total_booked_balance, 18., true, Color32::WHITE);
                 text(ui, &d.total_balance_note, 11., false, hex(0xc9d9f2));
 
@@ -172,11 +177,11 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                                 text(ui, &g.name, 14., true, Color32::WHITE);
                                 ui.add_space(8.);
                                 for b in g.balances.iter() {
-                                    balance_pair(ui, &balance_theme, &b.amount, &b.booked_amount, b.negative);
+                                    balance_pair(ui, &balance_theme, &b.amount, &b.booked_amount, b.negative, balance_labels(b.has_paypal, true));
                                     ui.add_space(8.);
                                 }
                                 if g.balances.row_count() == 0 {
-                                    balance_pair(ui, &balance_theme, "–", "–", false);
+                                    balance_pair(ui, &balance_theme, "–", "–", false, balance_labels(false, true));
                                 }
                                 text(ui, &g.balance_note, 11., false, hex(0xc9d9f2));
                             });
@@ -381,8 +386,13 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
 }
 
 /// Keep both balance meanings visible, including when the card is narrow.
-fn balance_pair(ui: &mut Ui, t: &Theme, current: &str, booked: &str, negative: bool) {
-    let labels = [tr("Saldo inkl. vorgemerkter Umsätze"), tr("Gebuchter Saldo")];
+fn balance_labels(paypal: bool, aggregate: bool) -> [&'static str; 2] {
+    if paypal {
+        if aggregate { [tr("Saldo inkl. Vormerkungen und PayPal-Guthaben"), tr("Gebuchter Saldo (ohne PayPal)")] }
+        else { [tr("Verfügbares PayPal-Guthaben"), tr("Gebuchter Saldo (nicht geliefert)")] }
+    } else { [tr("Saldo inkl. vorgemerkter Umsätze"), tr("Gebuchter Saldo")] }
+}
+fn balance_pair(ui: &mut Ui, t: &Theme, current: &str, booked: &str, negative: bool, labels: [&str; 2]) {
     let amounts = [current, booked];
     let width = ui.available_width();
     let horizontal = width >= 340.;
@@ -420,7 +430,7 @@ fn account_overview(
         .show(ui, |ui| {
             let width = ui.available_width();
             ui.set_min_width(width);
-            let labels = [tr("Saldo inkl. vorgemerkter Umsätze"), tr("Gebuchter Saldo")];
+            let labels = balance_labels(a.paypal, false);
             let amounts = [&a.balance, &a.booked_balance];
             let amount_widths = [0, 1].map(|i| ui.painter().layout_no_wrap(
                 amounts[i].clone(), font(if i == 0 { 16. } else { 14. }, i == 0), t.text,
@@ -891,7 +901,7 @@ fn accounts(
                             .show(ui, |ui| {
                                 text(ui, &account.name, 14., true, t.text);
                                 ui.add_space(9.);
-                                balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative);
+                                balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative, balance_labels(account.paypal, false));
                                 ui.add_space(9.);
                                 text(ui, &account.iban, 12., false, t.text);
                                 ui.add_space(9.);
@@ -998,7 +1008,7 @@ fn transactions(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
     if let Some(account) = (d.tx_account as usize).checked_sub(1).and_then(|index| d.accounts.row_data(index)) {
         ui.add_space(12.);
-        balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative);
+        balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative, balance_labels(account.paypal, false));
     }
 
     ui.add_space(14.);
@@ -1677,6 +1687,11 @@ fn orders(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 }
 
 fn analysis(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
+    if d.has_foreign_currency {
+        text(ui, tr("Analysen zeigen ausschließlich EUR-Umsätze. Andere Währungen finden Sie getrennt in der Umsatzliste."), 12., false, t.text_muted);
+        ui.add_space(12.);
+    }
+
     title(
         ui,
         t,
@@ -1762,7 +1777,7 @@ fn accesses(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
         ui,
         t,
         "Bankzugänge",
-        tr("FinTS PIN/TAN oder HBCI-Chipkarte"),
+        tr("FinTS PIN/TAN, HBCI-Chipkarte oder PayPal"),
         |ui| {
             if primary(ui, t, "Neuer Bankzugang", icons::PLUS, !d.busy) {
                 action!(a, invoke_new_access);
@@ -1825,7 +1840,7 @@ fn accesses(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
                             ui,
                             &format!(
                                 "{}{}  ·  {}{}{}",
-                                tr("TAN-Verfahren: "),
+                                if access.kind == "PayPal" { "" } else { tr("TAN-Verfahren: ") },
                                 access.tan_method,
                                 access.accounts,
                                 tr(" Konten"),
@@ -1863,7 +1878,7 @@ fn accesses(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
         ui.add_space(6.);
 
-        ui.allocate_ui(vec2(560., 34.), |ui| {
+        ui.allocate_ui(vec2(ui.available_width().min(700.), 34.), |ui| {
             if segmented(
                 ui,
                 t,
@@ -1871,14 +1886,45 @@ fn accesses(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
                     "PIN/TAN (FinTS)",
                     "HBCI-Chipkarte (DDV)",
                     "RDH-Chipkarte (VR-NetWorld-Card)",
+                    "PayPal",
                 ],
                 &mut d.af_kind,
             ) {
+                d.af_paypal_password.clear();
+                d.af_paypal_signature.clear();
+                d.af_user.clear();
                 action!(a, invoke_bank_search, d.bank_query.clone());
             }
         });
 
         ui.add_space(14.);
+
+        if d.af_kind == 3 {
+            text(ui, tr("PayPal-Geschäftskonto mit freigeschalteter NVP-API: API-Benutzername, API-Passwort und Signatur verwenden, nicht das normale PayPal-Passwort. Nur Guthaben und Umsätze; keine Zahlungen."), 13., false, t.text_muted);
+            ui.add_space(14.);
+            field(ui, t, "Bezeichnung", &mut d.af_name, "PayPal", ("", false), false);
+            ui.add_space(14.);
+            field(ui, t, "API-Benutzername", &mut d.af_user, "", ("", false), false);
+            ui.add_space(14.);
+            field(ui, t, "API-Passwort", &mut d.af_paypal_password, "", ("", false), true);
+            ui.add_space(14.);
+            field(ui, t, "API-Signatur", &mut d.af_paypal_signature, "", ("", false), true);
+            ui.add_space(10.);
+            ui.checkbox(&mut d.af_paypal_sandbox, tr("PayPal Sandbox (Testkonto)"));
+            ui.add_space(10.);
+            text(ui, tr("Zugangsdaten werden verschlüsselt im Tresor gespeichert. Abruf der letzten 90 Tage und älterer vorgemerkter Umsätze. Guthaben entspricht dem verfügbaren PayPal-Guthaben."), 12., false, t.text_muted);
+            ui.add_space(14.);
+            right(ui, |ui| {
+                if primary(ui, t, "Speichern & verbinden", icons::CHECK, !d.busy) { action!(a, invoke_save_access); }
+                if ghost(ui, t, "Abbrechen", "") {
+                    d.af_open = false;
+                    d.af_user.clear();
+                    d.af_paypal_password.clear();
+                    d.af_paypal_signature.clear();
+                }
+            });
+            return;
+        }
 
         text(ui, tr("Bank suchen"), 12., true, t.text_muted);
 

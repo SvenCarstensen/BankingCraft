@@ -1,6 +1,6 @@
 # German bank interoperability review
 
-Reviewed on **2026-11-13**. This is a source/configuration review and an offline
+Reviewed on **2026-11-13**, with an additional source review on **2026-11-14**. This is a source/configuration review and an offline
 protocol test record, **not a list of banks successfully tested with BankingCraft**.
 Only Postbank PIN/TAN and VR Bank Nord RDH-7 retrieval have been confirmed live.
 BankingCraft's own FinTS product registration is still pending. A valid registered
@@ -98,3 +98,57 @@ Bank publications can change independently of a BankingCraft release. A further
 bank should be labelled live-tested only after successful account, balance and
 transaction retrieval with that bank's real enabled access, recording the date,
 TAN/card method and tested scope. Payment submission needs its own separate test.
+
+## Additional local-source review (2026-11-14)
+
+A supplied static analysis of Bank X 11.1.5 (188), dated November 14, was used as a
+lead list, not as an authority for current bank availability. Its 1,801 bank-code
+assignments include 1,343 endpoint pairs matching the existing directory after
+trimming outer whitespace, 448 differences and 10 previously absent codes.
+Most differences concern chip-card hosts; a newly generated extraction can still
+contain old configurations. No proprietary module, source implementation, credentials,
+product identifier or bulk extracted table was copied into BankingCraft.
+
+Adopted after checking current public sources:
+
+| Change | Evidence |
+|---|---|
+| Commerzbank BLZ 25040066: add `hbci.commerzbank.de` as the card host, port 3000. The existing HTTPS URL stays unchanged. | [Commerzbank network troubleshooting](https://www.commerzbank.de/service/netzwerkfehler-im-hbci-was-kann-ich-tun/) lists both TCP and HTTPS addresses. This does not add RAH/key-file support. |
+| NATIONAL-BANK BLZ 36020030: replace `hbciserver.bankverlag.de` with `fints2.atruvia.de`; explain the new NetKey/PIN and required reinitialization of old RDH keys. | [Bank migration information](https://www.national-bank.de/fileadmin/user_upload/jupiter/pub/index.html) and [ALF-BanCo's migration instructions](https://www.alf-banco.de/aktuelles/national-bank-umstellung/) document the October 2024 migration and TCP host. |
+| Warburg setup hints: central BLZ 20120100 and new credentials after the May 2026 migration, including former branch accesses. Marcard setup hints: new online-banking/HBCI credentials. | [Warburg's migration page](https://www.mmwarburg.de/de/bankhaus/neue-it/) and [Marcard's announcements](https://www.marcard.de/de/aktuelles). Already configured Atruvia HTTPS addresses are retained. |
+| Trim leading/trailing whitespace when reading directory fields. | Defensive parsing only; whitespace inside an address is never removed to guess a destination. |
+
+Not adopted: old Sparda URLs, the former Marcard/Warburg URLs, Renault's old GAD
+URL, an IKB URL containing an internal space, blank endpoints as purported removal
+instructions, unconfirmed Deutsche Bank IP addresses and Atruvia region switches,
+legacy Santander codes and unknown BLZ 49999924. Existing newer information takes
+precedence. BMW/EBICS endpoint strings alone are insufficient to implement those
+protocols. Existing TLS checks, message authentication and no-replay behavior remain.
+No additional live bank test was performed.
+
+## PayPal: independent read-only provider
+
+The same analysis identified NVP API-signature access. BankingCraft implements
+`GetBalance` and `TransactionSearch` independently using PayPal's public references:
+
+- [API signature credentials](https://www.paypal.com/us/cshelp/article/how-do-i-request-an-api-signature-or-certificate-help487): API username/password/signature for eligible Business accounts.
+- [GetBalance](https://developer.paypal.com/api/nvp-soap/get-balance-nvp/): **available** funds; `RETURNALLCURRENCIES=1` returns separate currency holdings.
+- [TransactionSearch](https://developer.paypal.com/api/nvp-soap/transaction-search-nvp/): UTC date bounds, at most 100 results, signed net amounts and fees. No transaction-class filter is imposed, to avoid excluding bank withdrawals.
+- [API error codes](https://developer.paypal.com/api/nvp-soap/errors/): warning 11002 triggers smaller search windows; other failures are surfaced using numeric codes only.
+- [PayPal's NVP integration guide](https://developer.paypal.com/upgrade/ec/guide/): fixed live and sandbox signature endpoints. API version 204.0 follows PayPal's [merchant SDK service declaration](https://github.com/paypal/merchant-sdk-php/blob/master/lib/PayPal/Service/PayPalAPIInterfaceServiceService.php).
+
+The network allowlist contains only the two read operations. No PayPal SDK or Bank X
+implementation was copied. Search intervals overlap at their boundaries; duplicate
+IDs are scoped to currency and transaction type, with conflicting duplicates rejected.
+Complete retrieval precedes an atomic vault update. Stable IDs replace changed pending
+records while preserving manual categories; old history and unselected wallets remain.
+The 2,048-request ceiling, one-second subdivision limit, response size/timeout bounds,
+strict parsing and cancellation checks prevent silently accepting partial histories.
+
+The NVP interface is legacy. `GetTransactionDetails`, full invoice/item descriptions,
+PayPal payments and arbitrary historical imports are not implemented. Unknown transaction
+types/statuses stop the import; non-financial order/authorization/invoice records are
+excluded. Available funds are never represented as a booked balance in the UI or camt
+export. Analytics remain EUR-only; other currencies are kept separate in balances and
+transaction summaries. Live and sandbox authentication have **not** been tested with
+real PayPal credentials; automated verification uses synthetic responses only.

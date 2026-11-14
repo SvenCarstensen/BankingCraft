@@ -18,6 +18,7 @@ mod demo;
 mod export;
 mod jobs;
 mod payments;
+mod paypal;
 mod payments_ui;
 mod transactions_ui;
 mod groups;
@@ -473,6 +474,9 @@ fn main() {
             st.set_af_blz(SharedString::default());
             st.set_af_user(SharedString::default());
             st.set_af_customer(SharedString::default());
+            st.set_af_paypal_password(Default::default());
+            st.set_af_paypal_signature(Default::default());
+            st.set_af_paypal_sandbox(false);
             st.set_af_statement_format(0);
             st.set_af_url(SharedString::default());
             st.set_af_record("1".into());
@@ -599,6 +603,21 @@ fn main() {
         st.on_save_access(move || {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
+            if st.get_af_kind() == 3 {
+                let c = ctx();
+                match paypal::save_access(&app, &c) {
+                    Ok(id) => {
+                        st.set_af_user(Default::default());
+                        st.set_af_paypal_password(Default::default());
+                        st.set_af_paypal_signature(Default::default());
+                        st.set_af_open(false);
+                        refresh_view(&app);
+                        c.run(i18n::tr("PayPal-Guthaben und Umsätze werden abgerufen …"), move |c| jobs::sync_access(c, id));
+                    }
+                    Err(e) => toast(&app, &e, true),
+                }
+                return;
+            }
             let blz: String = st.get_af_blz().chars().filter(|c| c.is_ascii_digit()).collect();
             let user = st.get_af_user().trim().to_string();
             let url = st.get_af_url().trim().to_string();

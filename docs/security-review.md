@@ -1,31 +1,55 @@
-# Sicherheitsprüfung vom 12. November 2026
+# Security review — November 12, 2026
 
-Geprüft wurden Tresor und PIN-Speicherung, Export/Diagnose, Transport, FinTS-Parser, TAN-Freigabe, Zahlungsaufträge, RDH/DDV sowie die aufgelösten Rust-Abhängigkeiten. Die Änderungen werden durch synthetische Regressionstests abgesichert; die Tests verwenden keine echten Zugangsdaten und lösen keine Zahlungen aus.
+This is a historical review of the implementation before the egui migration. For
+current checks and the November 14 PayPal work, see [Testing](testing.md) and the
+[bank compatibility review](bank-compatibility.md). The current UI uses egui/eframe;
+the Slint dependencies mentioned below describe the old build. Postbank PIN/TAN
+and VR Bank Nord RDH-7 retrieval have since been confirmed in the tested setups.
+Other bank connections, PayPal and real payment submission remain unverified live.
 
-## Behobene Befunde
+The review covered vault and PIN storage, exports/diagnostics, transport, the FinTS
+parser, TAN approval, payment orders, RDH/DDV and resolved Rust dependencies.
+Synthetic regression tests exercise the changes without real credentials or payments.
 
-| Befund | Änderung und Prüfung |
+## Findings addressed
+
+| Finding | Change and verification |
 |---|---|
-| Veraltete RSA-Abhängigkeit mit bekanntem Timing-Angriff | `rsa` von 0.9.10 auf 0.10.0 aktualisiert. RDH-Signaturprüfung, kompletter simulierter RDH-7-Dialog und unabhängiger RDH-10-RSA-Vektor prüfen die Migration. Die produktiven privaten Benutzerschlüssel bleiben auf der Chipkarte. |
-| Nicht abgeschlossene TAN-Freigabe konnte als Erfolg behandelt werden | Offene Freigabecodes, fehlende Auftragsreferenz und fehlende abschließende Erfolgsmeldung führen zum Fehler. Zahlung wird nicht automatisch wiederholt. |
-| Zahlungsdokument konnte ein anderes Auftraggeberkonto enthalten | IBAN des ausgewählten Kontos muss bei Überweisung, Terminüberweisung und Dauerauftrag mit dem Zahlungsdokument übereinstimmen. |
-| CSV-Formeln aus Banktexten | Potenzielle Formelpräfixe einschließlich führender Leerzeichen/BOM werden in Textfeldern entschärft; reguläre Zahlenbeträge bleiben numerisch. |
-| Zu offene Dateirechte und vorhersehbare Exportziele | CSV-/CAMT-Dateien werden exklusiv mit zufälligem Namensanteil und unter Unix mit 0600 angelegt. Diagnoseberichte werden atomar privat ersetzt. Vorhandene Dateien/Symlinks werden nicht als Schreibziel geöffnet. |
-| Banktexte in dauerhaften Diagnoseausgaben | Fehlerbericht enthält nur die technische Segmentübersicht. Laufzeitprotokoll beschränkt Bankrückmeldungen auf geprüfte numerische Codes. Fachliche Fehlermeldungen erscheinen weiterhin in der Oberfläche. |
-| Unnötig lange Lebensdauer von Geheimnissen | PIN-Zwischenspeicher, Nachrichtenpuffer und Transportkodierung verwenden `Zeroizing`; abgelehnte PIN wird auch aus dem Arbeitsspeicher-Cache entfernt. Passwortfelder werden nach der Eingabe geleert. |
-| Verwirrende HTTPS-Zieladressen | HTTPS-Adressen mit Zugangsdaten, Fragmenten, Rückwärtsschrägstrichen oder Steuerzeichen werden vor der PIN-Übermittlung abgelehnt. Zertifikatsprüfung und deaktivierte Weiterleitungen bleiben aktiv. |
-| Übermäßige Speicherbelegung durch Eingabedaten | Grenzen für Nachrichtengröße, Segment-/Feldanzahl, XML-Knoten, TAN-Bildabmessungen/-speicher, Bankschlüssel und Tresordatei. XML-DTDs bleiben verboten. |
-| Unzureichende Prüfung verschlüsselter Kartenantworten | DDV verlangt einen passenden verschlüsselten Umschlag ohne zusätzlich eingeschleuste Klartextsegmente. RDH/DDV prüfen Blocklängen und Padding; Bankschlüssel werden vor Übernahme validiert. |
+| Outdated RSA dependency with a known timing attack | Updated `rsa` from 0.9.10 to 0.10.0. Bank-signature verification, a complete simulated RDH-7 dialog and an independent RDH-10 RSA vector verify the migration. Production private user keys remain on the smart card. |
+| Incomplete TAN approval could be treated as success | Pending approval codes, a missing order reference or a missing final success response now cause an error. Payments are not retried automatically. |
+| Payment document could specify a different debtor account | The selected account's IBAN must match the payment document for transfers, scheduled transfers and standing orders. |
+| Spreadsheet formulas in bank-supplied text | Potential formula prefixes, including leading whitespace/BOM, are neutralized in CSV text fields. Ordinary numeric amounts remain numeric. |
+| Overly permissive file access and predictable export paths | CSV/CAMT files are created exclusively with randomized names and Unix permissions 0600. Diagnostic files are replaced atomically with private permissions. Existing files/symlinks are not opened as write targets. |
+| Bank text in persistent diagnostics | Error reports contain only technical segment summaries. Runtime logs restrict bank responses to validated numeric codes. Business error messages remain visible in the UI. |
+| Unnecessarily long secret lifetime | PIN caches, message buffers and transport encodings use `Zeroizing`; rejected PINs are also removed from the memory cache. Password fields are cleared after submission. |
+| Ambiguous HTTPS destinations | URLs containing credentials, fragments, backslashes or control characters are rejected before transmitting a PIN. Certificate verification remains enabled and redirects remain disabled. |
+| Excessive memory use from input data | Limits cover message sizes, segment/field counts, XML nodes, TAN image dimensions/memory, bank keys and vault files. XML DTDs remain forbidden. |
+| Insufficient validation of encrypted card responses | DDV requires a matching encrypted envelope without additional injected plaintext segments. RDH/DDV validate block sizes and padding; bank keys are validated before storage. |
 
-Die RSA-Aktualisierung folgt [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html). Die CSV-Behandlung orientiert sich an [OWASP CSV Injection](https://community.owasp.org/attacks/CSV_Injection). CSV bietet keine universelle Sicherheitsgarantie für alle Tabellenprogramme und spätere Speicher-/Importvorgänge; die implementierte Behandlung adressiert die ursprüngliche Interpretation exportierter Textfelder als Formel.
+The RSA update follows [RUSTSEC-2023-0071](https://rustsec.org/advisories/RUSTSEC-2023-0071.html).
+CSV handling follows [OWASP CSV Injection](https://community.owasp.org/attacks/CSV_Injection).
+CSV cannot provide a universal guarantee across all spreadsheet applications and later
+save/import operations; this mitigation addresses the initial interpretation of exported
+text fields as formulas.
 
-## Verifikation und verbleibende Grenzen
+## Verification recorded on November 12
 
-- `cargo test --workspace --locked`: 132 Tests erfolgreich, einschließlich 22 zusätzlicher Sicherheits-/Fenstertests gegenüber dem vorherigen Stand.
-- `cargo clippy --workspace --all-targets --locked -- -D warnings`.
-- `cargo audit` 0.23.0: nach dem RSA-Update keine bekannte Sicherheitslücke. Sechs separate Hinweise auf nicht mehr gepflegte indirekte Pakete bleiben sichtbar: `bincode`, `pin-utils`, `ttf-parser`, `zbus_names`, `zvariant`, `zvariant_derive`. Es wurden keine Warnungen unterdrückt. `pin-utils` wird auf macOS über die Slint-Bauwerkzeuge verwendet; die übrigen sind für andere/optionale Plattformpfade im Lockfile enthalten. Eine Umstellung dieser indirekten APIs erfordert entsprechende Änderungen bei Slint/Winit/AccessKit; sie sind kein durch eine einfache Versionsanhebung lösbarer direkter App-Befund.
-- Native macOS-Prüfung erfolgreich: aktualisierte Anwendung gestartet, vorhandenen Tresor entsperrt, Überweisungsformular über volle Breite geprüft. Fensterzustand über macOS-Zoom verändert, mit Cmd-Q beendet und über den Schließen-Button erneut beendet; Position und Größe nach Neustart exakt gleich. Ursprüngliche Fenstermaße anschließend wiederhergestellt.
-- Kein Test mit realem Kartenleser, da auf Benutzerwunsch ausgesetzt. Die DDV-Verbesserung ist eine Umschlag-/Paddingprüfung, keine Aussage über vollständige kryptografische Authentifizierung aller DDV-Bankantworten. RDH-Antwortsignaturen werden separat geprüft.
-- `Zeroizing` begrenzt die Lebensdauer der kontrollierten Puffer; temporäre Kopien in GUI-, Betriebssystem- oder Drittbibliotheken lassen sich damit nicht vollständig ausschließen.
+- `cargo test --workspace --locked`: 132 passing tests, including 22 additional security/window tests compared with the previous state.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- `cargo audit` 0.23.0 found no known vulnerability after the RSA update. At that time, six unmaintained indirect packages were reported: `bincode`, `pin-utils`, `ttf-parser`, `zbus_names`, `zvariant` and `zvariant_derive`. No advisory was suppressed. The old macOS Slint build tools used `pin-utils`; the other packages were in the lockfile for other/optional platform paths. **Current status:** the egui/font migration removed the first three; the three zbus-related maintenance warnings remain documented in [Testing](testing.md).
+- Native macOS verification passed: the updated application started, an existing vault unlocked, and the transfer form was inspected at full width. Window position and size survived macOS zoom, Cmd-Q, closing the window and restarting. The original dimensions were restored afterward.
+- No real card-reader test was performed during this review, at the user's request. The DDV change validates envelopes/padding; it does not establish full cryptographic authentication of every DDV bank response. RDH response signatures are verified separately. The later successful RDH-7 test is recorded in [RDH review](rdh-review.md).
+- `Zeroizing` limits the lifetime of buffers under application control. It cannot eliminate every temporary copy in GUI, operating-system or third-party code.
 
-Diese Quellcodeprüfung und die Tests ersetzen keine unabhängige vollständige Sicherheitszertifizierung.
+## November 14 additions
+
+The PayPal provider uses fixed HTTPS endpoints, disables redirects and allows only
+`GetBalance` and `TransactionSearch`. API credentials are separately encrypted in the
+vault and re-encrypted during a password change. Error messages expose only validated
+numeric API codes, not raw provider text or credentials. Complete retrieval and a
+successful encrypted save precede changes to the active vault. Synthetic tests cover
+pagination, cancellation, malformed data, scoped updates, password changes and form
+clearing. This is not evidence of successful live PayPal authentication.
+
+These source reviews and automated tests do not replace an independent security audit
+or banking certification. See [SECURITY.md](../SECURITY.md) for reporting instructions.

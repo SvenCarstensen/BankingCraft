@@ -318,6 +318,11 @@ fn reset_vault_view(app: &AppWindow) {
     st.set_af_blz(Default::default());
     st.set_af_user(Default::default());
     st.set_af_customer(Default::default());
+    st.set_af_paypal_password(Default::default());
+    st.set_af_paypal_signature(Default::default());
+    st.set_af_paypal_sandbox(false);
+    st.set_total_has_paypal(false);
+    st.set_has_foreign_currency(false);
     st.set_af_url(Default::default());
     st.set_af_reader(Default::default());
     st.set_bank_query(Default::default());
@@ -429,6 +434,8 @@ mod tests {
         assert_eq!(st.get_accounts().row_count(), 2);
         st.set_tf_name("private unsaved draft".into());
         st.set_af_user("private login draft".into());
+        st.set_af_paypal_password("synthetic API password".into());
+        st.set_af_paypal_signature("synthetic API signature".into());
         st.set_account_name_draft("private alias draft".into());
         crate::view::show_detail(&app, &original, 0);
         *c.bridge.pin_cache.lock().unwrap() = Some(zeroize::Zeroizing::new("private pin".into()));
@@ -454,6 +461,7 @@ mod tests {
         assert_eq!(st.get_accounts().row_count(), 0);
         assert_eq!(st.get_payment_orders().row_count(), 0);
         assert!(st.get_tf_name().is_empty()); assert!(st.get_af_user().is_empty());
+        assert!(st.get_af_paypal_password().is_empty()); assert!(st.get_af_paypal_signature().is_empty());
         assert!(st.get_account_name_draft().is_empty()); assert!(!st.get_tx_detail().valid);
         assert!(c.bridge.pin_cache.lock().unwrap().is_none());
         assert_eq!(VaultFile::open(first.clone(), "first-password").unwrap().1.accounts.len(), 2);

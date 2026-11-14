@@ -3803,5 +3803,140 @@
     "1822direkt: use a FinTS connection with bank code 50050222. Refer to the bank documents for your user ID and enabled TAN method.",
     "1822direkt : utilisez un accès FinTS avec le code bancaire 50050222. Consultez les documents bancaires pour l’identifiant et la méthode TAN activée.",
     "1822direkt: use una conexión FinTS con código bancario 50050222. Consulte los documentos del banco para el identificador y método TAN activado."
+  ],
+  "NATIONAL-BANK: Nach der IT-Umstellung den neuen NetKey und die neue PIN verwenden. Alte RDH-Schlüssel müssen bei der Bank neu eingerichtet werden.": [
+    "NATIONAL-BANK: After the IT migration, use the new NetKey and PIN. The bank must reinitialize old RDH keys.",
+    "NATIONAL-BANK : après la migration informatique, utilisez le nouveau NetKey et le nouveau code PIN. La banque doit réinitialiser les anciennes clés RDH.",
+    "NATIONAL-BANK: tras la migración informática, utiliza el nuevo NetKey y PIN. El banco debe reinicializar las antiguas claves RDH."
+  ],
+  "Warburg: Seit Mai 2026 die zentrale BLZ 20120100, den neuen Warburg NetKey und die neue PIN verwenden. Alte Filialzugänge und HBCI-Signaturen müssen neu eingerichtet werden.": [
+    "Warburg: Since May 2026, use central bank code 20120100, the new Warburg NetKey and PIN. Old branch connections and HBCI signatures must be set up again.",
+    "Warburg : depuis mai 2026, utilisez le code bancaire central 20120100, le nouveau Warburg NetKey et le nouveau code PIN. Les anciens accès et signatures HBCI doivent être reconfigurés.",
+    "Warburg: desde mayo de 2026, utiliza el código bancario central 20120100, el nuevo Warburg NetKey y PIN. Los antiguos accesos y firmas HBCI deben configurarse de nuevo."
+  ],
+  "Marcard, Stein & Co: Seit Mai 2026 die neuen Onlinebanking-Zugangsdaten verwenden. HBCI-Zugangsdaten für das neue System erhalten Sie von der Bank.": [
+    "Marcard, Stein & Co: Since May 2026, use the new online banking credentials. Obtain HBCI credentials for the new system from the bank.",
+    "Marcard, Stein & Co : depuis mai 2026, utilisez les nouveaux identifiants bancaires. La banque fournit les identifiants HBCI du nouveau système.",
+    "Marcard, Stein & Co: desde mayo de 2026, utiliza las nuevas credenciales bancarias. El banco facilita las credenciales HBCI del nuevo sistema."
+  ],
+  "PayPal": [
+    "PayPal",
+    "PayPal",
+    "PayPal"
+  ],
+  "Bitte API-Benutzernamen, API-Passwort und API-Signatur von PayPal eingeben.": [
+    "Enter the PayPal API username, API password and API signature.",
+    "Saisissez le nom d’utilisateur API, le mot de passe API et la signature API PayPal.",
+    "Introduzca el nombre de usuario API, la contraseña API y la firma API de PayPal."
+  ],
+  "Unvollständige oder ungültige PayPal-Antwort; keine Daten übernommen.": [
+    "Incomplete or invalid PayPal response; no data imported.",
+    "Réponse PayPal incomplète ou invalide ; aucune donnée importée.",
+    "Respuesta de PayPal incompleta o inválida; no se han importado datos."
+  ],
+  "PayPal-Suchergebnis unvollständig; keine Daten übernommen. Bitte später erneut versuchen.": [
+    "Incomplete PayPal search results; no data imported. Please try again later.",
+    "Résultats PayPal incomplets ; aucune donnée importée. Réessayez plus tard.",
+    "Resultados de PayPal incompletos; no se han importado datos. Inténtelo más tarde."
+  ],
+  "PayPal-Verbindung fehlgeschlagen. Es wurden keine Daten übernommen.": [
+    "PayPal connection failed. No data imported.",
+    "Connexion PayPal échouée. Aucune donnée importée.",
+    "Error de conexión con PayPal. No se han importado datos."
+  ],
+  "PayPal hat den Abruf abgelehnt (API-Code: {}). Bitte Berechtigungen und API-Zugangsdaten prüfen.": [
+    "PayPal rejected the request (API code: {}). Check permissions and API credentials.",
+    "PayPal a refusé la requête (code API : {}). Vérifiez les autorisations et les identifiants API.",
+    "PayPal rechazó la consulta (código API: {}). Compruebe permisos y credenciales API."
+  ],
+  "Der PayPal-Zugang unterstützt nur Guthaben und Umsätze, keine Zahlungsaufträge.": [
+    "The PayPal connection supports balances and transactions only, not payment orders.",
+    "L’accès PayPal permet uniquement de consulter les soldes et opérations, pas d’émettre des paiements.",
+    "La conexión PayPal solo permite consultar saldos y movimientos, no emitir pagos."
+  ],
+  "PayPal-Zugangsdaten konnten nicht gespeichert werden.": [
+    "Could not save PayPal credentials.",
+    "Impossible d’enregistrer les identifiants PayPal.",
+    "No se pudieron guardar las credenciales de PayPal."
+  ],
+  "PayPal-Zugangsdaten konnten nicht entschlüsselt werden.": [
+    "Could not decrypt PayPal credentials.",
+    "Impossible de déchiffrer les identifiants PayPal.",
+    "No se pudieron descifrar las credenciales de PayPal."
+  ],
+  "PayPal-Guthaben und Umsätze werden abgerufen …": [
+    "Retrieving PayPal balances and transactions …",
+    "Récupération des soldes et opérations PayPal …",
+    "Consultando saldos y movimientos de PayPal …"
+  ],
+  "PayPal-Zugangsdaten beschädigt; Passwort wurde nicht geändert": [
+    "PayPal credentials are damaged; password was not changed",
+    "Identifiants PayPal endommagés ; le mot de passe n’a pas été modifié",
+    "Las credenciales de PayPal están dañadas; no se cambió la contraseña"
+  ],
+  "Saldo inkl. Vormerkungen und PayPal-Guthaben": [
+    "Balance including pending transactions and PayPal funds",
+    "Solde incluant les opérations en attente et les fonds PayPal",
+    "Saldo con movimientos pendientes y fondos de PayPal"
+  ],
+  "Gebuchter Saldo (ohne PayPal)": [
+    "Booked balance (excluding PayPal)",
+    "Solde comptabilisé (hors PayPal)",
+    "Saldo contabilizado (sin PayPal)"
+  ],
+  "Verfügbares PayPal-Guthaben": [
+    "Available PayPal balance",
+    "Solde PayPal disponible",
+    "Saldo disponible de PayPal"
+  ],
+  "Gebuchter Saldo (nicht geliefert)": [
+    "Booked balance (not provided)",
+    "Solde comptabilisé (non fourni)",
+    "Saldo contabilizado (no facilitado)"
+  ],
+  "FinTS PIN/TAN, HBCI-Chipkarte oder PayPal": [
+    "FinTS PIN/TAN, HBCI smart card or PayPal",
+    "FinTS PIN/TAN, carte à puce HBCI ou PayPal",
+    "FinTS PIN/TAN, tarjeta HBCI o PayPal"
+  ],
+  "PayPal-Geschäftskonto mit freigeschalteter NVP-API: API-Benutzername, API-Passwort und Signatur verwenden, nicht das normale PayPal-Passwort. Nur Guthaben und Umsätze; keine Zahlungen.": [
+    "PayPal Business account with NVP API access: use the API username, API password and signature, not your normal PayPal password. Balances and transactions only; no payments.",
+    "Compte PayPal professionnel avec accès API NVP : utilisez le nom d’utilisateur API, le mot de passe API et la signature, pas le mot de passe PayPal habituel. Soldes et opérations uniquement ; aucun paiement.",
+    "Cuenta PayPal Business con acceso a la API NVP: use el usuario API, la contraseña API y la firma, no la contraseña habitual de PayPal. Solo saldos y movimientos; sin pagos."
+  ],
+  "API-Benutzername": [
+    "API username",
+    "Nom d’utilisateur API",
+    "Nombre de usuario API"
+  ],
+  "API-Passwort": [
+    "API password",
+    "Mot de passe API",
+    "Contraseña API"
+  ],
+  "API-Signatur": [
+    "API signature",
+    "Signature API",
+    "Firma API"
+  ],
+  "API-Signatur · Nur Lesezugriff": [
+    "API signature · Read-only access",
+    "Signature API · Lecture seule",
+    "Firma API · Acceso de solo lectura"
+  ],
+  "PayPal Sandbox (Testkonto)": [
+    "PayPal Sandbox (test account)",
+    "PayPal Sandbox (compte de test)",
+    "PayPal Sandbox (cuenta de prueba)"
+  ],
+  "Zugangsdaten werden verschlüsselt im Tresor gespeichert. Abruf der letzten 90 Tage und älterer vorgemerkter Umsätze. Guthaben entspricht dem verfügbaren PayPal-Guthaben.": [
+    "Credentials are stored encrypted in the vault. Retrieves the last 90 days and older pending transactions. Balance means available PayPal funds.",
+    "Identifiants chiffrés dans le coffre. Récupération des 90 derniers jours et des opérations en attente plus anciennes. Le solde correspond aux fonds PayPal disponibles.",
+    "Las credenciales se guardan cifradas en la bóveda. Consulta los últimos 90 días y movimientos pendientes anteriores. El saldo corresponde a fondos disponibles de PayPal."
+  ],
+  "Analysen zeigen ausschließlich EUR-Umsätze. Andere Währungen finden Sie getrennt in der Umsatzliste.": [
+    "Analytics show EUR transactions only. Other currencies are listed separately in Transactions.",
+    "Les analyses portent uniquement sur les opérations en EUR. Les autres devises sont séparées dans la liste des opérations.",
+    "Los análisis solo incluyen movimientos en EUR. Las demás divisas se muestran por separado en la lista de movimientos."
   ]
 }

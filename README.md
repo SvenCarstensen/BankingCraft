@@ -25,7 +25,7 @@ through successful real-world tests. Simulator tests and protocol implementation
 establish compatibility with untested banks or hardware.
 
 Bank profiles were compared with AqBanking and current bank publications on
-**November 13, 2026**. Setup hints, selected outdated endpoints, statement-format
+**November 13–14, 2026**. Setup hints, selected outdated endpoints, statement-format
 negotiation and account-data handling have been updated. See the
 [bank compatibility review](docs/bank-compatibility.md) for the per-bank sources,
 remaining uncertainties (including Consorsbank's documented FinTS version) and
@@ -35,6 +35,9 @@ offline test coverage. **This does not expand the live-tested bank list above.**
   product ID. Normal builds without a configured ID send an unregistered placeholder and may
   be rejected by banks. The local test ID used during development is neither included in the
   repository nor embedded in builds. See [Build](#build) for the separation of local test settings.
+- **PayPal retrieval is experimental and has not been tested with a real account.** It requires
+  an eligible PayPal Business account with legacy NVP API signature credentials. Read-only
+  balance and transaction retrieval is implemented; see [PayPal setup](#paypal-setup).
 - **Real payments remain untested.** Transfers, instant and scheduled transfers, standing order
   changes and Verification of Payee have not been validated by submitting real payment orders.
   Their automated tests use simulated bank responses. **Synchronize transactions sends saved
@@ -118,8 +121,8 @@ for earlier copies under their previous licenses.
 
 BankingCraft does not collect or transmit telemetry or usage analytics. Personal and financial
 data stays on your device and is not sent to the developers or other third parties. The only
-exception is the data exchanged with your configured bank, including its banking service provider,
-to authenticate, retrieve account information and submit banking orders. Banking data is stored
+exception is the data exchanged with your configured bank (including its banking service provider)
+or PayPal to authenticate and retrieve account information, and with your bank to submit orders. Banking data is stored
 locally in the encrypted vault. Exports are saved locally; sharing an exported file is your choice.
 
 ## Features
@@ -128,6 +131,7 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 |---|---|
 | Current accounts | UPD account discovery, IBAN/BIC (HKSPA), booked and available balances (HKSAL v5–7), camt.052 transactions (HKCAZ) with MT940/MT942 fallback (HKKAZ v5–7), pending transactions, pagination and duplicate detection |
 | Credit cards | HKKKU v1 / DKKKU v2 transactions; HKKKS v1 / DKKKS v3 balances or balances from transaction reports; account permissions, pagination, debit/credit and pending entries |
+| PayPal | Read-only NVP API signature access, live/sandbox endpoints, available balances per currency, signed net transactions including fees, bounded date-range splitting at the 100-result limit; credentials encrypted in the vault |
 | PIN/TAN | FinTS 3.0, PSD2 SCA (HKTAN v6/v7, processes 4/2/S), system synchronization, TAN method/media selection and decoupled app approval |
 | TAN display | Optical chipTAN with adjustable animated flicker code, photoTAN/QR-TAN images from HHDuc, SMS/text |
 | chipTAN USB | HHDuc sent through `FEATURE_MCT_READER_DIRECT` (SCardControl) or `FF 91 06 00` APDU; TAN read back from the reader |
@@ -136,7 +140,7 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | Secure PIN entry | `FEATURE_VERIFY_PIN_DIRECT` for class 2/3 readers; the PIN stays on the reader. Software PIN entry is available only for readers without a PIN pad |
 | Payments | SEPA transfers (HKCCS), instant transfers (HKIPZ), scheduled transfers (HKCSE), standing order creation/retrieval/deletion (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
 | Payment orders and recipients | Encrypted outgoing queue, saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
-| Reports | Automatic categorization with learned rules, monthly and twelve-month reports |
+| Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
 | Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
 | Privacy | Local AES-256-GCM vault, key derived from the vault password using Argon2id; online banking PINs are saved only when explicitly requested and are additionally encrypted; card PINs are never saved |
@@ -156,27 +160,134 @@ Drivers: REINER SCT drivers on macOS and Windows; `pcscd` and `ifd-cyberjack` on
 
 ## Build
 
-Requirements: Rust 1.95 or newer (tested with 1.99.1), a working OpenGL driver, and
-Python 3 for license-bundle verification in the test and macOS packaging scripts, plus:
+Build on the operating system you intend to run. The commands below use **Rust 1.99.1**,
+the version used by CI, and the committed lockfile. Install [Rust through rustup](https://rust-lang.org/tools/install/),
+Git and Python 3 first. Reopen your terminal after installing tools so they are on `PATH`.
+A working graphics driver with OpenGL support is required to run the native app.
+No bank credentials, card reader or FinTS product ID are needed to compile or use demo data.
 
-- **Linux:** `libpcsclite-dev`, `pcscd`, `libxkbcommon-dev`, `libfontconfig1-dev`, `libfreetype6-dev` (Debian/Ubuntu package names)
-- **macOS:** Xcode Command Line Tools; PC/SC uses `PCSC.framework`
-- **Windows:** no additional PC/SC package; WinSCard is part of Windows
+### macOS
 
-System fonts are discovered with Fontique (Fontations) and rendered by egui using
-`skrifa`. The existing font-family preferences and bundled fallback fonts are retained.
-Linux Wayland title bars use winit's Crossfont/FreeType backend to avoid the unmaintained
-`ttf-parser` dependency while retaining window decorations and title text.
-The small `crates/crossfont-compat` re-export bridges winit 0.30's Crossfont 0.8
-requirement to Crossfont 0.9, so it shares Fontconfig's version 6 binding with Fontique.
+Install Apple's Command Line Tools (compiler, linker and SDK) if needed:
 
 ```sh
-cargo build --release
-./target/release/bankingcraft          # Windows: target\release\bankingcraft.exe
+xcode-select --install
 ```
 
-**macOS application:** double-click `macos/build-macos.command`. It builds `BankingCraft.app`
-next to the project directory, includes the icon, applies an ad-hoc signature and launches the app.
+After installing Rust and Python 3, open Terminal and run:
+
+```sh
+git clone https://github.com/SvenCarstensen/BankingCraft.git
+cd BankingCraft
+rustup toolchain install 1.99.1 --profile minimal --component clippy
+rustup override set 1.99.1
+python3 scripts/update-licenses.py --check
+cargo build --release --locked -p bankingcraft
+./target/release/bankingcraft
+```
+
+For a double-clickable application bundle, use the included packaging script instead:
+
+```sh
+bash macos/build-macos.command
+```
+
+It builds `BankingCraft.app` **next to the repository directory**, includes the icon and
+license bundle, applies a local ad-hoc signature and launches the app. It replaces an
+existing bundle at that location and quits a running BankingCraft instance. The bundle
+is not notarized or signed with an Apple Developer distribution certificate.
+The build targets your Mac's architecture; this script does not produce a universal binary.
+PC/SC uses macOS's `PCSC.framework`. A compatible reader may still require its vendor driver.
+
+### Windows
+
+Install Git, Python 3 and rustup. When prompted by rustup, install the
+[Visual Studio C++ build tools](https://rust-lang.github.io/rustup/installation/windows-msvc.html)
+with **Desktop development with C++** and a Windows SDK. Use the native **MSVC** Rust
+toolchain; the following commands target x64 Windows in PowerShell, not WSL:
+
+```powershell
+git clone https://github.com/SvenCarstensen/BankingCraft.git
+Set-Location BankingCraft
+rustup toolchain install 1.99.1-x86_64-pc-windows-msvc --profile minimal --component clippy
+rustup override set 1.99.1-x86_64-pc-windows-msvc
+py -3 scripts/update-licenses.py --check
+cargo build --release --locked -p bankingcraft
+.\target\release\bankingcraft.exe
+```
+
+The executable is `target\release\bankingcraft.exe`. There is currently no Windows
+installer/packaging script. WinSCard is supplied by Windows; no separate PC/SC development
+package is needed. Install your reader's driver separately if required. If `py` is not
+available, use `python` after confirming that `python --version` reports Python 3.
+
+### Linux (Ubuntu 24.04 / Debian-style packages)
+
+Install the compiler, development libraries and runtime components:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config git curl python3 \
+  libpcsclite-dev pcscd libxkbcommon-dev libfontconfig1-dev libfreetype6-dev \
+  libx11-dev libxi-dev libxrandr-dev libxcursor-dev libxinerama-dev \
+  libgl1 fonts-noto-core
+```
+
+Install Rust through rustup, then build and run from a graphical desktop session:
+
+```sh
+git clone https://github.com/SvenCarstensen/BankingCraft.git
+cd BankingCraft
+rustup toolchain install 1.99.1 --profile minimal --component clippy
+rustup override set 1.99.1
+python3 scripts/update-licenses.py --check
+cargo build --release --locked -p bankingcraft
+./target/release/bankingcraft
+```
+
+Other distributions need equivalent development packages; package names differ. X11 and
+Wayland are enabled. For smart-card access on a systemd machine, start the PC/SC socket
+if your distribution has not already enabled it:
+
+```sh
+sudo systemctl enable --now pcscd.socket
+```
+
+Install a compatible reader driver, such as the distribution's cyberJack driver where
+applicable. PIN/TAN and PayPal do not require a connected reader. The executable is
+`target/release/bankingcraft`; no AppImage, `.deb` or `.rpm` packaging script is included.
+
+### Tests, troubleshooting and redistribution
+
+On every platform, from the repository root:
+
+```sh
+cargo test --workspace --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+```
+
+On macOS/Linux, `./scripts/test-business.sh` also verifies the license bundle first.
+On Windows, run `py -3 scripts/update-licenses.py --check` before the Cargo commands.
+The tests use synthetic data. See [Testing](docs/testing.md) for coverage and optional
+screenshot exports. Native runtime validation is strongest on macOS; CI builds and
+tests the Windows/Linux targets but does not validate their real readers or bank access.
+
+If `cargo` or `rustup` is not found, reopen the terminal and check rustup's `PATH` setup.
+On Windows, linker errors usually require the C++ workload/SDK. On Linux, missing
+`libpcsclite`, `fontconfig`, `freetype` or `xkbcommon` errors indicate missing development
+packages or `pkg-config`. See the [Rust installation guide](https://doc.rust-lang.org/book/ch01-01-installation.html).
+
+When distributing binaries, include `LICENSE`, `THIRD_PARTY_NOTICES.md` and the
+`licenses/` directory, plus the matching corresponding source required by the applicable
+licenses. The macOS script already copies the reviewed notices and editable bank data;
+manual Windows/Linux packaging must do the same. See [license notices](THIRD_PARTY_NOTICES.md).
+
+System fonts are discovered with Fontique and rendered by egui using `skrifa`.
+Wayland title bars use Crossfont/FreeType. The local `crates/crossfont-compat` re-export
+aligns winit's Crossfont dependency with Fontique's Fontconfig binding; it does not
+introduce a separate renderer or `ttf-parser`.
+
+### FinTS product registration and local development
 
 A product ID already configured in a vault takes precedence. Normal builds use only that
 setting; otherwise the client sends the unregistered placeholder `BANKINGCRAFT`.
@@ -260,6 +371,36 @@ so it also applies before unlocking on the next launch. System mode resolves the
 at startup. User-created group names, account names and bank-supplied transaction descriptions
 remain unchanged. Category IDs and payment data remain stable across language changes.
 Numeric dates and financial amounts retain their existing input/output conventions.
+
+## PayPal setup
+
+Open **Bank connections → New bank connection → PayPal**. Enter a label and the
+**API username, API password and API signature** issued by PayPal for your eligible
+Business account. These are not your normal PayPal login/password. Select **Sandbox**
+only for PayPal sandbox credentials; otherwise the connection uses PayPal's live API.
+**Save & connect** encrypts the credentials in the vault and starts a read-only retrieval.
+No FinTS product ID is required for this provider. See
+[PayPal's credential instructions](https://www.paypal.com/us/cshelp/article/how-do-i-request-an-api-signature-or-certificate-help487).
+
+The integration uses the legacy NVP API, which PayPal still documents but no longer
+extends with new features. Availability depends on the account and API permissions;
+there is no claim of general compatibility or a completed real-account test.
+
+- Each currency gets its own wallet. The primary amount is **Available PayPal balance**.
+  PayPal does not provide a booked balance through `GetBalance`; it is shown as unavailable,
+  and pending amounts are not added again. Combined booked totals explicitly exclude PayPal.
+- Retrieval covers the last 90 days plus older locally pending transactions. Previously
+  imported older history stays in the vault. This is not a full-history import.
+- Transaction search supplies signed net amounts, fees, counterparty names, status and IDs.
+  Full invoice/item details from `GetTransactionDetails` are not currently imported.
+  Unknown or malformed financial records fail the retrieval instead of silently disappearing.
+- Searches at the 100-result limit are split into overlapping time intervals and deduplicated.
+  Unresolvable same-second limits or request failures leave local balances and transactions
+  unchanged. Selected-account/group synchronization updates only the selected wallets.
+- PayPal transfers and standing orders are not implemented. Credentials never enter FinTS,
+  logs or exports; changing the vault password also re-encrypts the stored API credentials.
+
+Implementation and source references: [bank compatibility review](docs/bank-compatibility.md).
 
 ## Multiple vaults
 

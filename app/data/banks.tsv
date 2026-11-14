@@ -1,5 +1,5 @@
 # BLZ	Name	Ort	BIC	HBCI-Host	PIN/TAN-URL
-# Quelle: hbci4java blz.properties (LGPL-2.1), Stand Oktober 2026; gezielte Korrekturen 2026-11-13, siehe docs/bank-compatibility.md (kein vollständiger Aktualitätsnachweis)
+# Quelle: hbci4java blz.properties (LGPL-2.1), Stand Oktober 2026; gezielte Korrekturen 2026-11-14, siehe docs/bank-compatibility.md (kein vollständiger Aktualitätsnachweis)
 28030300	"Oldenburgische Landesbank AG (vormals W. Fortmann & Söhne)"	Oldenburg (Oldb)	FORTDEH4XXX		https://hbci.olb.de
 50050222	1822direkt (PIN/TAN)	Frankfurt am Main	HELADEF1822		https://fints.1822direkt.com/fints/hbci
 39060180	Aachener Bank eG	Aachen	GENODED1AAC	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet
@@ -157,7 +157,7 @@
 80040000	Commerzbank	Halle (Saale)	COBADEFF800	hbci.commerzbank.de	https://fints.commerzbank.de/fints
 41040018	Commerzbank	Hamm, Westf	COBADEFF410	hbci.commerzbank.de	https://fints.commerzbank.de/fints
 50640015	Commerzbank	Hanau	COBADEFF506	hbci.commerzbank.de	https://fints.commerzbank.de/fints
-25040066	Commerzbank	Hannover	COBADEFF250		https://fints.commerzbank.de/fints
+25040066	Commerzbank	Hannover	COBADEFF250	hbci.commerzbank.de	https://fints.commerzbank.de/fints
 67240039	Commerzbank	Heidelberg, Neckar	COBADEFF672	hbci.commerzbank.de	https://fints.commerzbank.de/fints
 63240016	Commerzbank	Heidenheim an der Brenz	COBADEFF632	hbci.commerzbank.de	https://fints.commerzbank.de/fints
 62040060	Commerzbank	Heilbronn, Neckar	COBADEFF620	hbci.commerzbank.de	https://fints.commerzbank.de/fints
@@ -903,7 +903,7 @@
 40030000	Münsterländische Bank Thie & Co	Münster, Westf	MLBKDEH1MUE		https://fints1.atruvia.de/cgi-bin/hbciservlet
 15050100	Müritz-Sparkasse	Waren (Müritz)	NOLADE21WRN	i068.s-fints-mv.de	https://banking-mv6.s-fints-pt-mv.de/fints30
 51050015	Nassauische Sparkasse	Wiesbaden	NASSDE55XXX	h001.s-hbci.de	https://banking-hs7.s-fints-pt-hs.de/fints30
-36020030	National-Bank	Essen, Ruhr	NBAGDE3EXXX	hbciserver.bankverlag.de	https://fints2.atruvia.de/cgi-bin/hbciservlet
+36020030	National-Bank	Essen, Ruhr	NBAGDE3EXXX	fints2.atruvia.de	https://fints2.atruvia.de/cgi-bin/hbciservlet
 70013100	net-m privatbank 1891 AG	München	BVWBDE2WXXX	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet
 70013155	net-m privatbank 1891 AG	München	BVWBDE2TRAX	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet
 70013199	net-m privatbank 1891 AG	München	BVWBDE2WXXX	fints1.atruvia.de	https://fints1.atruvia.de/cgi-bin/hbciservlet

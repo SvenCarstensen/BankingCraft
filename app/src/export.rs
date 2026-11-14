@@ -77,30 +77,38 @@ pub(crate) fn camt052_content(v: &Vault, idx: &[usize]) -> String {
     xml.push_str(&format!("<GrpHdr><MsgId>BANKINGCRAFT-{}</MsgId><CreDtTm>{}</CreDtTm></GrpHdr>\n", now.format("%Y%m%d%H%M%S"), now.format("%Y-%m-%dT%H:%M:%S")));
     for (acc_id, list) in by_account {
         let Some(acc) = v.account(acc_id) else { continue };
+        let account_identifier = if acc.account.iban.is_empty() {
+            format!("<Othr><Id>{}</Id></Othr>", x(&acc.account.account_number))
+        } else { format!("<IBAN>{}</IBAN>", x(&acc.account.iban)) };
         xml.push_str(&format!(
-            "<Rpt><Id>{}-{}</Id><CreDtTm>{}</CreDtTm><Acct><Id><IBAN>{}</IBAN></Id><Ccy>{}</Ccy></Acct>\n",
+            "<Rpt><Id>{}-{}</Id><CreDtTm>{}</CreDtTm><Acct><Id>{}</Id><Ccy>{}</Ccy></Acct>\n",
             acc_id,
             now.format("%Y%m%d"),
             now.format("%Y-%m-%dT%H:%M:%S"),
-            x(&acc.account.iban),
+            account_identifier,
             x(&acc.account.currency)
         ));
         if let Some(b) = &acc.balance {
-            xml.push_str(&format!(
-                "<Bal><Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp><Amt Ccy=\"{}\">{:.2}</Amt><CdtDbtInd>{}</CdtDbtInd><Dt><Dt>{}</Dt></Dt></Bal>\n",
+            let (balance_code, amount) = if crate::paypal::is_paypal(v, acc_id) { ("CLAV", b.available) } else { ("CLBD", Some(b.booked)) };
+            if let Some(amount) = amount {
+                xml.push_str(&format!(
+                "<Bal><Tp><CdOrPrtry><Cd>{balance_code}</Cd></CdOrPrtry></Tp><Amt Ccy=\"{}\">{:.2}</Amt><CdtDbtInd>{}</CdtDbtInd><Dt><Dt>{}</Dt></Dt></Bal>\n",
                 x(&b.currency),
-                b.booked.abs(),
-                if b.booked.is_sign_negative() { "DBIT" } else { "CRDT" },
+                amount.abs(),
+                if amount.is_sign_negative() { "DBIT" } else { "CRDT" },
                 b.date.format("%Y-%m-%d")
-            ));
+                ));
+            }
         }
         for i in list {
             let t = &v.transactions[i].tx;
             let credit = !t.amount.is_sign_negative();
             let (party, acct) = if credit { ("Dbtr", "DbtrAcct") } else { ("Cdtr", "CdtrAcct") };
+            let party_account = if t.counterparty_iban.is_empty() { String::new() }
+                else { format!("<{acct}><Id><IBAN>{}</IBAN></Id></{acct}>", x(&t.counterparty_iban)) };
             xml.push_str(&format!(
                 "<Ntry><Amt Ccy=\"{ccy}\">{amt:.2}</Amt><CdtDbtInd>{ind}</CdtDbtInd><Sts><Cd>{sts}</Cd></Sts>{dates}<BkTxCd/>\
-<NtryDtls><TxDtls><Refs><EndToEndId>{e2e}</EndToEndId>{mref}</Refs><RltdPties><{party}><Pty><Nm>{name}</Nm></Pty></{party}><{acct}><Id><IBAN>{iban}</IBAN></Id></{acct}></RltdPties><RmtInf><Ustrd>{purpose}</Ustrd></RmtInf><AddtlTxInf>{posting}</AddtlTxInf></TxDtls></NtryDtls></Ntry>\n",
+<NtryDtls><TxDtls><Refs><EndToEndId>{e2e}</EndToEndId>{mref}</Refs><RltdPties><{party}><Pty><Nm>{name}</Nm></Pty></{party}>{party_account}</RltdPties><RmtInf><Ustrd>{purpose}</Ustrd></RmtInf><AddtlTxInf>{posting}</AddtlTxInf></TxDtls></NtryDtls></Ntry>\n",
                 ccy = x(&t.currency),
                 amt = t.amount.abs(),
                 ind = if credit { "CRDT" } else { "DBIT" },
@@ -109,7 +117,6 @@ pub(crate) fn camt052_content(v: &Vault, idx: &[usize]) -> String {
                 e2e = if t.end_to_end_id.is_empty() { "NOTPROVIDED".into() } else { x(&t.end_to_end_id) },
                 mref = if t.mandate_id.is_empty() { String::new() } else { format!("<MndtId>{}</MndtId>", x(&t.mandate_id)) },
                 name = x(&t.counterparty_name),
-                iban = x(&t.counterparty_iban),
                 purpose = x(&t.purpose),
                 posting = x(&t.posting_text),
             ));

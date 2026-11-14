@@ -19,6 +19,8 @@ pub enum AccessKind {
     ChipCard { reader: String, record: u8 },
     /// RDH chip card (ZKA/SECCOS, e.g. VR-NetWorld-Card); `record` = notepad entry (1-based).
     RdhCard { reader: String, record: u8 },
+    /// Read-only PayPal NVP API. API credentials are sealed separately from vault data.
+    PayPal { sandbox: bool, credentials: SealedSecret },
     Demo,
 }
 
@@ -35,7 +37,7 @@ pub struct BankAccess {
 }
 
 /// A secret (PIN) encrypted with AES-256-GCM under a key derived from the vault key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SealedSecret {
     pub nonce: Vec<u8>,
     pub data: Vec<u8>,
@@ -318,6 +320,10 @@ impl VaultFile {
         let candidate = Self { path: self.path.clone(), salt, key: derive(new, &salt)? };
         let mut updated = vault.clone();
         for access in &mut updated.accesses {
+            if let AccessKind::PayPal { credentials, .. } = &mut access.kind {
+                let secret = self.open_secret(credentials).ok_or(i18n::tr("PayPal-Zugangsdaten beschädigt; Passwort wurde nicht geändert"))?;
+                *credentials = candidate.seal_secret(&secret)?;
+            }
             if let Some(sealed) = &access.saved_pin {
                 let pin = self.open_secret(sealed).ok_or(i18n::tr("Gespeicherte PIN beschädigt; Passwort wurde nicht geändert"))?;
                 access.saved_pin = Some(candidate.seal_secret(&pin)?);

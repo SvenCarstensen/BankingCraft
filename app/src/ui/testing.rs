@@ -307,3 +307,40 @@ fn render_balance_review() {
     }
     println!("{}", dir.display());
 }
+
+#[test]
+fn paypal_setup_masks_secrets_and_clears_them_when_cancelled_or_provider_changes() {
+    use egui_kittest::kittest::Queryable;
+    i18n::with_language(i18n::Language::German, || {
+        let app = AppWindow::new().unwrap(); let st = app.global::<crate::AppState>();
+        st.set_unlocked(true); st.set_page(6); st.set_af_open(true); st.set_af_kind(3);
+        st.set_af_user("synthetic-api-user".into());
+        st.set_af_paypal_password("synthetic-api-password".into());
+        st.set_af_paypal_signature("synthetic-api-signature".into());
+        let mut harness = harness(&app, 1360., 1100.);
+        assert_eq!(harness.query_all_by_role(egui::accesskit::Role::PasswordInput).count(), 2);
+        harness.get_by_label("Abbrechen").click(); harness.run();
+        assert!(!st.get_af_open()); assert!(st.get_af_user().is_empty());
+        assert!(st.get_af_paypal_password().is_empty()); assert!(st.get_af_paypal_signature().is_empty());
+        st.set_af_open(true); st.set_af_kind(3);
+        st.set_af_paypal_password("synthetic-api-password".into());
+        st.set_af_paypal_signature("synthetic-api-signature".into());
+        harness.run(); harness.get_by_label("PIN/TAN (FinTS)").click(); harness.run();
+        assert_eq!(st.get_af_kind(), 0);
+        assert!(st.get_af_paypal_password().is_empty()); assert!(st.get_af_paypal_signature().is_empty());
+    });
+}
+
+#[test]
+#[ignore = "explicit offline screenshot export; no vault or network access"]
+fn render_paypal_setup() {
+    for (language, code) in [(i18n::Language::German, "de"), (i18n::Language::English, "en"), (i18n::Language::French, "fr"), (i18n::Language::Spanish, "es")] {
+        i18n::with_language(language, || {
+            let app = AppWindow::new().unwrap(); let st = app.global::<crate::AppState>();
+            st.set_unlocked(true); st.set_page(6); st.set_af_open(true); st.set_af_kind(3); st.set_theme_mode(2);
+            st.set_af_name("PayPal Demo".into()); st.set_af_user("demo_api.example.invalid".into());
+            st.set_af_paypal_password("synthetic-password".into()); st.set_af_paypal_signature("synthetic-signature".into()); st.set_af_paypal_sandbox(true);
+            for width in [1100, 1360] { snapshot(&app, width, 1100, std::env::temp_dir().join(format!("bankingcraft-paypal-{code}-{width}.png"))); }
+        });
+    }
+}

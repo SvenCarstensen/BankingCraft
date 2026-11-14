@@ -35,7 +35,7 @@ pub fn all() -> &'static [Bank] {
         DATA.lines()
             .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
             .filter_map(|l| {
-                let f: Vec<&'static str> = l.split('\t').collect();
+                let f: Vec<&'static str> = l.split('\t').map(str::trim).collect();
                 if f.len() < 6 {
                     return None;
                 }
@@ -112,6 +112,12 @@ pub fn search(query: &str, chip_card: bool, limit: usize) -> Vec<&'static Bank> 
 /// Bank specific hints for the login name.
 pub fn login_hint(b: &Bank) -> Option<&'static str> {
     use fints::bank_profile::BankProfile;
+    match b.blz {
+        "36020030" => return Some(i18n::tr("NATIONAL-BANK: Nach der IT-Umstellung den neuen NetKey und die neue PIN verwenden. Alte RDH-Schlüssel müssen bei der Bank neu eingerichtet werden.")),
+        "20120100" | "10030500" | "25060180" | "29030400" | "60020100" => return Some(i18n::tr("Warburg: Seit Mai 2026 die zentrale BLZ 20120100, den neuen Warburg NetKey und die neue PIN verwenden. Alte Filialzugänge und HBCI-Signaturen müssen neu eingerichtet werden.")),
+        "20030400" => return Some(i18n::tr("Marcard, Stein & Co: Seit Mai 2026 die neuen Onlinebanking-Zugangsdaten verwenden. HBCI-Zugangsdaten für das neue System erhalten Sie von der Bank.")),
+        _ => {},
+    }
     Some(i18n::tr(match BankProfile::for_endpoint(b.url) {
         BankProfile::Postbank => "Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); TAN per BestSign oder photoTAN",
         BankProfile::DeutscheBank => "Deutsche Bank: Deutsche Bank ID oder Filial- und Kontonummer, dazu Onlinebanking-Passwort. Nach dem Banking-Upgrade neue Zugangsdaten verwenden; Freigabe per photoTAN oder BestSign.",
@@ -149,6 +155,20 @@ pub fn complete_account(account: &mut fints::Account) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn november_fourteenth_review_preserves_current_endpoints_and_trims_outer_whitespace() {
+        assert_eq!(by_blz("25040066").unwrap().host, "hbci.commerzbank.de");
+        assert_eq!(by_blz("36020030").unwrap().host, "fints2.atruvia.de");
+        assert_eq!(by_blz("30010444").unwrap().url, "https://banking.ikb.de/eBankingFinTS/");
+        assert_eq!(by_blz("30520037").unwrap().url, "https://fints1.atruvia.de/cgi-bin/hbciservlet");
+        for blz in ["20120100", "20030400", "33060592", "36060591", "37060590", "40060560", "50090500", "60090800", "70090500", "76090500"] {
+            assert_eq!(by_blz(blz).unwrap().url, "https://fints2.atruvia.de/cgi-bin/hbciservlet");
+        }
+        for blz in ["36020030", "20120100", "20030400"] { assert!(login_hint(by_blz(blz).unwrap()).is_some()); }
+        for bank in all() { assert_eq!(bank.host, bank.host.trim()); assert_eq!(bank.url, bank.url.trim()); }
+        assert!(by_blz("49999924").is_none());
+    }
 
     #[test]
     fn finds_common_banks() {

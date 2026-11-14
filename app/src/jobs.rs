@@ -179,6 +179,7 @@ fn medium_for(ctx: &Ctx, access: &BankAccess) -> Result<Medium, String> {
             Ok(Medium::Rdh(Box::new(card), *record))
         }
         AccessKind::Demo => Err(i18n::tr("Demo-Zugang").into()),
+        AccessKind::PayPal { .. } => Err(crate::paypal::read_only_error()),
     }
 }
 
@@ -327,6 +328,9 @@ fn scope_name(ctx: &Ctx, access: &BankAccess, selected: Option<&AccountBatch>) -
 }
 
 fn sync_scope(ctx: &Ctx, access: BankAccess, selected: Option<AccountBatch>) -> JobResult {
+    if matches!(access.kind, AccessKind::PayPal { .. }) {
+        return crate::paypal::sync(ctx, &access, selected).map_err(|e| format!("{}:\n{e}", access.name));
+    }
     if access.kind == AccessKind::Demo {
         let name = scope_name(ctx, &access, selected.as_ref());
         return Ok(i18n::tr_format!("{}: Demo-Daten sind aktuell.", name));
@@ -585,7 +589,7 @@ pub fn fetch_standing(ctx: &Ctx) -> JobResult {
         let v = ctx.vault.lock().unwrap();
         v.accesses
             .iter()
-            .filter(|a| a.kind != AccessKind::Demo)
+            .filter(|a| !matches!(a.kind, AccessKind::Demo | AccessKind::PayPal { .. }))
             .map(|a| {
                 let accs = v
                     .accounts
