@@ -253,6 +253,8 @@ fn reset_vault_view(app: &AppWindow) {
     st.set_toast(Default::default());
     st.set_last_sync(Default::default());
     st.set_total_balance(Default::default());
+    st.set_total_booked_balance(Default::default());
+    st.set_total_balance_note(Default::default());
     st.set_total_negative(Default::default());
     st.set_month_label(Default::default());
     st.set_month_income(Default::default());

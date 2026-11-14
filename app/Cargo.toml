@@ -19,8 +19,10 @@ cardreader = { path = "../crates/cardreader" }
 egui = "=0.36.0"
 eframe = { version = "=0.36.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland", "accesskit"] }
 svgtypes = "0.16"
-fontdb = "0.23"
-winit = "0.30"
+# System font discovery uses Fontations; egui renders the selected fonts with skrifa.
+fontique = "0.13"
+# Keep Wayland decorations, but avoid ab_glyph -> owned_ttf_parser -> ttf-parser.
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita-crossfont"] }
 chrono.workspace = true
 serde.workspace = true
 rust_decimal.workspace = true

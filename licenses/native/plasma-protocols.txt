@@ -1,0 +1,223 @@
+plasma-wayland-protocols/src/protocols/appmenu.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2017 David Edmundson
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/blur.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+    SPDX-FileCopyrightText: 2015 Marco Martin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/contrast.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+    SPDX-FileCopyrightText: 2015 Marco Martin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/dpms.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/fake-input.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/idle.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-external-brightness-v1.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2024 Xaver Hugl <xaver.hugl@gmail.com>
+
+    SPDX-License-Identifier: MIT-CMU
+    ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-lockscreen-overlay-v1.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2022 Aleix Pol Gonzalez <aleixpol@kde.org>
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-output-device-v2.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2008-2011 Kristian Høgsberg
+    SPDX-FileCopyrightText: 2010-2011 Intel Corporation
+    SPDX-FileCopyrightText: 2012-2013 Collabora, Ltd.
+    SPDX-FileCopyrightText: 2015 Sebastian Kügler <sebas@kde.org>
+    SPDX-FileCopyrightText: 2021 Méven Car <meven.car@enioka.com>
+
+    SPDX-License-Identifier: MIT-CMU
+    ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-output-management-v2.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2008-2011 Kristian Høgsberg
+    SPDX-FileCopyrightText: 2010-2011 Intel Corporation
+    SPDX-FileCopyrightText: 2012-2013 Collabora, Ltd.
+    SPDX-FileCopyrightText: 2015 Sebastian Kügler <sebas@kde.org>
+    SPDX-FileCopyrightText: 2021 Méven Car <meven.car@enioka.com>
+    SPDX-FileCopyrightText: 2023 Xaver Hugl <xaver.hugl@kde.org>
+
+    SPDX-License-Identifier: MIT-CMU
+    ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-output-order-v1.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2022 Xaver Hugl <xaver.hugl@gmail.com>
+
+    SPDX-License-Identifier: MIT-CMU
+    ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-primary-output-v1.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2021 Aleix Pol Gonzalez <aleixpol@kde.org>
+
+    SPDX-License-Identifier: MIT-CMU
+    ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/kde-screen-edge-v1.xml
+<copyright>
+    SPDX-FileCopyrightText: 2023 Vlad Zahorodnii
+
+    SPDX-License-Identifier: MIT-CMU
+  </copyright>
+
+plasma-wayland-protocols/src/protocols/keystate.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2019 Aleix Pol Gonzalez <aleixpol@kde.org>
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/org-kde-plasma-virtual-desktop.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2018 Marco Martin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/output-management.xml
+<copyright><![CDATA[
+        SPDX-FileCopyrightText: 2008-2011 Kristian Høgsberg
+        SPDX-FileCopyrightText: 2010-2011 Intel Corporation
+        SPDX-FileCopyrightText: 2012-2013 Collabora, Ltd.
+        SPDX-FileCopyrightText: 2015 Sebastian Kügler <sebas@kde.org>
+
+        SPDX-License-Identifier: MIT-CMU
+        ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/outputdevice.xml
+<copyright><![CDATA[
+        SPDX-FileCopyrightText: 2008-2011 Kristian Høgsberg
+        SPDX-FileCopyrightText: 2010-2011 Intel Corporation
+        SPDX-FileCopyrightText: 2012-2013 Collabora, Ltd.
+        SPDX-FileCopyrightText: 2015 Sebastian Kügler <sebas@kde.org>
+
+        SPDX-License-Identifier: MIT-CMU
+        ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/plasma-shell.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2013-2014 Pier Luigi Fiorini
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/plasma-window-management.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2013-2014 Pier Luigi Fiorini
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/remote-access.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2016 Oleg Chernovskiy
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/server-decoration-palette.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2017 David Edmundson
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/server-decoration.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/shadow.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/slide.xml
+<copyright><![CDATA[
+    SPDX-FileCopyrightText: 2015 Martin Gräßlin
+    SPDX-FileCopyrightText: 2015 Marco Martin
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>
+
+plasma-wayland-protocols/src/protocols/surface-extension.xml
+<copyright>
+        This file is part of the plugins of the Qt Toolkit.
+        SPDX-FileCopyrightText: 2012 Digia Plc and/or its subsidiary(-ies).
+        Contact: http://www.qt-project.org/legal
+
+        SPDX-License-Identifier: BSD-3-Clause
+    </copyright>
+
+plasma-wayland-protocols/src/protocols/text-input-unstable-v2.xml
+<copyright>
+    SPDX-FileCopyrightText: 2012, 2013 Intel Corporation
+    SPDX-FileCopyrightText: 2015, 2016 Jan Arne Petersen
+
+    SPDX-License-Identifier: MIT-CMU
+  </copyright>
+
+plasma-wayland-protocols/src/protocols/text-input.xml
+<copyright>
+    SPDX-FileCopyrightText: 2012, 2013 Intel Corporation
+
+    SPDX-License-Identifier: MIT-CMU
+  </copyright>
+
+plasma-wayland-protocols/src/protocols/wayland-eglstream-controller.xml
+<copyright>
+    SPDX-FileCopyrightText: 2017-2018, NVIDIA CORPORATION. All rights reserved.
+
+    SPDX-License-Identifier: MIT
+  </copyright>
+
+plasma-wayland-protocols/src/protocols/zkde-screencast-unstable-v1.xml
+<copyright><![CDATA[
+      SPDX-FileCopyrightText: 2020-2021 Aleix Pol Gonzalez <aleixpol@kde.org>
+
+    SPDX-License-Identifier: LGPL-2.1-or-later
+  ]]></copyright>

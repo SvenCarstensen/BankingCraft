@@ -32,7 +32,13 @@ if ! command -v cargo >/dev/null; then
   build_failed
 fi
 
-cargo build --release 2>&1 | tee -a "$LOG"
+python3 scripts/update-licenses.py --check 2>&1 | tee -a "$LOG"
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+  echo "LICENSE CHECK FAILED" | tee -a "$LOG"
+  build_failed
+fi
+
+cargo build --release --locked 2>&1 | tee -a "$LOG"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   echo "BUILD FAILED" | tee -a "$LOG"
   build_failed
@@ -47,7 +53,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/bankingcraft "$APP/Contents/MacOS/BankingCraft"
 cp macos/Info.plist "$APP/Contents/Info.plist"
-cp LICENSE "$APP/Contents/Resources/LICENSE"
+sh scripts/copy-license-bundle.sh "$APP/Contents/Resources" 2>&1 | tee -a "$LOG"
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+  echo "LICENSE COPY FAILED" | tee -a "$LOG"
+  build_failed
+fi
 
 # App-Icon aus dem PNG erzeugen
 ICONSET="$(mktemp -d)/BankingCraft.iconset"

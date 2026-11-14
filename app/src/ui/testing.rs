@@ -233,3 +233,77 @@ fn system_theme_tracks_changes_again_after_a_manual_override() {
     harness.run_steps(3);
     assert_eq!(harness.ctx.theme(), egui::Theme::Light);
 }
+
+fn balance_test_app() -> AppWindow {
+    use crate::business_tests::{date, tx};
+    let app = AppWindow::new().unwrap();
+    let st = app.global::<crate::AppState>();
+    st.set_unlocked(true);
+    st.set_theme_mode(2);
+    let mut vault = crate::store::Vault::default();
+    let id = vault.merge_accounts(1, vec![fints::Account {
+        product: "Demo current account".into(), account_number: "100000".into(), ..Default::default()
+    }])[0];
+    vault.accounts[0].balance = Some(fints::Balance {
+        booked: rust_decimal::Decimal::from(100), available: None,
+        currency: "EUR".into(), date: date("2026-11-12"),
+    });
+    let mut pending = tx(-1234, "2026-11-13"); pending.pending = true;
+    vault.merge_transactions(id, vec![pending, tx(-500, "2026-11-12")]);
+    st.set_tx_account(1);
+    st.set_tx_period(3);
+    crate::view::refresh_all(&app, &vault, &mut crate::view::ViewState::default());
+    app
+}
+
+#[test]
+fn balance_labels_and_amounts_are_separate_and_visible_in_all_languages() {
+    use egui_kittest::kittest::Queryable;
+    for language in [i18n::Language::German, i18n::Language::English, i18n::Language::French, i18n::Language::Spanish] {
+        i18n::with_language(language, || {
+            let app = balance_test_app();
+            let st = app.global::<crate::AppState>();
+            for page in [0, 1, 2] {
+                st.set_page(page);
+                for width in [1100., 1360.] {
+                    let harness = harness(&app, width, 1100.);
+                    let current: Vec<_> = harness.query_all_by_label(i18n::tr("Saldo inkl. vorgemerkter Umsätze")).map(|n| n.rect()).collect();
+                    let booked: Vec<_> = harness.query_all_by_label(i18n::tr("Gebuchter Saldo")).map(|n| n.rect()).collect();
+                    assert!(!current.is_empty() && current.len() == booked.len(), "{language:?} page {page}");
+                    let amounts: Vec<_> = harness.query_all_by_label("87,66 €").chain(harness.query_all_by_label("100,00 €")).map(|n| n.rect()).collect();
+                    assert_eq!(amounts.len(), current.len() * 2);
+                    for rect in current.iter().chain(&booked).chain(&amounts) {
+                        assert!(rect.left() >= 0. && rect.right() <= width && rect.top() >= 0. && rect.bottom() <= 1100., "{language:?} page {page} width {width}: {rect:?}");
+                    }
+                    for amount in &amounts {
+                        for label in current.iter().chain(&booked) {
+                            let overlap = amount.intersect(*label);
+                            assert!(overlap.width() <= 0.5 || overlap.height() <= 0.5, "balance overlaps label: {language:?} page {page}: {amount:?} {label:?}");
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+#[test]
+#[ignore = "exports synthetic screenshots for visual review"]
+fn render_balance_review() {
+    let dir = std::env::temp_dir().join("bankingcraft-balance-review");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (code, language) in [("de", i18n::Language::German), ("en", i18n::Language::English), ("fr", i18n::Language::French)] {
+        i18n::with_language(language, || {
+            let app = balance_test_app();
+            let st = app.global::<crate::AppState>();
+            for (page, name) in [(0, "overview"), (1, "accounts"), (2, "transactions")] {
+                st.set_page(page);
+                for (mode, theme) in [(1, "light"), (2, "dark")] {
+                    st.set_theme_mode(mode);
+                    snapshot(&app, 1100, 1100, dir.join(format!("{code}-{name}-{theme}.png")));
+                }
+            }
+        });
+    }
+    println!("{}", dir.display());
+}

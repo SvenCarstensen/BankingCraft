@@ -1,0 +1,10 @@
+[package]
+name = "crossfont"
+version = "0.8.2"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Crossfont 0.9 compatibility re-export for winit 0.30"
+
+[dependencies]
+crossfont-upstream = { package = "crossfont", version = "0.9" }

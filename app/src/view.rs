@@ -6,7 +6,7 @@ use crate::{AccessRow, AccountRow, AccountGroupRow, GroupBalanceRow, AppState, A
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
 use fints::{Interval, StandingOrder};
 use rust_decimal::Decimal;
-use crate::ui::{Color, ModelRc, SharedString, VecModel};
+use crate::ui::{Color, Model, ModelRc, SharedString, VecModel};
 use std::collections::{BTreeMap, HashSet};
 
 mod overview;
@@ -123,13 +123,28 @@ pub struct ViewState {
     overview: overview::Filters,
 }
 
+fn balance_currency(currency: &str) -> &str {
+    if currency.is_empty() { "EUR" } else { currency }
+}
+
+/// Display balance only: the bank's booked balance remains the accounting source.
+/// Bank-provided `available` can include a credit facility and is not this value.
+fn balance_including_pending(v: &Vault, account_id: u32, balance: &fints::Balance) -> Decimal {
+    balance.booked + v.transactions.iter()
+        .filter(|t| t.account_id == account_id && t.tx.pending
+            && balance_currency(&t.tx.currency) == balance_currency(&balance.currency))
+        .map(|t| t.tx.amount).sum::<Decimal>()
+}
+
 fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> AccountGroupRow {
-    let mut totals = BTreeMap::<String, Decimal>::new();
+    let mut totals = BTreeMap::<String, (Decimal, Decimal)>::new();
     let mut known = 0;
     for row in &rows {
         if let Some(balance) = v.account(row.id as u32).and_then(|a| a.balance.as_ref()) {
-            let currency = if balance.currency.is_empty() { "EUR" } else { &balance.currency };
-            *totals.entry(currency.to_string()).or_default() += balance.booked;
+            let currency = balance_currency(&balance.currency);
+            let total = totals.entry(currency.to_string()).or_default();
+            total.0 += balance_including_pending(v, row.id as u32, balance);
+            total.1 += balance.booked;
             known += 1;
         }
     }
@@ -142,8 +157,9 @@ fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> Accou
     } else {
         format!("{} {}", rows.len(), if rows.len() == 1 { i18n::tr("Konto") } else { i18n::tr("Konten") })
     };
-    let balances = totals.into_iter().map(|(currency, amount)| GroupBalanceRow {
+    let balances = totals.into_iter().map(|(currency, (amount, booked))| GroupBalanceRow {
         amount: ss(fmt_money(amount, &currency)), negative: amount.is_sign_negative(),
+        booked_amount: ss(fmt_money(booked, &currency)),
     }).collect();
     AccountGroupRow { id: id as i32, name: ss(name), accounts: model(rows), balances: model(balances), balance_note: ss(note) }
 }
@@ -156,7 +172,6 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
 
     // accounts
     let mut rows = Vec::new();
-    let mut total = Decimal::ZERO;
     let mut names = vec![ss(i18n::tr("Alle Konten"))];
     vs.account_filter.clear();
     vs.sepa_accounts.clear();
@@ -164,12 +179,12 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     for a in &v.accounts {
         let c = ACCOUNT_COLORS[a.id as usize % ACCOUNT_COLORS.len()];
         let bank = v.access(a.access_id).map(|x| x.name.clone()).unwrap_or_default();
-        let (balance, negative, available) = match &a.balance {
+        let (balance, booked_balance, negative, available) = match &a.balance {
             Some(b) => {
-                total += b.booked;
-                (fmt_money(b.booked, &b.currency), b.booked.is_sign_negative(), b.available.map(|x| fmt_money(x, &b.currency)).unwrap_or_default())
+                let current = balance_including_pending(v, a.id, b);
+                (fmt_money(current, &b.currency), fmt_money(b.booked, &b.currency), current.is_sign_negative(), b.available.map(|x| fmt_money(x, &b.currency)).unwrap_or_default())
             }
-            None => ("–".into(), false, String::new()),
+            None => ("–".into(), "–".into(), false, String::new()),
         };
         let kind = account_kind(a.account.kind);
         let bank_name = bank_account_name(&a.account);
@@ -183,6 +198,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
             iban: ss(if a.account.iban.is_empty() { a.account.account_number.clone() } else { short_iban(&a.account.iban) }),
             owner: ss(&a.account.owner),
             balance: ss(balance),
+            booked_balance: ss(booked_balance),
             available: ss(available),
             negative,
             last_sync: ss(a.last_sync.map(|t| i18n::tr_format!("aktualisiert {}", t.format("%d.%m.%Y %H:%M"))).unwrap_or_else(|| i18n::tr("noch nicht abgerufen").into())),
@@ -206,6 +222,16 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     }
     st.set_account_groups(model(grouped));
     st.set_group_names(model(std::iter::once(ss(i18n::tr("Ohne Gruppe"))).chain(v.groups.iter().map(|g| ss(&g.name))).collect()));
+    let totals = account_group(v, 0, "", rows.clone());
+    let total_amounts: Vec<_> = totals.balances.iter().collect();
+    st.set_total_balance(if total_amounts.is_empty() { "–".into() } else {
+        total_amounts.iter().map(|b| b.amount.as_str()).collect::<Vec<_>>().join("\n")
+    });
+    st.set_total_booked_balance(if total_amounts.is_empty() { "–".into() } else {
+        total_amounts.iter().map(|b| b.booked_amount.as_str()).collect::<Vec<_>>().join("\n")
+    });
+    st.set_total_balance_note(totals.balance_note);
+    st.set_total_negative(total_amounts.iter().any(|b| b.negative));
     st.set_accounts(model(rows));
     st.set_account_names(model(names));
     st.set_sepa_accounts(model(sepa_names));
@@ -219,8 +245,6 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
         st.set_tf_account(0);
     }
     crate::payments_ui::refresh(app, v, vs);
-    st.set_total_balance(ss(fmt_eur(total)));
-    st.set_total_negative(total.is_sign_negative());
     if let Some(t) = v.accounts.iter().filter_map(|a| a.last_sync).max() {
         st.set_last_sync(ss(i18n::tr_format!("Letzter Kontenrundruf: {}", t.format(i18n::tr("%d.%m.%Y um %H:%M Uhr")))));
     } else {
@@ -480,7 +504,7 @@ pub fn refresh_transactions(app: &AppWindow, v: &Vault, vs: &ViewState) {
         let balance_text = if pending {
             String::new()
         } else if let Some(r) = running {
-            let s = i18n::tr_format!("Tagessaldo {}", fmt_eur(r));
+            let s = i18n::tr_format!("Gebuchter Tagessaldo {}", fmt_eur(r));
             running = Some(r - day_sum);
             s
         } else {
@@ -648,7 +672,7 @@ mod amount_tests {
     }
 
     #[test]
-    fn group_balances_sum_booked_values_and_keep_currencies_separate() {
+    fn group_balances_include_pending_and_keep_booked_values_and_currencies_separate() {
         let mut vault = Vault::default();
         let mut rows = Vec::new();
         for (index, balance) in [Some(("100.10", "EUR")), Some(("-150.35", "EUR")), Some(("12.34", "USD")), None].into_iter().enumerate() {
@@ -659,12 +683,17 @@ mod amount_tests {
             });
             rows.push(AccountRow { id: id as i32, ..Default::default() });
         }
+        let mut pending = crate::business_tests::tx(-2000, "2026-11-12");
+        pending.pending = true;
+        vault.merge_transactions(rows[0].id as u32, vec![pending]);
         let group = account_group(&vault, 9, "Test", rows);
         assert_eq!(group.balances.row_count(), 2);
         let eur = group.balances.row_data(0).unwrap();
-        assert_eq!(eur.amount, "−50,25 €");
+        assert_eq!(eur.amount, "−70,25 €");
+        assert_eq!(eur.booked_amount, "−50,25 €");
         assert!(eur.negative);
         assert_eq!(group.balances.row_data(1).unwrap().amount, "12,34 USD");
+        assert_eq!(group.balances.row_data(1).unwrap().booked_amount, "12,34 USD");
         assert_eq!(group.balance_note, "Teilsaldo · 3 von 4 Kontosalden verfügbar");
     }
 
@@ -673,6 +702,9 @@ mod amount_tests {
         let mut vault = Vault::default();
         let id = vault.merge_accounts(1, vec![fints::Account::default()])[0];
         let rows = vec![AccountRow { id: id as i32, ..Default::default() }];
+        let mut pending = crate::business_tests::tx(-2000, "2026-11-12");
+        pending.pending = true;
+        vault.merge_transactions(id, vec![pending]);
         let group = account_group(&vault, 9, "Test", rows.clone());
         assert_eq!(group.balances.row_count(), 0);
         assert_eq!(group.balance_note, "Noch keine Salden abgerufen");
@@ -681,8 +713,61 @@ mod amount_tests {
             date: NaiveDate::from_ymd_opt(2026, 11, 12).unwrap(),
         });
         let group = account_group(&vault, 9, "Test", rows);
-        assert_eq!(group.balances.row_data(0).unwrap().amount, "0,00 €");
+        assert_eq!(group.balances.row_data(0).unwrap().amount, "−20,00 €");
+        assert_eq!(group.balances.row_data(0).unwrap().booked_amount, "0,00 €");
         assert_eq!(group.balance_note, "1 Konto");
+    }
+
+    #[test]
+    fn pending_balance_uses_only_matching_account_and_currency_preserving_multiplicity() {
+        use crate::business_tests::{date, tx};
+        let mut vault = Vault::default();
+        let balance = fints::Balance { booked: Decimal::new(-125050, 2), available: Some(Decimal::from(5000)),
+            currency: "EUR".into(), date: date("2026-11-12") };
+        let mut debit = tx(-1075, "2026-11-13"); debit.pending = true;
+        let mut credit = tx(3000, "2026-11-13"); credit.pending = true;
+        let mut foreign = debit.clone(); foreign.currency = "USD".into();
+        let mut default_currency = debit.clone(); default_currency.currency.clear();
+        vault.merge_transactions(1, vec![debit.clone(), debit.clone(), credit, foreign, default_currency, tx(-90000, "2026-11-12")]);
+        vault.merge_transactions(2, vec![debit]);
+        assert_eq!(balance_including_pending(&vault, 1, &balance), Decimal::new(-125275, 2));
+        assert_eq!(balance_including_pending(&vault, 3, &balance), balance.booked);
+        assert_eq!(balance_including_pending(&vault, 1, &fints::Balance { currency: String::new(), ..balance.clone() }), Decimal::new(-125275, 2));
+        assert_eq!(balance.booked, Decimal::new(-125050, 2));
+    }
+
+    #[test]
+    fn account_and_overview_balances_refresh_when_pending_becomes_booked() {
+        use crate::business_tests::{date, tx};
+        let app = AppWindow::new().unwrap();
+        let st = app.global::<AppState>();
+        let mut vault = Vault::default();
+        let id = vault.merge_accounts(1, vec![fints::Account::default()])[0];
+        let mut vs = ViewState::default();
+        let mut pending = tx(-1234, "2026-11-13"); pending.pending = true;
+        vault.merge_transactions(id, vec![pending.clone()]);
+        refresh_all(&app, &vault, &mut vs);
+        assert_eq!(st.get_accounts().row_data(0).unwrap().balance, "–");
+        assert_eq!(st.get_total_balance(), "–");
+        vault.accounts[0].balance = Some(fints::Balance { booked: Decimal::from(10), available: Some(Decimal::from(1000)),
+            currency: "EUR".into(), date: date("2026-11-12") });
+        refresh_all(&app, &vault, &mut vs);
+        let row = st.get_accounts().row_data(0).unwrap();
+        assert_eq!((row.balance.as_str(), row.booked_balance.as_str(), row.negative), ("−2,34 €", "10,00 €", true));
+        assert_eq!(st.get_total_balance(), "−2,34 €");
+        assert_eq!(st.get_total_booked_balance(), "10,00 €");
+        pending.pending = false;
+        vault.merge_transactions(id, vec![pending]);
+        vault.accounts[0].balance.as_mut().unwrap().booked = Decimal::new(-234, 2);
+        refresh_all(&app, &vault, &mut vs);
+        assert_eq!(st.get_total_balance(), "−2,34 €");
+        assert_eq!(st.get_total_booked_balance(), "−2,34 €");
+        let other = vault.merge_accounts(1, vec![fints::Account { account_number: "other".into(), ..Default::default() }])[0];
+        vault.accounts.iter_mut().find(|a| a.id == other).unwrap().balance = Some(fints::Balance {
+            booked: Decimal::from(20), available: None, currency: "USD".into(), date: date("2026-11-13") });
+        refresh_all(&app, &vault, &mut vs);
+        assert_eq!(st.get_total_balance(), "−2,34 €\n20,00 USD");
+        assert_eq!(st.get_total_booked_balance(), st.get_total_balance());
     }
     #[test]
     fn amount_entry_does_not_silently_round() {

@@ -356,38 +356,37 @@ fn nav(
 }
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
+    let mut collection = fontique::Collection::new(Default::default());
+    let mut source_cache = fontique::SourceCache::default();
+    let mut query = collection.query(&mut source_cache);
     #[cfg(target_os = "macos")]
     let families = [
-        fontdb::Family::Name("Helvetica"),
-        fontdb::Family::Name("Arial"),
-        fontdb::Family::SansSerif,
+        fontique::QueryFamily::Named("Helvetica"),
+        fontique::QueryFamily::Named("Arial"),
+        fontique::QueryFamily::Generic(fontique::GenericFamily::SansSerif),
     ];
     #[cfg(not(target_os = "macos"))]
     let families = [
-        fontdb::Family::Name("Segoe UI"),
-        fontdb::Family::Name("Noto Sans"),
-        fontdb::Family::SansSerif,
+        fontique::QueryFamily::Named("Segoe UI"),
+        fontique::QueryFamily::Named("Noto Sans"),
+        fontique::QueryFamily::Generic(fontique::GenericFamily::SansSerif),
     ];
+    query.set_families(families);
     for (name, weight, bold) in [
-        ("BankingCraft Regular", fontdb::Weight::NORMAL, false),
-        ("BankingCraft Semibold", fontdb::Weight::SEMIBOLD, true),
+        ("BankingCraft Regular", fontique::FontWeight::NORMAL, false),
+        ("BankingCraft Semibold", fontique::FontWeight::SEMI_BOLD, true),
     ] {
         let mut family = fonts.families[&egui::FontFamily::Proportional].clone();
-        if let Some(id) = db.query(&fontdb::Query {
-            families: &families,
+        query.set_attributes(fontique::Attributes {
             weight,
             ..Default::default()
-        }) {
-            if let Some(data) = db.with_face_data(id, |bytes, index| {
-                let mut d = egui::FontData::from_owned(bytes.to_vec());
-                d.index = index;
-                d
-            }) {
-                fonts.font_data.insert(name.into(), Arc::new(data));
-                family.insert(0, name.into());
-            }
+        });
+        if let Some(selected) = query.first_available_font() {
+            let mut data = egui::FontData::from_owned(selected.blob.as_ref().to_vec());
+            // Preserve the face index for system font collections (e.g. Helvetica.ttc).
+            data.index = selected.index;
+            fonts.font_data.insert(name.into(), Arc::new(data));
+            family.insert(0, name.into());
         }
         fonts.families.insert(
             if bold {

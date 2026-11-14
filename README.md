@@ -48,8 +48,10 @@ offline test coverage. **This does not expand the live-tested bank list above.**
   security audit or banking certification. A `SECURITY.md` and a documented confidential
   vulnerability-reporting channel are still to be added. Do not post credentials or bank data
   in public issues.
-- **Publication documentation is still being completed.** Full third-party license and
-  attribution notices, particularly for the LGPL-2.1 bank directory, remain to be assembled.
+- **Release source packaging remains to be prepared.** Third-party license and attribution
+  notices, including the LGPL-2.1 bank directory, are included in
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Binary releases must also provide their
+  matching corresponding source.
   Earlier security-review sections describe the previous Slint version and must be read with
   their dates; the current UI verification is documented in [docs/testing.md](docs/testing.md).
 
@@ -63,7 +65,8 @@ the application. The demo works offline; all names, account numbers and payments
 
 ### Financial overview
 
-Balances, recent transactions, spending categories and upcoming standing orders at a glance.
+View balances including pending transactions alongside separately labelled booked balances,
+recent transactions, spending categories and upcoming standing orders.
 
 ![Financial overview with demo balances and spending categories](docs/screenshots/overview.png)
 
@@ -75,7 +78,8 @@ Organize accounts into groups and retrieve transactions for an individual group.
 
 ### Transactions
 
-Filter and search transactions, inspect pending entries and refresh the selected account.
+Filter and search transactions, compare booked and pending-inclusive balances,
+inspect pending entries and refresh the selected account.
 
 ![Transaction list with filters and details for a pending payment](docs/screenshots/transactions.png)
 
@@ -104,7 +108,9 @@ See [LICENSE](LICENSE) for the complete terms.
 
 Third-party dependencies and bundled data retain their respective licenses. egui and eframe are
 dual-licensed under MIT or Apache-2.0; the bank directory's source and license are described under
-[Bank directory](#bank-directory). This license change does not revoke rights already granted
+[Bank directory](#bank-directory). Full texts and attributions are collected in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [licenses/](licenses/).
+This license change does not revoke rights already granted
 for earlier copies under their previous licenses.
 
 ## Privacy and data transmission
@@ -149,11 +155,19 @@ Drivers: REINER SCT drivers on macOS and Windows; `pcscd` and `ifd-cyberjack` on
 
 ## Build
 
-Requirements: Rust 1.95 or newer (tested with 1.99.1), a working OpenGL driver, plus:
+Requirements: Rust 1.95 or newer (tested with 1.99.1), a working OpenGL driver, and
+Python 3 for license-bundle verification in the test and macOS packaging scripts, plus:
 
-- **Linux:** `libpcsclite-dev`, `pcscd`, `libxkbcommon-dev`
+- **Linux:** `libpcsclite-dev`, `pcscd`, `libxkbcommon-dev`, `libfontconfig1-dev`, `libfreetype6-dev` (Debian/Ubuntu package names)
 - **macOS:** Xcode Command Line Tools; PC/SC uses `PCSC.framework`
 - **Windows:** no additional PC/SC package; WinSCard is part of Windows
+
+System fonts are discovered with Fontique (Fontations) and rendered by egui using
+`skrifa`. The existing font-family preferences and bundled fallback fonts are retained.
+Linux Wayland title bars use winit's Crossfont/FreeType backend to avoid the unmaintained
+`ttf-parser` dependency while retaining window decorations and title text.
+The small `crates/crossfont-compat` re-export bridges winit 0.30's Crossfont 0.8
+requirement to Crossfont 0.9, so it shares Fontconfig's version 6 binding with Fontique.
 
 ```sh
 cargo build --release
@@ -301,6 +315,8 @@ persisted identifiers or user/bank-supplied text. Keep this README and commit me
 Old endpoints were updated: `hbci-pintan.gad.de` to `fints1.atruvia.de`, `hbci11.fiducia.de` to
 `fints2.atruvia.de`, and former Dresdner Bank addresses to Commerzbank. The bank’s own information
 remains authoritative; the endpoint can be edited in the connection form.
+The [LGPL-2.1 license text](licenses/bank-directory/LGPL-2.1.txt), provenance and
+modification notice are included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#bank-directory-from-hbci4java).
 
 ## Compatibility with AqBanking/GnuCash
 

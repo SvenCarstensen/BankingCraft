@@ -93,21 +93,12 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
 
     let height = (416. + extra)
         .max(80. + d.accounts.row_count() as f32 * 58.)
-        .max(230. + d.account_groups.row_count() as f32 * 88.);
+        .max(300. + d.account_groups.row_count() as f32 * 160.);
 
     columns(ui, &[left, w - left - 18.], 18., |ui, col| {
         if col == 0 {
-            let available =
-                Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), height));
-
-            gradient(
-                ui,
-                available,
-                135.,
-                &[(0., hex(0x1e6fd9)), (1., hex(0x13233a))],
-            );
-
-            egui::Frame::new().inner_margin(22).show(ui, |ui| {
+            let background = ui.painter().add(egui::Shape::Noop);
+            let panel = egui::Frame::new().inner_margin(22).show(ui, |ui| {
                 ui.set_min_height(height - 44.);
 
                 text(
@@ -120,7 +111,12 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
 
                 ui.add_space(10.);
 
+                text(ui, tr("Saldo inkl. vorgemerkter Umsätze"), 12., false, hex(0xc9d9f2));
                 text(ui, &d.total_balance, 30., true, Color32::WHITE);
+                ui.add_space(8.);
+                text(ui, tr("Gebuchter Saldo"), 12., false, hex(0xc9d9f2));
+                text(ui, &d.total_booked_balance, 18., true, Color32::WHITE);
+                text(ui, &d.total_balance_note, 11., false, hex(0xc9d9f2));
 
                 ui.add_space(24.);
 
@@ -172,57 +168,16 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                             .corner_radius(8.)
                             .inner_margin(12)
                             .show(ui, |ui| {
-                                let amount_width = g
-                                    .balances
-                                    .iter()
-                                    .map(|b| {
-                                        ui.painter()
-                                            .layout_no_wrap(
-                                                b.amount,
-                                                font(18., true),
-                                                Color32::WHITE,
-                                            )
-                                            .size()
-                                            .x
-                                    })
-                                    .fold(20., f32::max);
-                                let width = ui.available_width();
-                                columns(
-                                    ui,
-                                    &[(width - amount_width - 12.).max(30.), amount_width],
-                                    12.,
-                                    |ui, col| {
-                                        if col == 0 {
-                                            text(ui, &g.name, 14., true, Color32::WHITE);
-                                        } else {
-                                            for b in g.balances.iter() {
-                                                let (r, _) = ui.allocate_exact_size(
-                                                    vec2(amount_width, 21.),
-                                                    Sense::hover(),
-                                                );
-                                                elide(
-                                                    ui,
-                                                    r,
-                                                    &b.amount,
-                                                    18.,
-                                                    true,
-                                                    if b.negative {
-                                                        hex(0xffb3b8)
-                                                    } else {
-                                                        Color32::WHITE
-                                                    },
-                                                    Align2::RIGHT_TOP,
-                                                );
-                                                ui.add_space(7.);
-                                            }
-                                            if g.balances.row_count() == 0 {
-                                                text(ui, "–", 18., false, hex(0xc9d9f2));
-                                            }
-                                        }
-                                    },
-                                );
-                                ui.add_space(9.);
-
+                                let balance_theme = Theme { text: Color32::WHITE, text_muted: hex(0xc9d9f2), negative: hex(0xffb3b8), ..*t };
+                                text(ui, &g.name, 14., true, Color32::WHITE);
+                                ui.add_space(8.);
+                                for b in g.balances.iter() {
+                                    balance_pair(ui, &balance_theme, &b.amount, &b.booked_amount, b.negative);
+                                    ui.add_space(8.);
+                                }
+                                if g.balances.row_count() == 0 {
+                                    balance_pair(ui, &balance_theme, "–", "–", false);
+                                }
                                 text(ui, &g.balance_note, 11., false, hex(0xc9d9f2));
                             });
 
@@ -234,6 +189,7 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                     action!(a, invoke_refresh_all);
                 }
             });
+            ui.painter().set(background, gradient_shape(panel.response.rect, 135., &[(0., hex(0x1e6fd9)), (1., hex(0x13233a))]));
         } else {
             card(ui, t, 18, |ui| {
                 ui.set_min_height(height - 36.);
@@ -424,6 +380,32 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
     });
 }
 
+/// Keep both balance meanings visible, including when the card is narrow.
+fn balance_pair(ui: &mut Ui, t: &Theme, current: &str, booked: &str, negative: bool) {
+    let labels = [tr("Saldo inkl. vorgemerkter Umsätze"), tr("Gebuchter Saldo")];
+    let amounts = [current, booked];
+    let width = ui.available_width();
+    let horizontal = width >= 340.;
+    let column_width = if horizontal { (width - 18.) / 2. } else { width };
+    let label_height = labels.iter().map(|label| ui.painter().layout(
+        (*label).into(), font(11., false), t.text_muted, column_width,
+    ).size().y).fold(0., f32::max);
+    let render = |ui: &mut Ui, i: usize| {
+        ui.allocate_ui(vec2(column_width, label_height), |ui| {
+            text(ui, labels[i], 11., false, t.text_muted);
+        });
+        text(ui, amounts[i], if i == 0 { 16. } else { 14. }, i == 0,
+            if i == 0 && negative { t.negative } else { t.text });
+    };
+    if horizontal {
+        columns(ui, &[column_width, column_width], 18., render);
+    } else {
+        render(ui, 0);
+        ui.add_space(6.);
+        render(ui, 1);
+    }
+}
+
 fn account_overview(
     ui: &mut Ui,
     t: &Theme,
@@ -432,30 +414,50 @@ fn account_overview(
     actions: &mut Actions,
     drag: &mut Option<i32>,
 ) {
-    let width = ui.available_width();
-
-    let balance = ui
-        .painter()
-        .layout_no_wrap(a.balance.clone(), font(14., true), t.text)
-        .size()
-        .x;
-
-    let content_width = (width - balance - 66.).max(40.);
-
-    let name = ui
-        .painter()
-        .layout(a.name.clone(), font(14., true), t.text, content_width);
-
-    let subtitle = ui.painter().layout(
-        format!("{}  ·  {}", a.bank, a.iban),
-        font(12., false),
-        t.text_muted,
-        content_width,
-    );
-
-    let h = (name.size().y + subtitle.size().y + 22.).max(54.);
-
-    let (r, _) = ui.allocate_exact_size(vec2(width, h), Sense::hover());
+    let background = ui.painter().add(egui::Shape::Noop);
+    let frame = egui::Frame::new()
+        .inner_margin(egui::Margin { left: 48, right: 6, top: 8, bottom: 8 })
+        .show(ui, |ui| {
+            let width = ui.available_width();
+            ui.set_min_width(width);
+            let labels = [tr("Saldo inkl. vorgemerkter Umsätze"), tr("Gebuchter Saldo")];
+            let amounts = [&a.balance, &a.booked_balance];
+            let amount_widths = [0, 1].map(|i| ui.painter().layout_no_wrap(
+                amounts[i].clone(), font(if i == 0 { 16. } else { 14. }, i == 0), t.text,
+            ).size().x);
+            let preferred = [0, 1].map(|i| ui.painter().layout_no_wrap(
+                labels[i].into(), font(11., false), t.text_muted,
+            ).size().x.max(amount_widths[i]));
+            let scale = (((width - 36.) * 0.55) / preferred.iter().sum::<f32>()).min(1.);
+            let balance_widths = [0, 1].map(|i| (preferred[i] * scale).max(amount_widths[i]));
+            let name_width = (width - balance_widths.iter().sum::<f32>() - 36.).max(0.);
+            let name = ui.painter().layout(a.name.clone(), font(14., true), t.text, name_width);
+            let subtitle = format!("{}  ·  {}", a.bank, a.iban);
+            let subtitle_height = ui.painter().layout(subtitle.clone(), font(12., false), t.text_muted, name_width).size().y;
+            let balance_heights = [0, 1].map(|i| {
+                let label = ui.painter().layout(labels[i].into(), font(11., false), t.text_muted, balance_widths[i]);
+                let amount = ui.painter().layout_no_wrap(amounts[i].clone(), font(if i == 0 { 16. } else { 14. }, i == 0), t.text);
+                label.size().y + amount.size().y
+            });
+            let heights = [name.size().y + 8. + subtitle_height, balance_heights[0], balance_heights[1]];
+            let height = heights.into_iter().fold(0., f32::max);
+            columns(ui, &[name_width, balance_widths[0], balance_widths[1]], 18., |ui, col| {
+                ui.add_space((height - heights[col]) / 2.);
+                if col == 0 {
+                    // The enclosing interactive row exposes the name to accessibility.
+                    let (rect, _) = ui.allocate_exact_size(name.size(), Sense::hover());
+                    ui.painter().galley(rect.min, name.clone(), t.text);
+                    ui.add_space(8.);
+                    text(ui, &subtitle, 12., false, t.text_muted);
+                } else {
+                    let i = col - 1;
+                    text(ui, labels[i], 11., false, t.text_muted);
+                    text(ui, amounts[i], if i == 0 { 16. } else { 14. }, i == 0,
+                        if i == 0 && a.negative { t.negative } else { t.text });
+                }
+            });
+        });
+    let r = frame.response.rect;
 
     let response = ui.interact(
         r,
@@ -470,7 +472,7 @@ fn account_overview(
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !busy, &a.name));
 
     if response.hovered() || *drag == Some(a.id) {
-        ui.painter().rect_filled(r, 6., t.row_hover);
+        ui.painter().set(background, egui::Shape::rect_filled(r, 6., t.row_hover));
     }
 
     for x in [0., 3.] {
@@ -487,28 +489,6 @@ fn account_overview(
         Rect::from_min_size(pos2(r.left() + 32., r.center().y - 14.), vec2(4., 28.)),
         2.,
         a.color,
-    );
-
-    ui.painter()
-        .galley(r.min + vec2(48., 8.), name.clone(), t.text);
-
-    ui.painter().galley(
-        r.min + vec2(48., 14. + name.size().y),
-        subtitle,
-        t.text_muted,
-    );
-
-    elide(
-        ui,
-        Rect::from_min_max(
-            pos2(r.right() - balance - 6., r.top()),
-            r.max - vec2(6., 0.),
-        ),
-        &a.balance,
-        14.,
-        true,
-        if a.negative { t.negative } else { t.text },
-        Align2::RIGHT_CENTER,
     );
 
     if response.drag_started() {
@@ -663,11 +643,15 @@ fn months(ui: &mut Ui, t: &Theme, stats: &super::ModelRc<MonthStat>) {
 }
 
 fn txline(ui: &mut Ui, t: &Theme, item: &TxRow, compact: bool, selected: bool) -> egui::Response {
+    let header_stacked = item.is_header && !item.day_balance.is_empty()
+        && ui.painter().layout_no_wrap(item.date_label.clone(), font(12., true), t.text_muted).size().x
+            + ui.painter().layout_no_wrap(item.day_balance.clone(), font(12., false), t.text_muted).size().x
+            + 44. > ui.available_width();
     let (r, response) = ui.allocate_exact_size(
         vec2(
             ui.available_width(),
             if item.is_header {
-                34.
+                if header_stacked { 52. } else { 34. }
             } else if compact {
                 52.
             } else {
@@ -700,9 +684,15 @@ fn txline(ui: &mut Ui, t: &Theme, item: &TxRow, compact: bool, selected: bool) -
     ui.painter().rect_filled(r, 0., bg);
 
     if item.is_header {
+        let mut date_rect = r.shrink2(vec2(16., 0.));
+        let mut balance_rect = date_rect;
+        if header_stacked {
+            date_rect.max.y = r.center().y;
+            balance_rect.min.y = r.center().y;
+        }
         elide(
             ui,
-            r.shrink2(vec2(16., 0.)),
+            date_rect,
             &item.date_label,
             12.,
             true,
@@ -712,7 +702,7 @@ fn txline(ui: &mut Ui, t: &Theme, item: &TxRow, compact: bool, selected: bool) -
 
         elide(
             ui,
-            r.shrink2(vec2(16., 0.)),
+            balance_rect,
             &item.day_balance,
             12.,
             false,
@@ -899,15 +889,9 @@ fn accounts(
                         let frame = egui::Frame::new().fill(t.header_bg).corner_radius(8.)
                             .inner_margin(egui::Margin { left: 28, right: 12, top: 12, bottom: 12 })
                             .show(ui, |ui| {
-                                let amount_width = ui.painter().layout_no_wrap(account.balance.clone(), font(14., true), t.text).size().x;
-                                let w = ui.available_width();
-                                columns(ui, &[w - amount_width - 16., amount_width], 16., |ui, col| {
-                                    if col == 0 {
-                                        text(ui, &account.name, 14., true, t.text);
-                                    } else {
-                                        text(ui, &account.balance, 14., true, if account.negative { t.negative } else { t.text });
-                                    }
-                                });
+                                text(ui, &account.name, 14., true, t.text);
+                                ui.add_space(9.);
+                                balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative);
                                 ui.add_space(9.);
                                 text(ui, &account.iban, 12., false, t.text);
                                 ui.add_space(9.);
@@ -1011,6 +995,11 @@ fn transactions(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
             }
         },
     );
+
+    if let Some(account) = (d.tx_account as usize).checked_sub(1).and_then(|index| d.accounts.row_data(index)) {
+        ui.add_space(12.);
+        balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative);
+    }
 
     ui.add_space(14.);
 

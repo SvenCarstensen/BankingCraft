@@ -17,6 +17,9 @@ pub fn font(size: f32, bold: bool) -> FontId {
 }
 /// CSS-style gradient angles, preserving the original palette and stop positions.
 pub fn gradient(ui: &Ui, rect: Rect, degrees: f32, stops: &[(f32, Color32)]) {
+    ui.painter().add(gradient_shape(rect, degrees, stops));
+}
+pub fn gradient_shape(rect: Rect, degrees: f32, stops: &[(f32, Color32)]) -> egui::Shape {
     let angle = degrees.to_radians();
     let direction = vec2(angle.sin(), -angle.cos());
     let span = direction.x.abs() * rect.width() + direction.y.abs() * rect.height();
@@ -59,7 +62,7 @@ pub fn gradient(ui: &Ui, rect: Rect, degrees: f32, stops: &[(f32, Color32)]) {
             mesh.add_triangle(base, base + i as u32, base + i as u32 + 1);
         }
     }
-    ui.painter().add(egui::Shape::mesh(mesh));
+    egui::Shape::mesh(mesh)
 }
 pub fn text(ui: &mut Ui, text: &str, size: f32, bold: bool, color: Color32) -> Response {
     ui.add(egui::Label::new(RichText::new(text).font(font(size, bold)).color(color)).wrap())

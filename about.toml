@@ -1,0 +1,12 @@
+# Prefer the MIT option where a dependency offers a choice. AND obligations
+# (including the bundled fonts) are retained by cargo-about.
+accepted = [
+    "MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC", "Zlib",
+    "BSL-1.0", "0BSD", "Unlicense", "Unicode-3.0", "MPL-2.0",
+    "CDLA-Permissive-2.0", "OFL-1.1", "Ubuntu-font-1.0", "GPL-3.0-only",
+]
+# Include transitive, build, test and target-specific dependencies. This is a
+# conservative superset of the libraries shipped in any one desktop binary.
+ignore-build-dependencies = false
+ignore-dev-dependencies = false
+workarounds = ["ring"]

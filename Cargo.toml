@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/fints", "crates/cardreader", "app", "crates/i18n", "crates/i18n-macros"]
+members = ["crates/fints", "crates/cardreader", "app", "crates/i18n", "crates/i18n-macros", "crates/crossfont-compat"]
+
+# winit 0.30 / sctk-adwaita 0.10 require crossfont 0.8, whose fontconfig-sys 5
+# conflicts with Fontique's version 6. Crossfont 0.9 preserves the rendering API;
+# this re-export uses its updated system binding without vendoring a renderer.
+[patch.crates-io]
+crossfont = { path = "crates/crossfont-compat" }
 
 [workspace.package]
 version = "0.1.0"

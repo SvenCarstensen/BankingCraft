@@ -13,6 +13,7 @@ pub struct AccountRow {
     pub iban: SharedString,
     pub owner: SharedString,
     pub balance: SharedString,
+    pub booked_balance: SharedString,
     pub available: SharedString,
     pub negative: bool,
     pub last_sync: SharedString,
@@ -24,6 +25,7 @@ pub struct AccountRow {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GroupBalanceRow {
     pub amount: SharedString,
+    pub booked_amount: SharedString,
     pub negative: bool,
 }
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -160,6 +162,8 @@ pub struct Data {
     pub toast: Toast,
     pub last_sync: SharedString,
     pub total_balance: SharedString,
+    pub total_booked_balance: SharedString,
+    pub total_balance_note: SharedString,
     pub total_negative: bool,
     pub month_label: SharedString,
     pub month_income: SharedString,
@@ -304,6 +308,8 @@ impl Default for Data {
             toast: Default::default(),
             last_sync: Default::default(),
             total_balance: Default::default(),
+            total_booked_balance: Default::default(),
+            total_balance_note: Default::default(),
             total_negative: Default::default(),
             month_label: Default::default(),
             month_income: Default::default(),
@@ -566,6 +572,12 @@ impl AppState {
         }
         if before.total_balance != after.total_balance {
             data.total_balance = after.total_balance.clone();
+        }
+        if before.total_booked_balance != after.total_booked_balance {
+            data.total_booked_balance = after.total_booked_balance.clone();
+        }
+        if before.total_balance_note != after.total_balance_note {
+            data.total_balance_note = after.total_balance_note.clone();
         }
         if before.total_negative != after.total_negative {
             data.total_negative = after.total_negative;
@@ -1038,6 +1050,15 @@ impl AppState {
     }
     pub fn get_total_negative(&self) -> bool {
         self.data.borrow().total_negative
+    }
+    pub fn get_total_booked_balance(&self) -> SharedString {
+        self.data.borrow().total_booked_balance.clone()
+    }
+    pub fn set_total_booked_balance(&self, value: SharedString) {
+        self.data.borrow_mut().total_booked_balance = value;
+    }
+    pub fn set_total_balance_note(&self, value: SharedString) {
+        self.data.borrow_mut().total_balance_note = value;
     }
     pub fn set_total_negative(&self, value: bool) {
         self.data.borrow_mut().total_negative = value;

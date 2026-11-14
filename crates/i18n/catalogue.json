@@ -29,6 +29,21 @@
     "Vue d’ensemble des finances",
     "Resumen financiero"
   ],
+  "Saldo inkl. vorgemerkter Umsätze": [
+    "Balance including pending transactions",
+    "Solde incluant les opérations en attente",
+    "Saldo con movimientos pendientes"
+  ],
+  "Gebuchter Saldo": [
+    "Booked balance",
+    "Solde comptabilisé",
+    "Saldo contabilizado"
+  ],
+  "Gebuchter Tagessaldo {}": [
+    "Booked daily balance {}",
+    "Solde journalier comptabilisé {}",
+    "Saldo diario contabilizado {}"
+  ],
   "Gesamtsaldo aller Konten": [
     "Total balance of all accounts",
     "Solde total de tous les comptes",

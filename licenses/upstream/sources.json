@@ -1,0 +1,340 @@
+[
+  {
+    "file": "licenses/upstream/AccessKit-accesskit-MIT-23f18e03dc49.txt",
+    "packages": [
+      "accesskit-0.24.1"
+    ],
+    "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "source": "https://raw.githubusercontent.com/AccessKit/accesskit/a55d3e1a18bb9ef0e4bccc9083fb13c3e0ad8969/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/AccessKit-accesskit-MIT-23f18e03dc49.txt",
+    "packages": [
+      "accesskit_atspi_common-0.18.1",
+      "accesskit_consumer-0.36.0",
+      "accesskit_unix-0.21.1"
+    ],
+    "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "source": "https://raw.githubusercontent.com/AccessKit/accesskit/f40dfc01a0c0e76de535969f82fb35e19513737d/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/AccessKit-accesskit-MIT-23f18e03dc49.txt",
+    "packages": [
+      "accesskit_consumer-0.35.0",
+      "accesskit_windows-0.32.1"
+    ],
+    "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "source": "https://raw.githubusercontent.com/AccessKit/accesskit/1bbcf100942bac96c2c3a4a91cb67b0b20201a24/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/AccessKit-accesskit-MIT-23f18e03dc49.txt",
+    "packages": [
+      "accesskit_consumer-0.38.0",
+      "accesskit_macos-0.26.3"
+    ],
+    "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "source": "https://raw.githubusercontent.com/AccessKit/accesskit/c88605b96d04431f9c3c792464a0f2f253480e94/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-MIT-e353f37b12ae.txt",
+    "packages": [
+      "block2-0.5.1",
+      "objc-sys-0.3.5"
+    ],
+    "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/4fc083f1c6d6784577e38b0ee8dbd344481e2fd2/LICENSE.txt"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-NOTICE-7f976f7e9cb2.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "block2-0.6.2"
+    ],
+    "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md"
+  },
+  {
+    "file": "licenses/upstream/chronotope-chrono-MIT-946c9835d803.txt",
+    "packages": [
+      "chrono-0.4.45"
+    ],
+    "sha256": "946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831",
+    "source": "https://raw.githubusercontent.com/chronotope/chrono/170338250e836976a211e64728ec956e45e78a39/LICENSE.txt"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-NOTICE-7f976f7e9cb2.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "dispatch2-0.3.1"
+    ],
+    "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md"
+  },
+  {
+    "file": "licenses/upstream/SSheldon-rust-dispatch-NOTICE-05c60b829931.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "dispatch-0.2.0"
+    ],
+    "sha256": "05c60b829931ef7f1f130735843c11f5cf9cc69546eca5fc941d014781c68e31",
+    "source": "https://raw.githubusercontent.com/SSheldon/rust-dispatch/82d6c7a5b75dc0c71c3f46f87bb6c16a476f7748/Cargo.toml"
+  },
+  {
+    "file": "licenses/upstream/rust-windowing-winit-MIT-9eff396a99ba.txt",
+    "packages": [
+      "dpi-0.1.2"
+    ],
+    "sha256": "9eff396a99bafd208e7126602420d6864f6066c08b84485a5b032320a9c01997",
+    "source": "https://raw.githubusercontent.com/rust-windowing/winit/587ade844dfb0eada3696ba1cb263c66eea80581/dpi/LICENSE-LIBM-MIT"
+  },
+  {
+    "file": "licenses/upstream/emilk-egui-MIT-95ca92f5f8ea.txt",
+    "packages": [
+      "ecolor-0.36.2",
+      "emath-0.36.2",
+      "epaint-0.36.2"
+    ],
+    "sha256": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c",
+    "source": "https://raw.githubusercontent.com/emilk/egui/49682f8baa058bf49e011035cfbd6e825f88a5ef/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/emilk-egui-MIT-95ca92f5f8ea.txt",
+    "packages": [
+      "eframe-0.36.0",
+      "egui-0.36.0",
+      "egui-wgpu-0.36.0",
+      "egui-winit-0.36.0",
+      "egui_glow-0.36.0",
+      "egui_kittest-0.36.0"
+    ],
+    "sha256": "95ca92f5f8ea5231f1580b3a2a799e8260af3114b900e1def5355a7f44bcf60c",
+    "source": "https://raw.githubusercontent.com/emilk/egui/5db40f389dae95286efb41ee595501cf524691e2/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/jni-rs-jni-rs-MIT-fea1d5bf3dd7.txt",
+    "packages": [
+      "jni-macros-0.22.4"
+    ],
+    "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+    "source": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/jni-rs-jni-sys-MIT-1d85bd754b04.txt",
+    "packages": [
+      "jni-sys-macros-0.4.1"
+    ],
+    "sha256": "1d85bd754b04ceec93e98e890edd1fa3c6a22e81bcb32135806beeccefa51cd1",
+    "source": "https://raw.githubusercontent.com/jni-rs/jni-sys/64d77b7a5f119d7b55b4e2c169a4668067ff59e6/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/jni-rs-jni-rs-MIT-fea1d5bf3dd7.txt",
+    "packages": [
+      "jni-0.22.4"
+    ],
+    "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+    "source": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/rust-lang-compiler-builtins-MIT-ab6eec6caf0f.txt",
+    "packages": [
+      "libm-0.2.16"
+    ],
+    "sha256": "ab6eec6caf0fa5775e411c7a8bc6a45c4ef2956b0980b157ab74fc5cd62a928b",
+    "source": "https://raw.githubusercontent.com/rust-lang/compiler-builtins/dfd2203a4d6110820ad7bb65cafe1bf331a03a3d/LICENSE.txt"
+  },
+  {
+    "file": "licenses/upstream/rust-windowing-android-ndk-rs-MIT-508a77d2e7b5.txt",
+    "packages": [
+      "ndk-context-0.1.1"
+    ],
+    "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+    "source": "https://raw.githubusercontent.com/rust-windowing/android-ndk-rs/10f2ba388fca20f7349996ebae26ccda7a6fda5c/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/rust-mobile-ndk-MIT-508a77d2e7b5.txt",
+    "packages": [
+      "ndk-0.9.0",
+      "ndk-sys-0.6.0+11769913"
+    ],
+    "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+    "source": "https://raw.githubusercontent.com/rust-mobile/ndk/49bbbba16c58ff63cb8a0ad0eca5a9fb7ecaec25/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-MIT-e353f37b12ae.txt",
+    "packages": [
+      "objc2-app-kit-0.2.2",
+      "objc2-foundation-0.2.2",
+      "objc2-ui-kit-0.2.2"
+    ],
+    "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/e282618be4c3a3b9542957e0c8540e9588472ce8/LICENSE.txt"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-NOTICE-7f976f7e9cb2.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "objc2-app-kit-0.3.2",
+      "objc2-core-foundation-0.3.2",
+      "objc2-core-graphics-0.3.2",
+      "objc2-core-text-0.3.2",
+      "objc2-foundation-0.3.2",
+      "objc2-metal-0.3.2",
+      "objc2-quartz-core-0.3.2",
+      "objc2-ui-kit-0.3.2",
+      "objc2-uniform-type-identifiers-0.3.2"
+    ],
+    "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-NOTICE-7f976f7e9cb2.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "objc2-encode-4.1.0"
+    ],
+    "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-MIT-e353f37b12ae.txt",
+    "packages": [
+      "objc2-0.5.3"
+    ],
+    "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/5237cbf081d04ef75a1f6a207b4018e7c1ae7438/LICENSE.txt"
+  },
+  {
+    "file": "licenses/upstream/madsmtm-objc2-NOTICE-7f976f7e9cb2.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "objc2-0.6.5"
+    ],
+    "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+    "source": "https://raw.githubusercontent.com/madsmtm/objc2/d7d2fa23ceaa5e6096c923b081040e5d81b3b9df/LICENSE.md"
+  },
+  {
+    "file": "licenses/upstream/bluetech-pcsc-rust-MIT-5198f413095b.txt",
+    "packages": [
+      "pcsc-2.9.0",
+      "pcsc-sys-1.3.0"
+    ],
+    "sha256": "5198f413095be5be4c33d800a1087cd85f208c05ae4b24396ef6b8a64f1fd2aa",
+    "source": "https://raw.githubusercontent.com/bluetech/pcsc-rust/822b83e15bb0cfc0f492a17ec9eeb4c4355b3089/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/aclysma-profiling-MIT-c8167fdeeed4.txt",
+    "packages": [
+      "profiling-1.0.18"
+    ],
+    "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333",
+    "source": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/r-efi-r-efi-NOTICE-ff92bed461f5.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "r-efi-5.3.0"
+    ],
+    "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7",
+    "source": "https://raw.githubusercontent.com/r-efi/r-efi/97b55bed1c2c91dcbf787674849f05337ff80b33/AUTHORS"
+  },
+  {
+    "file": "licenses/upstream/r-efi-r-efi-NOTICE-d027e91dbc9c.txt",
+    "note": "Original upstream licensing declaration / author attribution; the full MIT text is in rust-dependencies.html.",
+    "packages": [
+      "r-efi-6.0.0"
+    ],
+    "sha256": "d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111",
+    "source": "https://raw.githubusercontent.com/r-efi/r-efi/7e1b0322d31d625f81a5656096330934f9cd835d/AUTHORS"
+  },
+  {
+    "file": "licenses/upstream/kardeiz-type-map-MIT-b47fb719a40d.txt",
+    "packages": [
+      "type-map-0.5.1"
+    ],
+    "sha256": "b47fb719a40d9ef9c8e3be525c41ce129c46d613cfc96a91bddd7c19dcebf7a1",
+    "source": "https://raw.githubusercontent.com/kardeiz/type-map/d3ab3e642736d87f3fa8b1e6c8f13a93fcfb72e1/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/retep998-winapi-rs-MIT-ce7bc3499fee.txt",
+    "packages": [
+      "winapi-i686-pc-windows-gnu-0.4.0",
+      "winapi-x86_64-pc-windows-gnu-0.4.0"
+    ],
+    "sha256": "ce7bc3499fee93d5022ef430d5e4201e79a6d9154f3974e42f41349f0569e09b",
+    "source": "https://raw.githubusercontent.com/retep998/winapi-rs/0.3.9/LICENSE-MIT"
+  },
+  {
+    "file": "licenses/upstream/microsoft-windows-rs-MIT-c2cfccb812fe.txt",
+    "packages": [
+      "windows-0.62.2",
+      "windows-collections-0.3.2",
+      "windows-core-0.62.2",
+      "windows-future-0.3.2",
+      "windows-implement-0.60.2",
+      "windows-interface-0.59.3",
+      "windows-numerics-0.3.1",
+      "windows-result-0.4.1",
+      "windows-strings-0.5.1",
+      "windows-sys-0.61.2"
+    ],
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "source": "https://raw.githubusercontent.com/microsoft/windows-rs/32c3144490c016fe496a0aed769bce60987a2e9d/license-mit"
+  },
+  {
+    "file": "licenses/upstream/microsoft-windows-rs-MIT-c2cfccb812fe.txt",
+    "packages": [
+      "windows-link-0.2.1",
+      "windows-threading-0.2.1"
+    ],
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "source": "https://raw.githubusercontent.com/microsoft/windows-rs/d468916ac27a36fb8a12bafc1bf5c0ec2fe92238/license-mit"
+  },
+  {
+    "file": "licenses/upstream/microsoft-windows-rs-MIT-c2cfccb812fe.txt",
+    "packages": [
+      "windows-sys-0.48.0"
+    ],
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "source": "https://raw.githubusercontent.com/microsoft/windows-rs/406944152ef28d3273236edc958c2bfbf825775d/license-mit"
+  },
+  {
+    "file": "licenses/upstream/microsoft-windows-rs-MIT-c2cfccb812fe.txt",
+    "packages": [
+      "windows-sys-0.52.0"
+    ],
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "source": "https://raw.githubusercontent.com/microsoft/windows-rs/3a605cba064b26f2a198ac58085f8c8836f47c38/license-mit"
+  },
+  {
+    "file": "licenses/upstream/microsoft-windows-rs-MIT-c2cfccb812fe.txt",
+    "packages": [
+      "windows-targets-0.48.5",
+      "windows_aarch64_gnullvm-0.48.5",
+      "windows_aarch64_msvc-0.48.5",
+      "windows_i686_gnu-0.48.5",
+      "windows_i686_msvc-0.48.5",
+      "windows_x86_64_gnu-0.48.5",
+      "windows_x86_64_gnullvm-0.48.5",
+      "windows_x86_64_msvc-0.48.5"
+    ],
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "source": "https://raw.githubusercontent.com/microsoft/windows-rs/b769fa7570f8eeaede0ed1995a7dbe1e9591a35b/license-mit"
+  },
+  {
+    "file": "licenses/upstream/microsoft-windows-rs-MIT-c2cfccb812fe.txt",
+    "packages": [
+      "windows-targets-0.52.6",
+      "windows_aarch64_gnullvm-0.52.6",
+      "windows_aarch64_msvc-0.52.6",
+      "windows_i686_gnu-0.52.6",
+      "windows_i686_gnullvm-0.52.6",
+      "windows_i686_msvc-0.52.6",
+      "windows_x86_64_gnu-0.52.6",
+      "windows_x86_64_gnullvm-0.52.6",
+      "windows_x86_64_msvc-0.52.6"
+    ],
+    "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "source": "https://raw.githubusercontent.com/microsoft/windows-rs/db06b51c2ebb743efb544d40e3064efa49f28d38/license-mit"
+  }
+]

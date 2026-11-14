@@ -8,7 +8,47 @@ Ausführen im Projektverzeichnis:
 
 Das Skript führt die Tests aller Rust-Pakete und anschließend Clippy mit Warnungen als Fehler aus. Es verändert keinen produktiven Tresor, stellt keine Bankverbindung her und benötigt keinen angeschlossenen Kartenleser. Die Tests verwenden erfundene Konten, eigene temporäre Tresore und einen simulierten FinTS-Transport. Ein unerwarteter weiterer Bankaufruf lässt die Ablaufprüfung fehlschlagen.
 
+Vorab prüft es mit Python 3 die Aktualität und Vollständigkeit der Lizenzbeilagen
+gegen Lockdatei, Paketmanifeste und gespeicherte Prüfsummen.
+
+## Schriftabhängigkeiten und Lizenzbeilagen (2026-11-13)
+
+- Systemschriftsuche auf Fontique umgestellt; egui rendert weiterhin mit skrifa 0.44.
+  Die bevorzugten Familien, Gewichte und TTC-Indizes bleiben erhalten.
+- `ttf-parser`, `owned_ttf_parser`, `ab_glyph` und `fontdb` aus der gesamten Lockdatei
+  entfernt. Wayland-Titel verwenden Crossfont/FreeType; der lokale Crossfont-Reexport
+  gleicht ausschließlich die Fontconfig-Bindung mit Fontique ab.
+- 227 automatisierte Tests erfolgreich, drei manuelle Screenshot-Exporte ignoriert;
+  Clippy ohne Warnungen. Separat 16 Screenshots der Überweisungen, Aufträge,
+  Umsätze und Daueraufträge in Deutsch/Französisch bei 1100/1360 Pixeln verglichen:
+  vor und nach der Änderung bytegenau identisch auf diesem macOS-System.
+- Release-Build auf macOS erfolgreich. Linux x86_64 mit Rust 1.99.1 im Container:
+  `cargo check -p bankingcraft --locked --all-targets` erfolgreich, einschließlich
+  Wayland-Titelleiste und UI-Test-Abhängigkeiten. Dies ist keine interaktive Linux-Prüfung.
+- Cargo Audit: keine bekannten Sicherheitslücken; drei verbleibende Hinweise auf
+  nicht mehr gepflegte zbus-Unterpakete (`zbus_names`, `zvariant`, `zvariant_derive`).
+
 ## Abgedeckte Teilprozesse
+
+### Saldoanzeige mit Vormerkungen (2026-11-14)
+
+Die Hauptanzeige addiert zum gebuchten Banksaldo ausschließlich vorgemerkte
+Umsätze desselben Kontos und derselben Währung. „Gebuchter Saldo“ bleibt separat
+sichtbar; der von Banken gelieferte verfügbare Betrag (ggf. mit Kreditlinie) wird
+nicht als Ersatz verwendet. Tagesabschlüsse und Statistiken bleiben gebucht.
+
+`view::amount_tests` deckt Lastschriften, Gutschriften, mehrfach vorkommende
+Vormerkungen, fehlende Salden, getrennte Währungen, Gruppen-/Gesamtsalden und den
+Übergang von vorgemerkt zu gebucht ohne Doppelzählung ab. Der UI-Test
+`balance_labels_and_amounts_are_separate_and_visible_in_all_languages` prüft die
+Beschriftungen in Übersicht, Konten und Umsätzen bei 1100/1360 Pixeln in allen vier
+Sprachen. Synthetische Ansichten für eine Sichtprüfung lassen sich exportieren:
+
+```sh
+cargo test -p bankingcraft --locked render_balance_review -- --ignored --nocapture
+```
+
+### Prozessübersicht
 
 | Teilprozess | Geprüfte Fälle | Tests |
 |---|---|---|
