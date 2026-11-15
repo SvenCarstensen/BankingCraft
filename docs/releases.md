@@ -47,10 +47,15 @@ including pending FinTS product registration. Packaged startup tests do not cont
 4. After a successful run, create and push an annotated tag matching the version, for example
    `git tag -a v0.0.10 -m 'BankingCraft 0.0.10'` and `git push origin v0.0.10`.
 
+Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
+current version, then creates its tag and publishes the release only after every check passes.
+This avoids a second build of the same commit. Manual publication is restricted to `master`;
+an existing tag pointing to a different commit is rejected.
+
 A version tag starts all four builds and the source archive job. After all jobs succeed,
 the workflow validates the complete asset set, computes checksums, uploads the files to a
 draft and publishes it as a **prerelease**. The first release is `v0.0.9`.
-Manual workflow runs on a branch produce Actions artifacts only; manual runs on a version
+By default, manual workflow runs on a branch produce Actions artifacts only; manual runs on a version
 tag follow the same publication rules as a tag push. Artifacts are retained for seven days;
 published release assets remain attached to the release.
 

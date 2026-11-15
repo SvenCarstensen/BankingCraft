@@ -22,8 +22,9 @@ if ($LASTEXITCODE -ne 0) {
     }
     $mesa = Join-Path $env:RUNNER_TEMP 'BankingCraft-mesa'
     $archive = "$mesa.7z"
-    Invoke-WebRequest 'https://github.com/pal1000/mesa-dist-win/releases/download/26.2.6/mesa3d-26.2.6-release-msvc.7z' -OutFile $archive
-    if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'b2e00615feaba45942343c265cc8c5f576142ca682c1ac6661922d4b72492877') {
+    # 26.2.6's MSVC distribution omits OpenGL (documented upstream regression); x64 MinGW includes it.
+    Invoke-WebRequest 'https://github.com/pal1000/mesa-dist-win/releases/download/26.2.6/mesa3d-26.2.6-release-mingw.7z' -OutFile $archive
+    if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'da0f71d9181b672c1918f3c342f11118c687f6059a46b16502845160733cc388') {
         throw 'Mesa download checksum mismatch'
     }
     7z x $archive "-o$mesa" -y | Out-Null
