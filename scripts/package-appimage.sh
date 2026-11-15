@@ -22,8 +22,11 @@ download https://github.com/AppImage/type2-runtime/releases/download/20251108/ru
 export APPIMAGE_EXTRACT_AND_RUN=1
 "$work/linuxdeploy.AppImage" --appdir "$appdir" \
   --executable "$appdir/usr/bin/bankingcraft" \
+  --library "$(pkg-config --variable=libdir xkbcommon-x11)/libxkbcommon-x11.so.0" \
   --desktop-file packaging/linux/BankingCraft.desktop \
   --icon-file packaging/linux/bankingcraft.png
+# winit opens this library dynamically, so ELF dependency scanning alone misses it.
+test -f "$appdir/usr/lib/libxkbcommon-x11.so.0"
 
 # Preserve the distribution's copyright notices for the shared libraries linuxdeploy bundles.
 native="$appdir/usr/share/bankingcraft/licenses/linux-system"

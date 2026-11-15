@@ -234,7 +234,7 @@ Install the compiler, development libraries and runtime components:
 ```sh
 sudo apt-get update
 sudo apt-get install -y build-essential pkg-config git curl python3 \
-  libpcsclite-dev pcscd libxkbcommon-dev libfontconfig1-dev libfreetype6-dev \
+  libpcsclite-dev pcscd libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev \
   libx11-dev libxi-dev libxrandr-dev libxcursor-dev libxinerama-dev \
   libgl1 fonts-noto-core
 ```
