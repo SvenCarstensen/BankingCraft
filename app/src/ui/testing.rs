@@ -22,6 +22,30 @@ pub fn snapshot(app: &AppWindow, width: u32, height: u32, path: impl AsRef<std::
 }
 
 #[test]
+fn grouped_account_drag_scrolls_at_the_viewport_edge_and_can_be_cancelled() {
+    use egui_kittest::kittest::Queryable;
+    i18n::with_language(i18n::Language::German, || {
+        let app = AppWindow::new().unwrap();
+        let st = app.global::<crate::AppState>();
+        st.set_unlocked(true); st.set_page(1);
+        let mut vault = crate::store::Vault::default();
+        vault.merge_accounts(1, (0..8).map(|i| fints::Account {
+            account_number: i.to_string(), product: format!("Row {i}"), ..Default::default()
+        }).collect());
+        crate::view::refresh_all(&app, &vault, &mut Default::default());
+        st.on_move_group_account(|_, _, _| panic!("Cancelled scrolling must not move an account"));
+        let mut harness = harness(&app, 1100., 680.);
+        let source = harness.get_by_label("Konto verschieben: Row 0").rect();
+        harness.hover_at(source.center()); harness.drag_at(source.center()); harness.run_steps(2);
+        harness.hover_at(egui::pos2(1000., 675.)); harness.run_steps(100);
+        let row = harness.query_by_label("Konto verschieben: Row 0");
+        assert!(row.is_none_or(|r| r.rect().top() < source.top() - 100.));
+        harness.key_press(egui::Key::Escape); harness.run_steps(2);
+        harness.drop_at(egui::pos2(1000., 400.)); harness.run_steps(3);
+    });
+}
+
+#[test]
 fn bank_setup_statement_preference_survives_ui_state_merge() {
     use egui_kittest::kittest::Queryable;
     i18n::with_language(i18n::Language::German, || {
@@ -235,6 +259,10 @@ fn system_theme_tracks_changes_again_after_a_manual_override() {
 }
 
 fn balance_test_app() -> AppWindow {
+    balance_test_app_with_amounts(100, -1234)
+}
+
+fn balance_test_app_with_amounts(booked: i64, pending_cents: i64) -> AppWindow {
     use crate::business_tests::{date, tx};
     let app = AppWindow::new().unwrap();
     let st = app.global::<crate::AppState>();
@@ -245,10 +273,10 @@ fn balance_test_app() -> AppWindow {
         product: "Demo current account".into(), account_number: "100000".into(), ..Default::default()
     }])[0];
     vault.accounts[0].balance = Some(fints::Balance {
-        booked: rust_decimal::Decimal::from(100), available: None,
+        booked: rust_decimal::Decimal::from(booked), available: None,
         currency: "EUR".into(), date: date("2026-11-12"),
     });
-    let mut pending = tx(-1234, "2026-11-13"); pending.pending = true;
+    let mut pending = tx(pending_cents, "2026-11-13"); pending.pending = true;
     vault.merge_transactions(id, vec![pending, tx(-500, "2026-11-12")]);
     st.set_tx_account(1);
     st.set_tx_period(3);
@@ -292,6 +320,13 @@ fn balance_labels_and_amounts_are_separate_and_visible_in_all_languages() {
 fn render_balance_review() {
     let dir = std::env::temp_dir().join("bankingcraft-balance-review");
     std::fs::create_dir_all(&dir).unwrap();
+    for (booked, pending, case) in [(-100, -1234, "negative"), (-10, 1234, "negative-booked")] {
+        let app = balance_test_app_with_amounts(booked, pending);
+        for (page, name) in [(0, "overview"), (1, "accounts"), (2, "transactions")] {
+            app.global::<crate::AppState>().set_page(page);
+            snapshot(&app, 1100, 1100, dir.join(format!("{case}-{name}.png")));
+        }
+    }
     for (code, language) in [("de", i18n::Language::German), ("en", i18n::Language::English), ("fr", i18n::Language::French)] {
         i18n::with_language(language, || {
             let app = balance_test_app();

@@ -10,6 +10,11 @@ use egui::{self, pos2, vec2, Align, Align2, Color32, Layout, Rect, Sense, Ui};
 
 use std::collections::HashMap;
 
+struct GroupAccountDrag {
+    id: i32,
+    vault_path: String,
+}
+
 pub fn show(
     ui: &mut Ui,
     t: &Theme,
@@ -30,6 +35,16 @@ pub fn show(
         .id_salt(("page-scroll", d.page))
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            if d.page == 1 && !d.busy && egui::DragAndDrop::has_payload_of_type::<GroupAccountDrag>(ui.ctx()) {
+                let clip = ui.clip_rect();
+                if let Some(p) = ui.input(|i| i.pointer.hover_pos()).filter(|p| clip.contains(*p)) {
+                    let speed = ((clip.top() + 40. - p.y).max(0.) - (p.y - clip.bottom() + 40.).max(0.)) * 12.;
+                    if speed != 0. {
+                        ui.scroll_with_delta(vec2(0., speed * ui.input(|i| i.stable_dt).min(0.05)));
+                        ui.ctx().request_repaint();
+                    }
+                }
+            }
             egui::Frame::new().inner_margin(24).show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
@@ -117,10 +132,10 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                 ui.add_space(10.);
 
                 text(ui, balance_labels(d.total_has_paypal, true)[0], 12., false, hex(0xc9d9f2));
-                text(ui, &d.total_balance, 30., true, Color32::WHITE);
+                balance_text(ui, &d.total_balance, 30., true, Color32::WHITE, hex(0xffb3b8));
                 ui.add_space(8.);
                 text(ui, balance_labels(d.total_has_paypal, true)[1], 12., false, hex(0xc9d9f2));
-                text(ui, &d.total_booked_balance, 18., true, Color32::WHITE);
+                balance_text(ui, &d.total_booked_balance, 18., true, Color32::WHITE, hex(0xffb3b8));
                 text(ui, &d.total_balance_note, 11., false, hex(0xc9d9f2));
 
                 ui.add_space(24.);
@@ -177,11 +192,11 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                                 text(ui, &g.name, 14., true, Color32::WHITE);
                                 ui.add_space(8.);
                                 for b in g.balances.iter() {
-                                    balance_pair(ui, &balance_theme, &b.amount, &b.booked_amount, b.negative, balance_labels(b.has_paypal, true));
+                                    balance_pair(ui, &balance_theme, &b.amount, &b.booked_amount, balance_labels(b.has_paypal, true));
                                     ui.add_space(8.);
                                 }
                                 if g.balances.row_count() == 0 {
-                                    balance_pair(ui, &balance_theme, "–", "–", false, balance_labels(false, true));
+                                    balance_pair(ui, &balance_theme, "–", "–", balance_labels(false, true));
                                 }
                                 text(ui, &g.balance_note, 11., false, hex(0xc9d9f2));
                             });
@@ -392,7 +407,22 @@ fn balance_labels(paypal: bool, aggregate: bool) -> [&'static str; 2] {
         else { [tr("Verfügbares PayPal-Guthaben"), tr("Gebuchter Saldo (nicht geliefert)")] }
     } else { [tr("Saldo inkl. vorgemerkter Umsätze"), tr("Gebuchter Saldo")] }
 }
-fn balance_pair(ui: &mut Ui, t: &Theme, current: &str, booked: &str, negative: bool, labels: [&str; 2]) {
+/// Each currency line uses its own displayed sign, including the booked balance.
+fn balance_text(ui: &mut Ui, amount: &str, size: f32, bold: bool, normal: Color32, negative: Color32) {
+    let mut job = egui::text::LayoutJob::default();
+    for (i, line) in amount.split('\n').enumerate() {
+        let format = egui::TextFormat {
+            font_id: font(size, bold),
+            color: if line.starts_with('−') { negative } else { normal },
+            ..Default::default()
+        };
+        if i > 0 { job.append("\n", 0., format.clone()); }
+        job.append(line, 0., format);
+    }
+    ui.add(egui::Label::new(job).wrap());
+}
+
+fn balance_pair(ui: &mut Ui, t: &Theme, current: &str, booked: &str, labels: [&str; 2]) {
     let amounts = [current, booked];
     let width = ui.available_width();
     let horizontal = width >= 340.;
@@ -404,8 +434,7 @@ fn balance_pair(ui: &mut Ui, t: &Theme, current: &str, booked: &str, negative: b
         ui.allocate_ui(vec2(column_width, label_height), |ui| {
             text(ui, labels[i], 11., false, t.text_muted);
         });
-        text(ui, amounts[i], if i == 0 { 16. } else { 14. }, i == 0,
-            if i == 0 && negative { t.negative } else { t.text });
+        balance_text(ui, amounts[i], if i == 0 { 16. } else { 14. }, i == 0, t.text, t.negative);
     };
     if horizontal {
         columns(ui, &[column_width, column_width], 18., render);
@@ -462,8 +491,7 @@ fn account_overview(
                 } else {
                     let i = col - 1;
                     text(ui, labels[i], 11., false, t.text_muted);
-                    text(ui, amounts[i], if i == 0 { 16. } else { 14. }, i == 0,
-                        if i == 0 && a.negative { t.negative } else { t.text });
+                    balance_text(ui, amounts[i], if i == 0 { 16. } else { 14. }, i == 0, t.text, t.negative);
                 }
             });
         });
@@ -831,7 +859,7 @@ fn accounts(
         ui,
         t,
         "Konten",
-        tr("Konten nach eigenen Gruppen ordnen"),
+        tr("Konten zum Sortieren oder Wechseln der Gruppe ziehen"),
         |ui| {
             if primary(ui, t, "Umsätze synchronisieren", icons::REFRESH, !d.busy) {
                 action!(a, invoke_refresh_all);
@@ -863,14 +891,36 @@ fn accounts(
     ui.add_space(18.);
 
     for g in d.account_groups.iter() {
-        ui.push_id(g.id, |ui| {
+        let mut over_account = false;
+        let group_frame = ui.push_id(g.id, |ui| {
             card(ui, t, 16, |ui| {
+                // Group IDs are local to a vault; names and list positions can change.
+                let mut disclosure = egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(),
+                    egui::Id::new(("account-group-disclosure", &d.data_path, g.id)),
+                    true,
+                );
                 let count = format!("{}{}", g.accounts.row_count(), tr(" Konten"));
                 let count_width = ui.painter().layout_no_wrap(count.clone(), font(12., false), t.text_muted).size().x;
                 let actions_width = count_width + 10. + button_width(ui, tr("Umsätze synchronisieren"), icons::REFRESH, false);
                 let w = ui.available_width();
-                columns(ui, &[w - actions_width - 12., actions_width], 12., |ui, col| {
+                columns(ui, &[34., w - actions_width - 58., actions_width], 12., |ui, col| {
                     if col == 0 {
+                        let label = if disclosure.is_open() {
+                            i18n::tr_format!("Konten einklappen: {group}", group = g.name)
+                        } else {
+                            i18n::tr_format!("Konten ausklappen: {group}", group = g.name)
+                        };
+                        let path = if disclosure.is_open() { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT };
+                        let response = button(ui, t, "", path, false, true).on_hover_text(&label);
+                        response.widget_info(|| egui::WidgetInfo::selected(
+                            egui::WidgetType::CollapsingHeader, ui.is_enabled(), disclosure.is_open(), &label,
+                        ));
+                        if response.clicked() {
+                            disclosure.toggle(ui);
+                            disclosure.store(ui.ctx());
+                        }
+                    } else if col == 1 {
                         if g.id == 0 {
                             ui.add_space(9.);
                             text(ui, &g.name, 14., true, t.text);
@@ -893,20 +943,25 @@ fn accounts(
                         });
                     }
                 });
+                if !disclosure.is_open() {
+                    return;
+                }
                 ui.add_space(12.);
                 for account in g.accounts.iter() {
                     ui.push_id(account.id, |ui| {
+                        let mut controls_top = 0.;
                         let frame = egui::Frame::new().fill(t.header_bg).corner_radius(8.)
-                            .inner_margin(egui::Margin { left: 28, right: 12, top: 12, bottom: 12 })
+                            .inner_margin(egui::Margin { left: 44, right: 12, top: 12, bottom: 12 })
                             .show(ui, |ui| {
                                 text(ui, &account.name, 14., true, t.text);
                                 ui.add_space(9.);
-                                balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative, balance_labels(account.paypal, false));
+                                balance_pair(ui, t, &account.balance, &account.booked_balance, balance_labels(account.paypal, false));
                                 ui.add_space(9.);
                                 text(ui, &account.iban, 12., false, t.text);
                                 ui.add_space(9.);
                                 text(ui, &format!("{} · {}", account.bank, account.owner), 11., false, t.text_muted);
                                 ui.add_space(9.);
+                                controls_top = ui.cursor().top();
                                 ui.horizontal(|ui| {
                                     text(ui, tr("Gruppe"), 11., false, t.text_muted);
                                     ui.allocate_ui(vec2(160., 32.), |ui| {
@@ -926,7 +981,33 @@ fn accounts(
                                 });
                             });
                         let r = frame.response.rect.shrink(12.);
-                        ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(4., r.height())), 2., account.color);
+                        ui.painter().rect_filled(Rect::from_min_size(r.min + vec2(16., 0.), vec2(4., r.height())), 2., account.color);
+                        for x in [0., 4.] {
+                            for y in [-5., 0., 5.] {
+                                ui.painter().circle_filled(pos2(r.left() + x, r.center().y + y), 1., t.text_faint);
+                            }
+                        }
+                        let drag_rect = Rect::from_min_max(frame.response.rect.min, pos2(frame.response.rect.right(), controls_top));
+                        let response = ui.interact(drag_rect, ui.id().with("group-account-drag"), if d.busy { Sense::hover() } else { Sense::drag() });
+                        let label = i18n::tr_format!("Konto verschieben: {account}", account = account.name);
+                        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !d.busy, &label));
+                        response.clone().on_hover_text(label);
+                        if !d.busy {
+                            response.dnd_set_drag_payload(GroupAccountDrag { id: account.id, vault_path: d.data_path.clone() });
+                        }
+                        let drop_response = ui.interact(frame.response.rect.expand2(vec2(0., 6.)), ui.id().with("group-account-drop"), Sense::hover());
+                        if !d.busy && ui.is_enabled() {
+                            if let Some(source) = drop_response.dnd_hover_payload::<GroupAccountDrag>().filter(|s| s.vault_path == d.data_path) {
+                                over_account = true;
+                                let after = ui.input(|i| i.pointer.hover_pos().is_some_and(|p| p.y > frame.response.rect.center().y));
+                                if source.id != account.id {
+                                    ui.painter().hline(frame.response.rect.x_range(), if after { frame.response.rect.bottom() } else { frame.response.rect.top() }, egui::Stroke::new(2., t.accent));
+                                }
+                                if drop_response.dnd_release_payload::<GroupAccountDrag>().is_some() && source.id != account.id {
+                                    action!(a, invoke_move_group_account, source.id, g.id, AccountDropTarget { id: account.id, after });
+                                }
+                            }
+                        }
                     });
                     ui.add_space(12.);
                 }
@@ -935,6 +1016,14 @@ fn accounts(
                 }
             });
         });
+        if !d.busy && ui.is_enabled() && !over_account {
+            if let Some(source) = group_frame.response.dnd_hover_payload::<GroupAccountDrag>().filter(|s| s.vault_path == d.data_path) {
+                ui.painter().rect_stroke(group_frame.response.rect, 10., egui::Stroke::new(2., t.accent), egui::StrokeKind::Inside);
+                if group_frame.response.dnd_release_payload::<GroupAccountDrag>().is_some() {
+                    action!(a, invoke_move_group_account, source.id, g.id, AccountDropTarget { id: -1, after: true });
+                }
+            }
+        }
         ui.add_space(18.);
     }
 }
@@ -1008,7 +1097,7 @@ fn transactions(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
     if let Some(account) = (d.tx_account as usize).checked_sub(1).and_then(|index| d.accounts.row_data(index)) {
         ui.add_space(12.);
-        balance_pair(ui, t, &account.balance, &account.booked_balance, account.negative, balance_labels(account.paypal, false));
+        balance_pair(ui, t, &account.balance, &account.booked_balance, balance_labels(account.paypal, false));
     }
 
     ui.add_space(14.);

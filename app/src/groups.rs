@@ -1,6 +1,25 @@
 use crate::store::{AccountGroup, Vault};
 
 impl Vault {
+    /// Move and regroup in one edit. A drop on the group itself appends its account.
+    pub fn move_group_account(&mut self, source: u32, group_id: Option<u32>, target: Option<(u32, bool)>) -> Result<(), String> {
+        if self.account(source).is_none() { return Err(i18n::tr("Konto nicht gefunden").into()); }
+        if group_id.is_some_and(|id| !self.groups.iter().any(|g| g.id == id)) {
+            return Err(i18n::tr("Gruppe nicht gefunden").into());
+        }
+        let belongs = |id| self.groups.iter().find(|g| g.account_ids.contains(&id)).map(|g| g.id) == group_id;
+        let target = if let Some((id, after)) = target {
+            if self.account(id).is_none() || !belongs(id) {
+                return Err(i18n::tr("Zielkonto nicht gefunden").into());
+            }
+            Some((id, after))
+        } else {
+            self.accounts.iter().rev().find(|a| a.id != source && belongs(a.id)).map(|a| (a.id, true))
+        };
+        if let Some((id, after)) = target { self.move_account(source, id, after)?; }
+        self.assign_group(source, group_id)
+    }
+
     pub fn move_account(&mut self, source: u32, target: u32, after: bool) -> Result<(), String> {
         let from = self.accounts.iter().position(|a| a.id == source).ok_or(i18n::tr("Konto nicht gefunden"))?;
         let target_index = self.accounts.iter().position(|a| a.id == target).ok_or(i18n::tr("Zielkonto nicht gefunden"))?;
@@ -58,6 +77,31 @@ impl Vault {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn group_drops_validate_before_editing_and_preserve_unrelated_accounts() {
+        let mut v = Vault::default();
+        let ids = v.merge_accounts(1, (0..4).map(|i| fints::Account { account_number: i.to_string(), ..Default::default() }).collect());
+        let group = v.create_group("Privat").unwrap();
+        v.assign_group(ids[0], Some(group)).unwrap();
+        v.assign_group(ids[1], Some(group)).unwrap();
+        let before = serde_json::to_vec(&v).unwrap();
+        for (source, destination, target) in [
+            (999, Some(group), None), (ids[0], Some(999), None),
+            (ids[0], Some(group), Some((999, true))),
+            (ids[0], Some(group), Some((ids[2], false))),
+            (ids[2], None, Some((ids[0], false))),
+        ] {
+            assert!(v.move_group_account(source, destination, target).is_err());
+            assert_eq!(serde_json::to_vec(&v).unwrap(), before);
+        }
+        v.move_group_account(ids[2], Some(group), Some((ids[1], false))).unwrap();
+        assert_eq!(v.accounts.iter().map(|a| a.id).collect::<Vec<_>>(), vec![ids[0], ids[2], ids[1], ids[3]]);
+        v.move_group_account(ids[0], None, None).unwrap();
+        assert_eq!(v.accounts.iter().map(|a| a.id).collect::<Vec<_>>(), vec![ids[2], ids[1], ids[3], ids[0]]);
+        let reloaded: Vault = serde_json::from_slice(&serde_json::to_vec(&v).unwrap()).unwrap();
+        assert_eq!(reloaded.groups[0].account_ids, vec![ids[1], ids[2]]);
+    }
+
     #[test]
     fn moving_accounts_preserves_groups_and_order_after_refresh_and_reload() {
         let mut v = Vault::default();

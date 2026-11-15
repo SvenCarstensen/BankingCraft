@@ -51,6 +51,15 @@ fn tx(date: NaiveDate, amount: Decimal, name: &str, purpose: &str, posting: &str
 }
 
 pub fn add_demo(v: &mut Vault) {
+    add_demo_data(v, true);
+}
+
+/// First-vault onboarding: one local account with sample transactions.
+pub fn add_demo_account(v: &mut Vault) {
+    add_demo_data(v, false);
+}
+
+fn add_demo_data(v: &mut Vault, full_demo: bool) {
     if v.accesses.iter().any(|a| a.kind == AccessKind::Demo) {
         return;
     }
@@ -81,8 +90,8 @@ pub fn add_demo(v: &mut Vault) {
         kind: 10,
         ..giro.clone()
     };
-    let ids = v.merge_accounts(access_id, vec![giro.clone(), savings]);
-    let (giro_id, sav_id) = (ids[0], ids[1]);
+    let ids = v.merge_accounts(access_id, if full_demo { vec![giro.clone(), savings] } else { vec![giro.clone()] });
+    let (giro_id, sav_id) = (ids[0], ids.get(1).copied());
 
     let today = Local::now().date_naive();
     let mut rng = Lcg(42);
@@ -135,18 +144,19 @@ pub fn add_demo(v: &mut Vault) {
 
     let giro_balance: Decimal = d("2412.37");
     v.merge_transactions(giro_id, list);
-    v.merge_transactions(sav_id, sav);
+    if let Some(sav_id) = sav_id { v.merge_transactions(sav_id, sav); }
     let now = Local::now().naive_local();
     for a in v.accounts.iter_mut() {
         if a.id == giro_id {
             a.balance = Some(Balance { booked: giro_balance, available: Some(giro_balance + d("2000")), currency: "EUR".into(), date: today });
             a.last_sync = Some(now);
         }
-        if a.id == sav_id {
+        if Some(a.id) == sav_id {
             a.balance = Some(Balance { booked: d("12750.00"), available: None, currency: "EUR".into(), date: today });
             a.last_sync = Some(now);
         }
     }
+    if !full_demo { return; }
     let first = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
     for (name, acc, amount, purpose) in [
         ("Wohnbau Ostsee eG", "100200", "890.00", "Miete Wohnung 3 OG links"),

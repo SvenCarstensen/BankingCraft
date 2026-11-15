@@ -97,6 +97,7 @@ pub fn unlock(
     egui::Modal::new(egui::Id::new("vault-unlock")).backdrop_color(Color32::TRANSPARENT).frame(egui::Frame::new().fill(t.card_bg).corner_radius(16.).inner_margin(28)).show(ui.ctx(),|ui|{
 
         ui.set_width(504.);
+ui.set_max_height((r.height()-104.).max(300.));
 ui.spacing_mut().item_spacing=vec2(10.,12.);
 
         egui::ScrollArea::vertical().max_height((r.height()-104.).max(300.)).auto_shrink([false,true]).show(ui,|ui|{
@@ -146,6 +147,10 @@ submit_unlock(a,d,passwords);
 let response=input(ui,t,"vault-password-repeat",&mut passwords[1],"Passwort wiederholen",true);
 if accepted(ui,&response){
 submit_unlock(a,d,passwords);
+}
+if d.offer_demo_on_create {
+    ui.checkbox(&mut d.create_with_demo, tr("Demokonto mit Beispielumsätzen hinzufügen"));
+    text(ui, tr("Fiktive Daten zum Ausprobieren, ohne Verbindung zu einer Bank."), 12., false, t.text_muted);
 }
 }
 

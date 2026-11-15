@@ -19,3 +19,5 @@ pub const LOCK: &str = "M6 11h12v9H6z M8 11V8a4 4 0 0 1 8 0v3";
 pub const CLOSE: &str = "M6 6l12 12 M18 6L6 18";
 pub const PASTE: &str = "M9 4h6v3H9z M7 5H5v16h14V5h-2 M9 12h6 M9 16h4";
 pub const CHECK: &str = "M5 12l5 5 9-10";
+pub const CHEVRON_DOWN: &str = "M6 9l6 6 6-6";
+pub const CHEVRON_RIGHT: &str = "M9 6l6 6-6 6";

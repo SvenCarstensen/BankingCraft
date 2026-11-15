@@ -50,6 +50,12 @@ struct Selection {
     creating: bool,
 }
 
+impl Selection {
+    fn offers_demo(&self) -> bool {
+        self.creating && self.recent.paths.is_empty()
+    }
+}
+
 type Manager = Rc<RefCell<Selection>>;
 
 fn title(path: &Path) -> String {
@@ -58,6 +64,12 @@ fn title(path: &Path) -> String {
 
 fn show_selection(app: &AppWindow, selection: &Selection) {
     let st = app.global::<AppState>();
+    let offer_demo = selection.offers_demo() && !st.get_unlocked();
+    // Preserve an explicit opt-out while choosing the first vault's filename.
+    if !st.get_offer_demo_on_create() || !offer_demo {
+        st.set_create_with_demo(offer_demo);
+    }
+    st.set_offer_demo_on_create(offer_demo);
     let mut names = vec![i18n::tr("Tresor auswählen …").into()];
     names.extend(selection.recent.paths.iter().map(|p| {
         format!("{} · {}", title(p), p.parent().unwrap_or(p).display())
@@ -218,7 +230,10 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
         if password != repeat {
             st.set_unlock_error(i18n::tr("Die Passwörter stimmen nicht überein.").into()); return;
         }
-        let vault = Vault { product_version: env!("CARGO_PKG_VERSION").into(), ..Default::default() };
+        let mut vault = Vault { product_version: env!("CARGO_PKG_VERSION").into(), ..Default::default() };
+        if selection.borrow().offers_demo() && !st.get_unlocked() && st.get_create_with_demo() {
+            crate::demo::add_demo_account(&mut vault);
+        }
         let result = save_current(&app).and_then(|_| VaultFile::create_new(selection.borrow().path.clone(), &password, &vault));
         match result {
             Ok(file) => activate(&app, &selection, vault, file),
@@ -375,6 +390,66 @@ mod tests {
         }
     }
     impl Drop for Temp { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+
+    #[test]
+    fn first_vault_offers_demo_by_default_and_saves_the_checkbox_choice() {
+        use egui_kittest::kittest::Queryable;
+        i18n::with_language(i18n::Language::German, || {
+            for include_demo in [true, false] {
+                let dir = Temp::new();
+                let initial = dir.0.join("vault.kontor");
+                let chosen = dir.0.join("private.kontor");
+                let app = AppWindow::new().unwrap();
+                let c = Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)),
+                    bridge: Bridge::new(app.as_weak()), running: Arc::new(AtomicBool::new(false)) };
+                crate::CTX.with(|context| *context.borrow_mut() = Some(c.clone()));
+                let manager = install_at(&app, dir.0.join("vaults.json"), initial.clone());
+                let st = app.global::<AppState>();
+                assert!(st.get_first_run() && st.get_offer_demo_on_create() && st.get_create_with_demo());
+                let mut harness = crate::ui::testing::harness(&app, 1100., 680.);
+                let checkbox = harness.get_by_label("Demokonto mit Beispielumsätzen hinzufügen");
+                assert!(checkbox.rect().bottom() < 660.);
+                if !include_demo { checkbox.click(); harness.run_steps(3); }
+                assert_eq!(st.get_create_with_demo(), include_demo);
+                // Choosing a different filename and retrying invalid passwords retain the choice.
+                select_path(&app, &manager, chosen.clone(), true).unwrap();
+                assert_eq!(st.get_create_with_demo(), include_demo);
+                st.invoke_create_vault("short".into(), "short".into());
+                st.invoke_create_vault("test-password".into(), "other-password".into());
+                assert!(!chosen.exists() && !initial.exists());
+                assert!(c.vault.lock().unwrap().accounts.is_empty());
+                assert_eq!(st.get_create_with_demo(), include_demo);
+                harness.run_steps(3);
+                harness.state_mut().passwords = ["test-password".into(), "test-password".into()];
+                harness.run_steps(3);
+                assert!(harness.get_by_label("Tresor anlegen").rect().bottom() <= 660.);
+                harness.get_by_label("Tresor anlegen").click(); harness.run_steps(3);
+                assert!(st.get_unlocked(), "{}", st.get_unlock_error());
+                assert!(!st.get_offer_demo_on_create() && !st.get_create_with_demo());
+                let saved = VaultFile::open(chosen.clone(), "test-password").unwrap().1;
+                assert_eq!(saved.accounts.len(), usize::from(include_demo));
+                assert_eq!(saved.accesses.len(), usize::from(include_demo));
+                assert_eq!(saved.transactions.is_empty(), !include_demo);
+                assert!(saved.standing.is_empty());
+                if include_demo {
+                    assert_eq!(saved.accesses[0].kind, crate::store::AccessKind::Demo);
+                    assert!(saved.accounts[0].balance.is_some());
+                    assert!(saved.transactions.iter().all(|t| t.account_id == saved.accounts[0].id));
+                }
+                assert_eq!(st.get_accounts().row_count(), usize::from(include_demo));
+                assert!(VaultFile::open(chosen, "wrong-password").is_err());
+
+                let second = dir.0.join("second.kontor");
+                select_path(&app, &manager, second.clone(), true).unwrap(); harness.run_steps(3);
+                assert!(!st.get_offer_demo_on_create());
+                assert!(harness.query_by_label("Demokonto mit Beispielumsätzen hinzufügen").is_none());
+                st.set_create_with_demo(true); // A stale UI flag cannot seed subsequent vaults.
+                st.invoke_create_vault("second-password".into(), "second-password".into());
+                assert!(VaultFile::open(second, "second-password").unwrap().1.accounts.is_empty());
+                crate::CTX.with(|context| *context.borrow_mut() = None);
+            }
+        });
+    }
 
     #[test]
     fn new_vault_is_encrypted_and_cannot_overwrite_an_existing_file_or_link() {

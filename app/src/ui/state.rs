@@ -150,6 +150,8 @@ pub struct PaymentOrderRow {
 pub struct Data {
     pub unlocked: bool,
     pub first_run: bool,
+    pub offer_demo_on_create: bool,
+    pub create_with_demo: bool,
     pub show_vault_manager: bool,
     pub recent_vaults: ModelRc<SharedString>,
     pub selected_vault: i32,
@@ -301,6 +303,8 @@ impl Default for Data {
         Self {
             unlocked: Default::default(),
             first_run: Default::default(),
+            offer_demo_on_create: false,
+            create_with_demo: false,
             show_vault_manager: Default::default(),
             recent_vaults: Default::default(),
             selected_vault: -1,
@@ -478,6 +482,7 @@ pub struct Callbacks {
     delete_group: Callback<dyn Fn(i32)>,
     assign_group: Callback<dyn Fn(i32, i32)>,
     move_account: Callback<dyn Fn(i32, i32, bool) -> bool>,
+    move_group_account: Callback<dyn Fn(i32, i32, AccountDropTarget) -> bool>,
     tx_filter_changed: Callback<dyn Fn()>,
     tx_select: Callback<dyn Fn(i32)>,
     set_category: Callback<dyn Fn(i32, SharedString)>,
@@ -542,6 +547,9 @@ impl AppState {
         }
         if before.first_run != after.first_run {
             data.first_run = after.first_run;
+        }
+        if before.create_with_demo != after.create_with_demo {
+            data.create_with_demo = after.create_with_demo;
         }
         if before.show_vault_manager != after.show_vault_manager {
             data.show_vault_manager = after.show_vault_manager;
@@ -988,6 +996,18 @@ impl AppState {
     }
     pub fn set_first_run(&self, value: bool) {
         self.data.borrow_mut().first_run = value;
+    }
+    pub fn get_offer_demo_on_create(&self) -> bool {
+        self.data.borrow().offer_demo_on_create
+    }
+    pub fn set_offer_demo_on_create(&self, value: bool) {
+        self.data.borrow_mut().offer_demo_on_create = value;
+    }
+    pub fn get_create_with_demo(&self) -> bool {
+        self.data.borrow().create_with_demo
+    }
+    pub fn set_create_with_demo(&self, value: bool) {
+        self.data.borrow_mut().create_with_demo = value;
     }
     pub fn get_show_vault_manager(&self) -> bool {
         self.data.borrow().show_vault_manager
@@ -2030,6 +2050,13 @@ impl AppState {
     pub fn invoke_move_account(&self, a0: i32, a1: i32, a2: bool) -> bool {
         let callback = self.callbacks.borrow().move_account.clone();
         callback.map(|f| f(a0, a1, a2)).unwrap_or_default()
+    }
+    pub fn on_move_group_account(&self, callback: impl Fn(i32, i32, AccountDropTarget) -> bool + 'static) {
+        self.callbacks.borrow_mut().move_group_account = Some(std::rc::Rc::new(callback));
+    }
+    pub fn invoke_move_group_account(&self, source: i32, group: i32, target: AccountDropTarget) -> bool {
+        let callback = self.callbacks.borrow().move_group_account.clone();
+        callback.map(|f| f(source, group, target)).unwrap_or_default()
     }
     pub fn on_tx_filter_changed(&self, callback: impl Fn() + 'static) {
         self.callbacks.borrow_mut().tx_filter_changed = Some(std::rc::Rc::new(callback));

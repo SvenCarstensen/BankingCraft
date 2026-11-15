@@ -1,4 +1,19 @@
 {
+  "Demokonto mit Beispielumsätzen hinzufügen": [
+    "Add a demo account with sample transactions",
+    "Ajouter un compte de démonstration avec des opérations fictives",
+    "Añadir una cuenta de demostración con movimientos de ejemplo"
+  ],
+  "Fiktive Daten zum Ausprobieren, ohne Verbindung zu einer Bank.": [
+    "Fictional data to explore the app, without connecting to a bank.",
+    "Des données fictives pour découvrir l’application, sans connexion à une banque.",
+    "Datos ficticios para probar la aplicación, sin conexión a un banco."
+  ],
+  "Eingabe löschen": [
+    "Clear input",
+    "Effacer la saisie",
+    "Borrar entrada"
+  ],
   "PIN-Eingabe": [
     "PIN entry",
     "Saisie du code PIN",
@@ -148,6 +163,26 @@
     "Organize accounts into your own groups",
     "Organiser les comptes en groupes personnalisés",
     "Organiza las cuentas en grupos personalizados"
+  ],
+  "Konten einklappen: {group}": [
+    "Collapse accounts: {group}",
+    "Replier les comptes : {group}",
+    "Contraer cuentas: {group}"
+  ],
+  "Konten zum Sortieren oder Wechseln der Gruppe ziehen": [
+    "Drag accounts to reorder them or move them to another group",
+    "Glissez les comptes pour les réordonner ou changer de groupe",
+    "Arrastra las cuentas para ordenarlas o cambiarlas de grupo"
+  ],
+  "Konto verschieben: {account}": [
+    "Move account: {account}",
+    "Déplacer le compte : {account}",
+    "Mover cuenta: {account}"
+  ],
+  "Konten ausklappen: {group}": [
+    "Expand accounts: {group}",
+    "Déplier les comptes : {group}",
+    "Expandir cuentas: {group}"
   ],
   "Kontenrundruf": [
     "Refresh all accounts",

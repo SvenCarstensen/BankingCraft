@@ -83,6 +83,12 @@ using synthetic vaults and simulated sends. PayPal itself has no payment operati
 
 ## Covered workflows
 
+First-vault setup offers a checked-by-default checkbox for one local demo account
+with sample transactions. `first_vault_offers_demo_by_default_and_saves_the_checkbox_choice`
+checks both choices through the actual creation dialog, encrypted reopening, password
+validation, filename changes and exclusion from subsequent vaults. The existing full
+demo-bank option still adds both demo accounts and standing orders.
+
 ### Balances including pending transactions — November 14, 2026
 
 For bank accounts, the primary display adds only pending transactions from the same
@@ -157,6 +163,15 @@ preserving category IDs, filters, account/group names, bank text and form drafts
 Tests use synthetic data and never modify production preferences.
 
 ## Account names
+
+The Accounts page supports independent group disclosure and drag-and-drop ordering.
+`grouped_accounts_drag_between_rows_collapsed_empty_and_ungrouped_targets_atomically`
+exercises pointer gestures at 1100/1360 pixels, encrypted save/reopen, cross-group
+moves, cancellation and save failure. It also checks disclosure state after refresh,
+navigation, rename and vault changes, and that account actions remain clickable.
+`group_drops_validate_before_editing_and_preserve_unrelated_accounts` checks invalid
+destinations and the relative order of unrelated accounts. The visual exporter below
+also renders a collapsed group.
 
 `accounts_ui::tests` covers local aliases, unchanged bank-provided account data,
 refresh and old vault formats, encrypted persistence/reopening, cancel/reset and

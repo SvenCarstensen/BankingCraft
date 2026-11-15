@@ -6,6 +6,14 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 pub fn install(app: &AppWindow) {
     let st = app.global::<AppState>();
     let weak = app.as_weak();
+    st.on_move_group_account(move |source, group, target| {
+        crate::edit_vault(&weak.unwrap(), |v| v.move_group_account(
+            source as u32,
+            (group != 0).then_some(group as u32),
+            (target.id >= 0).then_some((target.id as u32, target.after)),
+        ))
+    });
+    let weak = app.as_weak();
     st.on_edit_account_name(move |id| {
         let app = weak.unwrap();
         let st = app.global::<AppState>();
@@ -72,6 +80,90 @@ mod tests {
     use super::*;
     use crate::{bridge::Bridge, jobs::Ctx, store::{Vault, VaultFile}};
     use std::sync::{Arc, Mutex, atomic::AtomicBool};
+
+    #[test]
+    fn grouped_accounts_drag_between_rows_collapsed_empty_and_ungrouped_targets_atomically() {
+        use egui_kittest::kittest::Queryable;
+        i18n::with_language(i18n::Language::German, || {
+            for width in [1100., 1360.] {
+                let app = AppWindow::new().unwrap();
+                let st = app.global::<AppState>();
+                let path = std::env::temp_dir().join(format!("bankingcraft-group-drag-{:016x}", rand::random::<u64>()));
+                let mut vault = Vault::default();
+                let ids = vault.merge_accounts(1, ["Alpha", "Beta", "Gamma", "Delta"].into_iter().enumerate()
+                    .map(|(i, name)| fints::Account { account_number: i.to_string(), product: name.into(), ..Default::default() }).collect());
+                let private = vault.create_group("Privat").unwrap();
+                let other = vault.create_group("Weitere").unwrap();
+                let empty = vault.create_group("Leer").unwrap();
+                for id in &ids[..2] { vault.assign_group(*id, Some(private)).unwrap(); }
+                vault.assign_group(ids[2], Some(other)).unwrap();
+                let c = Ctx { vault: Arc::new(Mutex::new(vault)),
+                    file: Arc::new(Mutex::new(Some(VaultFile::create(path.clone(), "test").unwrap()))),
+                    bridge: Bridge::new(app.as_weak()), running: Arc::new(AtomicBool::new(false)) };
+                crate::CTX.with(|context| *context.borrow_mut() = Some(c.clone()));
+                crate::VIEW.with(|vs| *vs.borrow_mut() = Default::default());
+                install(&app); st.set_unlocked(true); st.set_page(1);
+                st.set_data_path(path.display().to_string());
+                st.on_open_account(|_| panic!("Dragging must not open transactions"));
+                crate::refresh_view(&app);
+                let mut harness = crate::ui::testing::harness(&app, width, 1600.);
+                let drag = |h: &mut egui_kittest::Harness<'static, _>, name: &str, destination: egui::Pos2| {
+                    let source = h.get_by_label(&format!("Konto verschieben: {name}")).rect().center();
+                    h.hover_at(source); h.drag_at(source); h.run_steps(2);
+                    h.hover_at(destination); h.run_steps(2); h.drop_at(destination); h.run_steps(3);
+                };
+                let beta = harness.get_by_label("Konto verschieben: Beta").rect();
+                drag(&mut harness, "Alpha", egui::pos2(beta.center().x, beta.bottom() - 1.));
+                assert_eq!(c.vault.lock().unwrap().accounts.iter().map(|a| a.id).collect::<Vec<_>>(), vec![ids[1], ids[0], ids[2], ids[3]]);
+
+                harness.get_by_label("Konten einklappen: Weitere").click(); harness.run_steps(3);
+                assert!(harness.query_by_label("Konto verschieben: Gamma").is_none());
+                let collapsed = harness.get_by_label("Konten ausklappen: Weitere").rect().center();
+                drag(&mut harness, "Alpha", collapsed);
+                assert_eq!(c.vault.lock().unwrap().groups[1].account_ids, vec![ids[2], ids[0]]);
+                assert!(harness.query_by_label("Konto verschieben: Alpha").is_none());
+                harness.get_by_label("Konten ausklappen: Weitere").click(); harness.run_steps(3);
+                let target = harness.get_by_label("Konten einklappen: Leer").rect().center();
+                drag(&mut harness, "Alpha", target);
+                assert_eq!(c.vault.lock().unwrap().groups[2].account_ids, vec![ids[0]]);
+                let target = harness.get_by_label("Konto verschieben: Delta").rect().center_top();
+                drag(&mut harness, "Alpha", target + egui::vec2(0., 2.));
+                assert!(c.vault.lock().unwrap().groups.iter().all(|g| !g.account_ids.contains(&ids[0])));
+                assert_eq!(VaultFile::open(path.clone(), "test").unwrap().1.accounts.iter().map(|a| a.id).collect::<Vec<_>>(), vec![ids[1], ids[2], ids[0], ids[3]]);
+
+                let before = serde_json::to_vec(&*c.vault.lock().unwrap()).unwrap();
+                let source = harness.get_by_label("Konto verschieben: Alpha").rect().center();
+                harness.hover_at(source); harness.drag_at(source); harness.run_steps(2);
+                harness.key_press(egui::Key::Escape); harness.run_steps(2);
+                let target = harness.get_by_label("Konten einklappen: Privat").rect().center();
+                harness.drop_at(target); harness.run_steps(3);
+                assert_eq!(serde_json::to_vec(&*c.vault.lock().unwrap()).unwrap(), before);
+                drag(&mut harness, "Alpha", egui::pos2(10., 10.));
+                assert_eq!(serde_json::to_vec(&*c.vault.lock().unwrap()).unwrap(), before);
+                let file = c.file.lock().unwrap().take();
+                drag(&mut harness, "Alpha", target);
+                assert_eq!(serde_json::to_vec(&*c.vault.lock().unwrap()).unwrap(), before);
+                assert!(st.get_toast().error);
+                *c.file.lock().unwrap() = file;
+                assert_eq!(c.vault.lock().unwrap().groups[2].id, empty);
+
+                // Refresh, navigation and renamed groups retain disclosure state by ID.
+                harness.get_by_label("Konten einklappen: Weitere").click(); harness.run_steps(3);
+                crate::edit_vault(&app, |v| v.rename_group(other, "Umbenannt"));
+                st.set_page(0); harness.run_steps(3); st.set_page(1); harness.run_steps(3);
+                assert!(harness.query_by_label("Konto verschieben: Gamma").is_none());
+                assert!(harness.query_by_label("Konten ausklappen: Umbenannt").is_some());
+                st.set_data_path("another-test-vault".into()); harness.run_steps(3);
+                assert!(harness.query_by_label("Konto verschieben: Gamma").is_some());
+                st.set_data_path(path.display().to_string()); harness.run_steps(3);
+                assert!(harness.query_by_label("Konto verschieben: Gamma").is_none());
+                harness.query_all_by_label("Anzeigename ändern").next().unwrap().click(); harness.run_steps(3);
+                assert!(st.get_show_account_name(), "Dragging must not intercept the row actions");
+                std::fs::remove_file(path).unwrap();
+                crate::CTX.with(|context| *context.borrow_mut() = None);
+            }
+        });
+    }
 
     #[test]
     fn display_name_survives_bank_refresh_and_legacy_vaults_still_load() {
@@ -247,11 +339,13 @@ mod visual_review {
         std::fs::create_dir_all(&dir).unwrap();
         for (code, language) in [("de", i18n::Language::German), ("fr", i18n::Language::French)] {
             i18n::with_language(language, || {
-                for (page, name) in [(0, "overview-tall"), (0, "overview"), (1, "accounts"), (1, "rename"), (6, "access-ddv"), (6, "access-rdh"), (-1, "vault-open"), (-1, "vault-new"), (8, "vault-settings"), (3, "vop-match"), (3, "vop-close"), (3, "vop-unavailable")] {
+                for (page, name) in [(0, "overview-tall"), (0, "overview"), (1, "accounts"), (1, "accounts-collapsed"), (1, "rename"), (6, "access-ddv"), (6, "access-rdh"), (-1, "vault-open"), (-1, "vault-new"), (8, "vault-settings"), (3, "vop-match"), (3, "vop-close"), (3, "vop-unavailable")] {
                     view::refresh_all(&app, if name == "overview-tall" { &tall_vault } else { &vault }, &mut vs);
                     st.set_unlocked(page >= 0);
                     st.set_show_vault_manager(false);
                     st.set_first_run(name == "vault-new");
+                    st.set_offer_demo_on_create(name == "vault-new");
+                    st.set_create_with_demo(name == "vault-new");
                     st.set_active_vault_name("Privat".into());
                     st.set_selected_vault_name(if name == "vault-new" { "Geschäftlich" } else { "Privat" }.into());
                     st.set_selected_vault_path(format!("/Users/demo/Documents/BankingCraft/{}.kontor", st.get_selected_vault_name()));
@@ -286,7 +380,16 @@ mod visual_review {
                     st.set_account_name_draft("Meine Reisekarte".into());
                     for width in [1100, 1360] {
                         let height = if name == "overview" { 1360 } else if page < 0 || name.starts_with("vop-") { 680 } else { 860 };
-                        crate::ui::testing::snapshot(&app, width, height, dir.join(format!("{code}-{name}-{width}.png")));
+                        let path = dir.join(format!("{code}-{name}-{width}.png"));
+                        if name == "accounts-collapsed" {
+                            use egui_kittest::kittest::Queryable;
+                            let mut harness = crate::ui::testing::harness(&app, width as f32, height as f32);
+                            harness.get_by_label(&i18n::tr_format!("Konten einklappen: {group}", group = "Privat")).click();
+                            harness.run_steps(3);
+                            harness.render().unwrap().save(path).unwrap();
+                        } else {
+                            crate::ui::testing::snapshot(&app, width, height, path);
+                        }
                     }
                 }
             });

@@ -278,18 +278,47 @@ pub fn input(
     let edit = egui::TextEdit::singleline(value)
         .id_salt(id)
         .font(font(14., false))
+        .vertical_align(Align::Center)
         .text_color(t.text)
         .hint_text(RichText::new(tr(hint)).color(t.text_muted))
         .password(password)
-        .desired_width((width - 22.).max(0.))
-        .margin(vec2(11., 7.))
+        .desired_width((width - 46.).max(0.))
+        // A small baseline offset balances the visible glyphs within the line box.
+        .margin(egui::Margin { left: 11, right: 35, top: 9, bottom: 5 })
         .background_color(if t.dark {
             super::theme::hex(0x293648)
         } else {
             Color32::WHITE
         })
         .min_size(vec2(width, 32.));
-    ui.add_sized(vec2(width, 32.), edit)
+    let mut response = ui.add_sized(vec2(width, 32.), edit);
+    let clear_rect = Rect::from_center_size(
+        pos2(response.rect.right() - 18., response.rect.center().y),
+        vec2(24., 24.),
+    );
+    let enabled = ui.is_enabled() && !value.is_empty();
+    let clear = ui.interact(clear_rect, response.id.with("clear"), if enabled { Sense::click() } else { Sense::hover() })
+        .on_hover_text(tr("Eingabe löschen"));
+    clear.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, tr("Eingabe löschen")));
+    if enabled && (clear.hovered() || clear.has_focus()) {
+        ui.painter().rect_filled(clear_rect, 4., t.row_hover);
+    }
+    icon(ui, icons::CLOSE, Rect::from_center_size(clear_rect.center(), vec2(12., 12.)),
+        if enabled { t.text_muted } else { t.text_faint.gamma_multiply(0.5) });
+    if enabled {
+        let clear = clear.on_hover_cursor(egui::CursorIcon::PointingHand);
+        if clear.clicked() {
+            if password { zeroize::Zeroize::zeroize(value); } else { value.clear(); }
+            if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), response.id) {
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(0))));
+                state.store(ui.ctx(), response.id);
+            }
+            response.mark_changed();
+            response.request_focus();
+            ui.ctx().request_repaint();
+        }
+    }
+    response
 }
 pub fn accepted(ui: &Ui, r: &Response) -> bool {
     r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
