@@ -1,8 +1,27 @@
-//! One-time import of account settings transcribed from Bank X's account settings.
+//! One-time import of previously transcribed account settings.
 //! No PINs, private keys, balances or bank security state are accepted.
 use crate::store::{AccessKind, BankAccess, Vault, VaultFile};
 use serde::Deserialize;
 use std::path::Path;
+
+/// Remove the old import label from display names without changing bank identity or history.
+pub fn clean_access_names(vault: &mut Vault, file: &VaultFile) -> Result<(), String> {
+    let mut candidate = vault.clone();
+    let mut changed = false;
+    for access in &mut candidate.accesses {
+        if let Some(name) = access.name.trim_end().strip_suffix(" (Bank X)") {
+            if !name.trim().is_empty() {
+                access.name = name.trim_end().to_owned();
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        file.save(&candidate)?;
+        *vault = candidate;
+    }
+    Ok(())
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,9 +54,9 @@ struct Account {
 }
 
 fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
-    let import: Import = serde_json::from_slice(bytes).map_err(|_| i18n::tr("Ungültige Bank-X-Importdatei"))?;
+    let import: Import = serde_json::from_slice(bytes).map_err(|_| i18n::tr("Ungültige Kontoimportdatei"))?;
     if import.version != 1 || import.accesses.is_empty() || import.accesses.len() > 100 {
-        return Err(i18n::tr("Nicht unterstütztes Bank-X-Importformat").into());
+        return Err(i18n::tr("Nicht unterstütztes Kontoimportformat").into());
     }
     let mut candidate = vault.clone();
     let mut accesses = 0;
@@ -111,7 +130,7 @@ fn import_file(vault: &mut Vault, file: &VaultFile, path: &Path) -> Result<Strin
     let input = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut bytes = zeroize::Zeroizing::new(Vec::new());
     input.take(1_048_577).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-    if bytes.len() > 1_048_576 { return Err(i18n::tr("Bank-X-Importdatei ist zu groß").into()); }
+    if bytes.len() > 1_048_576 { return Err(i18n::tr("Kontoimportdatei ist zu groß").into()); }
     let (candidate, accesses, accounts) = merge(vault, &bytes)?;
     let backup = file.path().with_extension("before-bankx-import");
     let mut options = std::fs::OpenOptions::new();
@@ -130,11 +149,11 @@ fn import_file(vault: &mut Vault, file: &VaultFile, path: &Path) -> Result<Strin
     }
     file.save(&candidate)?;
     *vault = candidate;
-    let mut message = i18n::tr_format!("Bank X: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.");
+    let mut message = i18n::tr_format!("Kontenimport: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.");
     if std::fs::remove_file(path).is_err() {
         message.push_str(i18n::tr(" Die temporäre Importdatei konnte nicht entfernt werden."));
     }
-    log::info!("Bank-X-Import gespeichert: {accesses} Zugänge, {accounts} Konten");
+    log::info!("Kontenimport gespeichert: {accesses} Zugänge, {accounts} Konten");
     Ok(message)
 }
 
@@ -143,6 +162,26 @@ mod tests {
     use super::*;
     fn fixture() -> Vec<u8> {
         br#"{"version":1,"accesses":[{"name":"Testbank","blz":"37040044","user_id":"test","customer_id":"test","host":"bank.example","accounts":[{"iban":"DE89370400440532013000","bic":"COBADEFFXXX","number":"532013000","sub_account":"","owner":"Test","name":"Testkonto","currency":"EUR"}]}]}"#.to_vec()
+    }
+    #[test]
+    fn imported_display_labels_are_removed_and_persisted_without_changing_bank_data() {
+        let dir = std::env::temp_dir().join(format!("bankingcraft-import-label-{:016x}", rand::random::<u64>()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("test.kontor");
+        let file = VaultFile::create(path.clone(), "synthetic-test-password").unwrap();
+        let (mut vault, _, _) = merge(&Vault::default(), &fixture()).unwrap();
+        vault.accesses[0].name = "Testbank (Bank X)".into();
+        vault.accesses[0].state.aqbanking.get_or_insert_with(Default::default).binding = "preserved".into();
+        file.save(&vault).unwrap();
+        let mut expected = vault.clone(); expected.accesses[0].name = "Testbank".into();
+        clean_access_names(&mut vault, &file).unwrap();
+        assert_eq!(serde_json::to_vec(&vault).unwrap(), serde_json::to_vec(&expected).unwrap());
+        let saved = std::fs::read(&path).unwrap();
+        clean_access_names(&mut vault, &file).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        let restored = VaultFile::open(path, "synthetic-test-password").unwrap().1;
+        assert_eq!(serde_json::to_vec(&restored).unwrap(), serde_json::to_vec(&expected).unwrap());
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn import_rejects_unknown_fields_versions_empty_accesses_and_invalid_currency() {

@@ -140,8 +140,17 @@ fn balance_including_pending(v: &Vault, account_id: u32, balance: &banking::Bala
 fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> AccountGroupRow {
     let mut totals = BTreeMap::<String, (Decimal, Decimal, bool, bool)>::new();
     let mut known = 0;
+    let mut expected = 0;
     for row in &rows {
-        if let Some(balance) = v.account(row.id as u32).and_then(|a| a.balance.as_ref()) {
+        let account = v.account(row.id as u32);
+        let balance = account.and_then(|a| a.balance.as_ref());
+        // Depot values are not retrieved by account refresh. An absent depot
+        // balance must not make the cash balances incomplete; keep any already
+        // stored balance in the totals and all accounts in the visible list.
+        if balance.is_some() || !account.is_some_and(|a| (30..=39).contains(&a.account.kind)) {
+            expected += 1;
+        }
+        if let Some(balance) = balance {
             let currency = balance_currency(&balance.currency);
             let total = totals.entry(currency.to_string()).or_default();
             total.0 += balance_including_pending(v, row.id as u32, balance);
@@ -152,10 +161,10 @@ fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> Accou
     }
     let note = if rows.is_empty() {
         i18n::tr("Keine Konten").to_string()
-    } else if known == 0 {
+    } else if known == 0 && expected > 0 {
         i18n::tr("Noch keine Salden abgerufen").to_string()
-    } else if known < rows.len() {
-        i18n::tr_format!("Teilsaldo · {known} von {} Kontosalden verfügbar", rows.len())
+    } else if known < expected {
+        i18n::tr_format!("Teilsaldo · {known} von {} Kontosalden verfügbar", expected)
     } else {
         format!("{} {}", rows.len(), if rows.len() == 1 { i18n::tr("Konto") } else { i18n::tr("Konten") })
     };
@@ -692,7 +701,7 @@ mod amount_tests {
         let mut pending = crate::business_tests::tx(-2000, "2026-11-12");
         pending.pending = true;
         vault.merge_transactions(rows[0].id as u32, vec![pending]);
-        let group = account_group(&vault, 9, "Test", rows);
+        let group = account_group(&vault, 9, "Test", rows.clone());
         assert_eq!(group.balances.row_count(), 2);
         let eur = group.balances.row_data(0).unwrap();
         assert_eq!(eur.amount, "−70,25 €");
@@ -701,6 +710,26 @@ mod amount_tests {
         assert_eq!(group.balances.row_data(1).unwrap().amount, "12,34 USD");
         assert_eq!(group.balances.row_data(1).unwrap().booked_amount, "12,34 USD");
         assert_eq!(group.balance_note, "Teilsaldo · 3 von 4 Kontosalden verfügbar");
+
+        // An unsupported depot stays listed but is not a missing cash balance.
+        let depot_id = vault.merge_accounts(1, vec![banking::Account { account_number: "depot".into(), kind: 30, ..Default::default() }])[0];
+        rows.push(AccountRow { id: depot_id as i32, ..Default::default() });
+        let group = account_group(&vault, 9, "Test", rows.clone());
+        assert_eq!(group.accounts.row_count(), 5);
+        assert_eq!(group.balance_note, "Teilsaldo · 3 von 4 Kontosalden verfügbar");
+        assert_eq!(group.balances.row_data(0).unwrap().amount, "−70,25 €");
+
+        // The warning disappears only after the genuinely missing balance arrives.
+        vault.accounts.iter_mut().find(|a| a.id == rows[3].id as u32).unwrap().balance = Some(banking::Balance {
+            booked: Decimal::ZERO, available: None, currency: "EUR".into(),
+            date: NaiveDate::from_ymd_opt(2026, 11, 12).unwrap(),
+        });
+        let group = account_group(&vault, 9, "Test", rows.clone());
+        assert_eq!(group.balance_note, "5 Konten");
+        assert_eq!(group.balances.row_data(0).unwrap().amount, "−70,25 €");
+        let depot_only = account_group(&vault, 9, "Depot", vec![rows.pop().unwrap()]);
+        assert_eq!(depot_only.balance_note, "1 Konto");
+        assert_eq!(depot_only.balances.row_count(), 0);
     }
 
     #[test]

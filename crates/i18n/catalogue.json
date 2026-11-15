@@ -1114,15 +1114,15 @@
     "Le code PIN enregistré est endommagé ; le mot de passe n’a pas été modifié",
     "El PIN guardado está dañado; no se ha cambiado la contraseña"
   ],
-  "Ungültige Bank-X-Importdatei": [
-    "Invalid Bank X import file",
-    "Fichier d’importation Bank X invalide",
-    "Archivo de importación de Bank X no válido"
+  "Ungültige Kontoimportdatei": [
+    "Invalid account import file",
+    "Fichier d’importation de comptes invalide",
+    "Archivo de importación de cuentas no válido"
   ],
-  "Nicht unterstütztes Bank-X-Importformat": [
-    "Unsupported Bank X import format",
-    "Format d’importation Bank X non pris en charge",
-    "Formato de importación de Bank X no compatible"
+  "Nicht unterstütztes Kontoimportformat": [
+    "Unsupported account import format",
+    "Format d’importation de comptes non pris en charge",
+    "Formato de importación de cuentas no compatible"
   ],
   "Unvollständiger RDH-Bankzugang in der Importdatei": [
     "Incomplete RDH bank connection in import file",
@@ -1134,20 +1134,20 @@
     "Coordonnées bancaires invalides ou contradictoires dans le fichier d’importation",
     "Datos bancarios no válidos o contradictorios en el archivo de importación"
   ],
-  "Bank-X-Importdatei ist zu groß": [
-    "Bank X import file is too large",
-    "Le fichier d’importation Bank X est trop volumineux",
-    "El archivo de importación de Bank X es demasiado grande"
+  "Kontoimportdatei ist zu groß": [
+    "Account import file is too large",
+    "Le fichier d’importation de comptes est trop volumineux",
+    "El archivo de importación de cuentas es demasiado grande"
   ],
   "Sicherung vor Import fehlgeschlagen: {e}": [
     "Backup before import failed: {e}",
     "Échec de la sauvegarde avant importation : {e}",
     "Error en la copia de seguridad previa a la importación: {e}"
   ],
-  "Bank X: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.": [
-    "Bank X: imported {accesses} bank connections and {accounts} accounts. Refresh the connection for current balances.",
-    "Bank X : {accesses} accès bancaires et {accounts} comptes importés. Actualisez l’accès pour obtenir les soldes actuels.",
-    "Bank X: se han importado {accesses} accesos bancarios y {accounts} cuentas. Actualiza el acceso para obtener los saldos actuales."
+  "Kontenimport: {accesses} Bankzugänge und {accounts} Konten übernommen. Für aktuelle Salden bitte den Zugang abrufen.": [
+    "Account import: imported {accesses} bank connections and {accounts} accounts. Refresh the connection for current balances.",
+    "Importation de comptes : {accesses} accès bancaires et {accounts} comptes importés. Actualisez l’accès pour obtenir les soldes actuels.",
+    "Importación de cuentas: se han importado {accesses} accesos bancarios y {accounts} cuentas. Actualiza el acceso para obtener los saldos actuales."
   ],
   " Die temporäre Importdatei konnte nicht entfernt werden.": [
     " The temporary import file could not be removed.",
@@ -1169,10 +1169,10 @@
     "(aucun lecteur de carte détecté)",
     "(no se ha encontrado ningún lector de tarjetas)"
   ],
-  "Bank-X-Übernahme fehlgeschlagen: {e}": [
-    "Bank X import failed: {e}",
-    "Échec de l’importation Bank X : {e}",
-    "Error al importar Bank X: {e}"
+  "Kontenübernahme fehlgeschlagen: {e}": [
+    "Account import failed: {e}",
+    "Échec de l’importation des comptes : {e}",
+    "Error al importar las cuentas: {e}"
   ],
   "Tresor ist gesperrt": [
     "Vault is locked",
@@ -3983,5 +3983,10 @@
     "comdirect: 8-digit access number and online banking PIN.",
     "comdirect : numéro d’accès à 8 chiffres et code PIN bancaire.",
     "comdirect: número de acceso de 8 dígitos y PIN bancario."
+  ],
+  "Bankzugangsname konnte nicht gespeichert werden: {e}": [
+    "Could not save the bank connection name: {e}",
+    "Impossible d’enregistrer le nom de l’accès bancaire : {e}",
+    "No se pudo guardar el nombre del acceso bancario: {e}"
   ]
 }

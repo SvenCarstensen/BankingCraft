@@ -17,7 +17,7 @@ const MAGIC: &[u8; 8] = b"KONTOR1\0";
 pub enum AccessKind {
     PinTan,
     ChipCard { reader: String, record: u8 },
-    /// RDH chip card (ZKA/SECCOS, e.g. VR-NetWorld-Card); `record` = notepad entry (1-based).
+    /// RDH chip card (ZKA/SECCOS); `record` = 1-based entry, or 0 to match bank/user automatically.
     RdhCard { reader: String, record: u8 },
     /// Read-only PayPal NVP API. API credentials are sealed separately from vault data.
     PayPal { sandbox: bool, credentials: SealedSecret },

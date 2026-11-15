@@ -2,6 +2,58 @@
  * Card operations are delegated to Libchipcard. No APDUs or private keys cross
  * the application boundary. The parent bounds and validates the returned TAN.
  */
+static int match_card_context(GWEN_CRYPT_TOKEN *token,const char *bank,const char *user,uint32_t *selected) {
+  *selected=0;
+  if(!*bank || !*user) return GWEN_ERROR_INVALID;
+  uint32_t ids[32],count=32;
+  int rv=GWEN_Crypt_Token_GetContextIdList(token,ids,&count,0);
+  if(rv!=0) return rv;
+  if(count>32) return GWEN_ERROR_BAD_DATA;
+  for(uint32_t i=0;i<count;i++) {
+    if(!ids[i]) return GWEN_ERROR_BAD_DATA;
+    const GWEN_CRYPT_TOKEN_CONTEXT *context=GWEN_Crypt_Token_GetContext(token,ids[i],0);
+    if(!context) return was_cancelled?GWEN_ERROR_USER_ABORTED:GWEN_ERROR_BAD_DATA;
+    if(strcmp(str(GWEN_Crypt_Token_Context_GetServiceId(context)),bank) ||
+       strcmp(str(GWEN_Crypt_Token_Context_GetUserId(context)),user)) continue;
+    if(*selected) {
+      *selected=0;
+      progress_log(NULL,0,GWEN_LoggerLevel_Error,
+          "Mehrere Einträge auf der Chipkarte passen zum Bankzugang. Bitte den gewünschten Karteneintrag ausdrücklich auswählen.");
+      return GWEN_ERROR_INVALID;
+    }
+    *selected=ids[i];
+  }
+  if(!*selected) {
+    progress_log(NULL,0,GWEN_LoggerLevel_Error,
+        "Auf der Chipkarte wurde kein Eintrag mit der Bankleitzahl und Benutzerkennung dieses Bankzugangs gefunden.");
+    return GWEN_ERROR_NOT_FOUND;
+  }
+  return 0;
+}
+
+static int resolve_auto_card_context(uint32_t *selected,GWEN_BUFFER *token_name) {
+  GWEN_PLUGIN_MANAGER *manager=GWEN_PluginManager_FindPluginManager("ct");
+  GWEN_PLUGIN *plugin=manager?GWEN_PluginManager_GetPlugin(manager,bc_text(&request,"medium")):NULL;
+  GWEN_CRYPT_TOKEN *token=plugin?GWEN_Crypt_Token_Plugin_CreateToken(plugin,NULL):NULL;
+  if(!token) return GWEN_ERROR_NOT_FOUND;
+  int rv=GWEN_Crypt_Token_Open(token,0,0);
+  if(rv==0) {
+    rv=match_card_context(token,bc_text(&request,"blz"),bc_text(&request,"user"),selected);
+    if(rv==0) {
+      const char *name=GWEN_Crypt_Token_GetTokenName(token);
+      if(!name || !*name) rv=GWEN_ERROR_BAD_DATA;
+      else GWEN_Buffer_AppendString(token_name,name);
+    }
+    int closed=GWEN_Crypt_Token_Close(token,rv!=0,0);
+    if(rv==0) rv=closed;
+  }
+  GWEN_Crypt_Token_free(token);
+  if(rv!=0 && !*last_notice && !was_cancelled)
+    progress_log(NULL,0,GWEN_LoggerLevel_Error,
+        "Libchipcard konnte die Bankeinträge der Chipkarte nicht lesen. Bitte die HBCI-Karte im ausgewählten Leser prüfen.");
+  return rv;
+}
+
 static int read_card_context(void) {
   const char *kind=bc_text(&request,"medium");
   if(strcmp(kind,"ddvcard") && strcmp(kind,"zkacard")) return GWEN_ERROR_INVALID;

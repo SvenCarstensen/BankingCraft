@@ -2,7 +2,10 @@
 
 Reviewed on **2026-11-13**, with an additional source review on **2026-11-14**. This is a source/configuration review and an offline
 protocol test record, **not a list of banks successfully tested with BankingCraft**.
-Only Postbank PIN/TAN and VR Bank Nord RDH-7 retrieval have been confirmed live.
+The current AqBanking/Libchipcard runtime and its November 15, 2026 live checks are
+documented in [native banking](native-banking.md): Postbank PIN/TAN retrieval and a
+VR Bank Nord RDH refresh with a cyberJack. The matrix below records the earlier
+endpoint review; it is not a new validation of every bank against the native runtime.
 BankingCraft's own FinTS product registration is still pending. A valid registered
 product ID and bank-enabled credentials are prerequisites for further live tests.
 
@@ -18,8 +21,9 @@ and AqBanking source commit `33504e378993d9cdb6702bd90c7039ef378fe31f`:
 - `msglayer/dialog_https.c`: accept base64 or raw FinTS HTTP responses.
 - `applayer/cbox_voptan.c`: TAN/decoupled approval and explicit SCA exemptions.
 
-These behaviors were implemented in Rust; no GnuCash product ID, credentials or
-private configuration were imported. Current bank publications take precedence
+The former Rust protocol implementation has been removed. AqBanking now owns these
+protocol decisions; the earlier source comparison does not imply that every previous
+application-specific policy still applies. Current bank publications take precedence
 over old wiki entries. An HTTP endpoint is not evidence of available account
 permissions, TAN methods, successful authentication or payment support.
 
@@ -31,10 +35,10 @@ stated otherwise; regional bank codes must be selected from the directory.
 
 | Bank/group | Reviewed configuration and practical requirements | Evidence / limits |
 |---|---|---|
-| ING | `https://fints.ing.de/fints/`; username/access number and banking password; customer-ID input may stay empty. Read-only. Current-account history is limited to 90 days; periodically authenticate in the bank's own online banking. | [ING FinTS help](https://www.ing.de/hilfe/log-in/fints/). The hardcoded history fallback is restricted to current/unspecified account types; BPD limits apply to other types. |
+| ING | `https://fints.ing.de/fints/`; username/access number and banking password; customer-ID input may stay empty. Read-only. Current-account history is limited to 90 days; periodically authenticate in the bank's own online banking. | [ING FinTS help](https://www.ing.de/hilfe/log-in/fints/). The native runtime follows AqBanking and bank-reported capabilities; the former hardcoded history policy is no longer present. |
 | DKB | `https://fints.dkb.de/fints`; online banking username, customer-ID input empty; DKB app (decoupled), manual chipTAN or chipTAN QR. | [DKB electronic banking](https://www.dkb.de/geschaeftskunden/electronic-banking). This official source is for business customers; retail/account-specific availability still needs confirmation. Removed the obsolete classic-card host from the directory. |
 | Commerzbank | `https://fints.commerzbank.de/fints`; participant number/username; separate FinTS/photoTAN enablement may be required. Prefer negotiated CAMT. | [Server addresses](https://www.commerzbank.de/service/kommunikationsadressen-ports-und-oeffentlicher-bankschluessel-fuer-hbci/), [HBCI format migration](https://www.commerzbank.de/service/umstellung-von-mt-formaten-auf-camt-formate-in-hbci/). The bank scheduled MT940/942 shutdown for 2026-10-14. Enablement is also documented in the AqBanking table. Its RAH key-file entry is **not** implemented by BankingCraft's RDH-card backend. |
-| comdirect | `https://fints.comdirect.de/fints`; eight-digit access number and PIN. Automatic format negotiation, with an optional legacy MT940 preference. | [Official FinTS setup page](https://www.comdirect.de/cms/sicherheit-software-banking-fints.html), [login FAQ](https://www.comdirect.de/faq/Was-sind-Zugangsdaten). Search-index content confirmed the endpoint/login; the full FinTS page returned HTTP 401 during review. The older AqBanking recommendation to disable CAMT is **not imposed automatically**. The exact current format rollout remains to be verified live. |
+| comdirect | `https://fints.comdirect.de/fints`; eight-digit access number and PIN. Statement format selection is handled by AqBanking. | [Official FinTS setup page](https://www.comdirect.de/cms/sicherheit-software-banking-fints.html), [login FAQ](https://www.comdirect.de/faq/Was-sind-Zugangsdaten). Search-index content confirmed the endpoint/login; the full FinTS page returned HTTP 401 during review. The older AqBanking recommendation to disable CAMT is **not imposed automatically**. The exact current format rollout remains to be verified live. |
 | Deutsche Bank | `https://fints.deutsche-bank.de/`; Deutsche Bank ID or branch/account identifier, current password; photoTAN/BestSign. Refresh after migration. Omit an optional photoTAN medium name. | [Current bank FinTS FAQ](https://www.deutsche-bank.de/pk/konto-und-karte/services/hbci-fints.html). The old wiki restriction to less than 90 days is obsolete: the bank describes history back to 2024-09-01, with additional approval where required. It also documents ten-digit account numbers for certain account-reference errors; no arbitrary account-number rewrite is applied. |
 | norisbank | `https://fints.norisbank.de/`; new norisbank ID or branch/account number and current password; same customer/user identifier; photoTAN or BestSign. | [Current bank FinTS FAQ](https://www.norisbank.de/service/banking/sicherheitsverfahren/hbci-verfahren.html). Old mobileTAN advice is obsolete. A changed bank identity/password must be updated by the user. |
 | Postbank | Existing `https://hbci.postbank.de/banking/hbci.do` profile and Postbank ID/device-name handling retained. | Existing confirmed PIN/TAN retrieval and offline regression coverage; no new live test in this review. |
@@ -53,46 +57,18 @@ AqBanking table suggests Atruvia-2, but no bank source resolving that discrepanc
 was found. Unsupported protocols, securities trading, key-file RAH and account
 permissions cannot be added by copying an endpoint.
 
-## Implemented behavior
+## Current integration and verification
 
-- New access setup explains bank-specific login requirements. Statement-format
-  preference is stored in the encrypted vault; old vaults default to automatic
-  CAMT selection. A preference cannot enable a job absent from BPD/UPD. A failed
-  request is not replayed in a different format.
-- Known retired ING, DKB and GAD/Fiducia **HTTPS** URLs are mapped by exact
-  host/path to documented successors. Custom endpoints and TCP card connections
-  are preserved. Sparda migration changes credentials as well, so existing
-  accesses must be set up with the new identifiers rather than blindly replayed.
-- Fresh BPD replace cached capabilities, including retired TAN methods/formats.
-  Updated clients request the new parameter fields once for older vaults.
-- BPD `StoreDays` and ING's current-account limit bound retrieval. A shortened
-  history generates a visible warning. Older local transactions remain stored;
-  an entirely unavailable requested interval fails instead of becoming an empty
-  successful download.
-- Missing BICs are filled only from the exact account BLZ in a valid German IBAN.
-  Bank-supplied BICs win. Conflicting account identifiers are not guessed. HISPA
-  enrichment works regardless of HIUPD ordering and does not cross-match a
-  different IBAN solely because its account number happens to match.
-- Raw FinTS HTTPS responses preserve binary/Latin-1 content. TLS validation,
-  redirect prohibition, size limits and message/authentication checks remain in
-  force. No bank-signature verification bypass was imported from upstream flags.
-- ING payment/standing-order mutations fail before requesting credentials or
-  contacting the bank. Other payment operations retain existing capability,
-  payee-verification and approval checks.
+AqBanking selects bank jobs and statement formats from the native account
+capabilities. BankingCraft does not offer a custom CAMT/MT940 selector. Account
+identity, SEPA enrichment, reader access and shared card-session behavior are
+specified in [native banking](native-banking.md).
 
-## Verification
-
-Run `./scripts/test-business.sh`. Tests use scripted responses and synthetic data,
-never real accounts. Added cases cover format selection and permissions across
-eight endpoint families, history limits/warnings, ING write rejection, Deutsche
-Bank photoTAN device-name handling, BPD replacement, safe HISPA/BIC enrichment,
-known URL migration, old-vault defaults, raw/base64 response decoding and the
-native setup-form format selection. Existing Postbank, RDH, pagination, payment
-approval and no-retry tests remain part of the suite.
-
-Review result: **227 tests passed**, three manual screenshot-export tests ignored;
-`cargo clippy --workspace --all-targets --locked -- -D warnings` passed. No live
-bank authentication or payment submission was performed for this review.
+Run `./scripts/test-business.sh`, `python3 scripts/test-native.py` and
+`python3 scripts/test-native-adapter.py`. The tests use synthetic data, temporary
+vaults and native-library fixtures; they do not authenticate to real banks.
+See [testing](testing.md) for current results and the distinction from older
+protocol-simulator tests that were removed with the former backend.
 
 Bank publications can change independently of a BankingCraft release. A further
 bank should be labelled live-tested only after successful account, balance and

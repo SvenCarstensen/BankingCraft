@@ -35,9 +35,10 @@ allow time for this coordination before disclosing exploit details publicly.
 
 Real payment submission is not yet validated. Postbank PIN/TAN account, balance and
 transaction retrieval, including credit cards, completed with the AqBanking backend
-on macOS on November 15, 2026. Physical card/reader operation remains unvalidated.
-Earlier Postbank and VR Bank Nord tests used the previous backend and do not cover
-the new integration.
+on macOS on November 15, 2026. A VR Bank Nord RDH refresh was also exercised with a
+cyberJack, with a single reader PIN entry confirmed by the user. Other card/reader
+combinations remain unvalidated. Earlier tests using the previous backend do not
+cover the new integration.
 Automated tests, dependency scans and local code reviews do not constitute an
 independent security audit or bank certification.
 
@@ -51,7 +52,10 @@ or cancelled submission stops synchronization before transaction retrieval.
 ## Current security controls
 
 The native banking process uses bounded private pipes and an in-memory AqBanking
-configuration persisted only inside the encrypted vault. PIN/TAN input is not
+configuration persisted only inside the encrypted vault. A smart-card refresh keeps
+one read session for one bank access; payments are excluded from that session.
+Completion, failures, cancellation and vault locking dispose of the session. The
+adapter does not persist card PINs. PIN/TAN input is not
 written to protocol logs. Five-minute idle expiry, system-lock detection, resume
 detection and a manual lock hide financial data and revoke outstanding prompts.
 The vault uses an exclusive process lock. Payment outcomes that might already
@@ -67,7 +71,7 @@ Signed releases, update verification and notarization are deliberately deferred
 (point 2 of the requested changes). No independent audit has been commissioned
 or completed as part of this implementation.
 
-## Maintainer activation when making the repository public
+## Maintainer activation of private vulnerability reporting
 
 In **Settings → Advanced Security**, enable **Private vulnerability reporting**
 and verify that **Security → Advisories → Report a vulnerability** is available.

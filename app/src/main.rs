@@ -11,7 +11,7 @@ mod banks;
 mod appearance;
 mod localization;
 mod product_id;
-mod bankx_import;
+mod account_import;
 mod bridge;
 mod categorize;
 mod demo;
@@ -130,7 +130,8 @@ fn selected_reader(app: &AppWindow, idx: i32) -> Option<String> {
 }
 
 fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
-    let import_result = if file.path() == store::default_path() { bankx_import::pending(&mut vault, &file) } else { Ok(None) };
+    let import_result = if file.path() == store::default_path() { account_import::pending(&mut vault, &file) } else { Ok(None) };
+    let names_result = account_import::clean_access_names(&mut vault, &file);
     let st = app.global::<AppState>();
     st.set_data_path(file.path().display().to_string());
     st.set_product_id(vault.product_id.clone());
@@ -148,8 +149,11 @@ fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
     refresh_readers(app);
     match import_result {
         Ok(Some(message)) => toast(app, &message, false),
-        Err(e) => toast(app, &i18n::tr_format!("Bank-X-Übernahme fehlgeschlagen: {e}"), true),
+        Err(e) => toast(app, &i18n::tr_format!("Kontenübernahme fehlgeschlagen: {e}"), true),
         Ok(None) => {},
+    }
+    if let Err(e) = names_result {
+        toast(app, &i18n::tr_format!("Bankzugangsname konnte nicht gespeichert werden: {e}"), true);
     }
 }
 

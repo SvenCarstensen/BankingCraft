@@ -1,3 +1,26 @@
+# Unreleased — current master
+
+These changes are not part of the published 0.0.10 packages.
+
+- Use AqBanking and Libchipcard for FinTS/HBCI and card operations, with native
+  configuration stored only in the encrypted vault.
+- Repair automatic card-context selection for imported RDH accesses and reuse
+  one card session during account, balance and transaction refresh. Stop the
+  session on cancellation, vault locking or a failed card read.
+- Correct Postbank account capabilities, CAMT imports and credit-card retrieval;
+  show the current account and operation during synchronization.
+- Use neutral account-import wording and remove the old import suffix from
+  access names while preserving bank identity, account history and native state.
+- Keep securities depots visible without counting their absent balance as a
+  missing cash balance in group or overall summaries.
+
+Local checks include the workspace suite, Clippy, native IPC and sanitizer tests.
+Live retrieval was exercised with Postbank PIN/TAN and a VR Bank Nord RDH card;
+the latter used one cyberJack PIN entry. Other configurations and real payments
+require separate validation. See [testing](testing.md) and [native banking](native-banking.md).
+
+# 0.0.10
+
 BankingCraft 0.0.10 includes the local interface improvements that were not part of 0.0.9.
 
 - Drag accounts to reorder them or move them between groups, including collapsed and empty

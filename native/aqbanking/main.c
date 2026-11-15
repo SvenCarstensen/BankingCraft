@@ -20,6 +20,7 @@
 #include <aqbanking/types/balance.h>
 #include <aqbanking/banking_be.h>
 #include <aqbanking/backendsupport/provider_be.h>
+#include <aqbanking/backendsupport/providerqueue.h>
 #include <aqhbci/banking/user.h>
 #include <aqhbci/banking/user_l.h>
 #include <aqhbci/banking/account.h>
@@ -50,6 +51,7 @@ static BC_FRAME request;
 extern int AB_BankingCraft_NoLegacyImport(void);
 static int was_cancelled, bad_pin, certificate_rejected;
 static int unsupported_account_job;
+static int card_session;
 static char last_notice[16384];
 static unsigned notice_count;
 static const char *operation_stage="initialize";
@@ -214,18 +216,63 @@ static int user_id(void) {
 }
 static int control(AB_BANKING *ab,const char *cmd) {
   begin_stage(cmd);
+  if(card_session && (!strcmp(cmd,"getkeys") || !strcmp(cmd,"getsysid") || !strcmp(cmd,"getaccounts"))) {
+    // The command-line wrappers unmount the card after every setup step.
+    // AqHBCI's documented nounmount argument retains it within this read session.
+    AB_PROVIDER *provider=AB_Banking_BeginUseProvider(ab,"aqhbci");
+    if(!provider) return GWEN_ERROR_NOT_FOUND;
+    AB_USER *user=NULL;
+    int rv=AB_Provider_GetUser(provider,(uint32_t)user_id(),1,1,&user);
+    if(rv==0) {
+      AB_IMEXPORTER_CONTEXT *ctx=AB_ImExporterContext_new();
+      if(!strcmp(cmd,"getkeys")) rv=AH_Provider_GetServerKeys(provider,user,ctx,1,1,1);
+      else if(!strcmp(cmd,"getsysid")) rv=AH_Provider_GetSysId(provider,user,ctx,1,1,1);
+      else rv=AH_Provider_GetAccounts(provider,user,ctx,1,1,1);
+      AB_ImExporterContext_free(ctx); AB_User_free(user);
+    }
+    int ended=AB_Banking_EndUseProvider(ab,provider);
+    return rv==0?ended:rv;
+  }
   char id[32]; snprintf(id,sizeof(id),"%d",user_id());
   char *argv[]={(char *)cmd,"-u",id};
   return AB_Banking_ProviderControl(ab,"aqhbci",3,argv);
 }
-static int ensure_user(AB_BANKING *ab) {
+static int resolve_auto_card_context(uint32_t *selected,GWEN_BUFFER *token_name);
+static int ensure_user_with(AB_BANKING *ab,
+    int (*resolve)(uint32_t *,GWEN_BUFFER *),
+    int (*dispatch)(AB_BANKING *,const char *,int,char **)) {
   if(user_id()) return 0;
-  char context[32]; snprintf(context,sizeof(context),"--context=%s",bc_text(&request,"record"));
+  const char *medium=bc_text(&request,"medium");
+  uint32_t selected=(uint32_t)strtoul(bc_text(&request,"record"),NULL,10);
+  GWEN_BUFFER *token_name=GWEN_Buffer_new(NULL,64,0,1);
+  // Imported accesses use 0 for automatic matching, never a literal card ID.
+  if(!selected && (!strcmp(medium,"zkacard") || !strcmp(medium,"ddvcard"))) {
+    begin_stage("select_card_context");
+    int rv=resolve(&selected,token_name);
+    if(rv!=0 || !selected || !GWEN_Buffer_GetUsedBytes(token_name)) {
+      GWEN_Buffer_free(token_name);
+      return rv!=0?rv:GWEN_ERROR_BAD_DATA;
+    }
+  }
+  begin_stage("initialize");
+  char context[32]; snprintf(context,sizeof(context),"--context=%u",selected);
   char *argv[]={"adduser","-N","BankingCraft","-b",(char *)bc_text(&request,"blz"),
     "-u",(char *)bc_text(&request,"user"),"-c",(char *)bc_text(&request,"customer"),
     "-t",(char *)bc_text(&request,"medium"),"-s",(char *)bc_text(&request,"url"),
-    "--hbciversion=300",context,"--rdhtype=1"}; // card profile is read by AqBanking
-  return AB_Banking_ProviderControl(ab,"aqhbci",sizeof(argv)/sizeof(argv[0]),argv);
+    "--hbciversion=300",context,"--rdhtype=1","-n",GWEN_Buffer_GetStart(token_name)};
+  // The initial profile 1 lets AqBanking adopt the actual profile from the card.
+  // Bind the second open to the same card whose context was just resolved.
+  int argc=(int)(sizeof(argv)/sizeof(argv[0]));
+  if(!GWEN_Buffer_GetUsedBytes(token_name)) argc-=2;
+  int rv=dispatch(ab,"aqhbci",argc,argv);
+  GWEN_Buffer_free(token_name);
+  if(rv!=0 && !*last_notice && !was_cancelled)
+    progress_log(NULL,0,GWEN_LoggerLevel_Error,
+        "AqBanking konnte den Bankzugang nicht anlegen. Bei Chipkartenzugängen bitte Karte, Kartenleser und Bankeintrag prüfen.");
+  return rv;
+}
+static int ensure_user(AB_BANKING *ab) {
+  return ensure_user_with(ab,resolve_auto_card_context,AB_Banking_ProviderControl);
 }
 static int upgrade_snapshot(AB_BANKING *ab) {
   int format=GWEN_DB_GetIntValue(bc_config,"snapshot_format",0,0);
@@ -346,7 +393,7 @@ static int get_sepa_accounts(AB_BANKING *ab) {
     if(job) {
       AH_Job_free(job);
       AB_IMEXPORTER_CONTEXT *ctx=AB_ImExporterContext_new();
-      rv=AH_Provider_GetAccountSepaInfo(provider,user,ctx,1,0,1);
+      rv=AH_Provider_GetAccountSepaInfo(provider,user,ctx,1,card_session,1);
       AB_ImExporterContext_free(ctx);
     }
     AB_User_free(user);
@@ -491,6 +538,34 @@ static int initialize_access(AB_BANKING *ab,
   return rv;
 }
 
+static int send_card_read_with(AB_BANKING *ab,const AB_ACCOUNT_SPEC *account,AB_TRANSACTION *t,
+                              AB_IMEXPORTER_CONTEXT *ctx,
+                              int (*send)(AB_PROVIDER *,AB_PROVIDERQUEUE *,AB_IMEXPORTER_CONTEXT *)) {
+  int cmd=AB_Transaction_GetCommand(t);
+  if(cmd!=AB_Transaction_CommandGetBalance && cmd!=AB_Transaction_CommandGetTransactions)
+    return GWEN_ERROR_INVALID;
+  if(strcmp(str(AB_AccountSpec_GetBackendName(account)),"aqhbci") ||
+     AB_Transaction_GetUniqueAccountId(t)!=AB_AccountSpec_GetUniqueId(account)) return GWEN_ERROR_INVALID;
+  // Use AqBanking's provider queue API for this single-account read. Unlike
+  // AB_Banking_SendCommands, it leaves crypt tokens mounted until session end.
+  // AqHBCI still builds jobs, checks permissions, signs and verifies responses.
+  AB_PROVIDER *provider=AB_Banking_BeginUseProvider(ab,"aqhbci");
+  if(!provider) return GWEN_ERROR_NOT_FOUND;
+  AB_ACCOUNTQUEUE *aq=AB_AccountQueue_new();
+  AB_AccountQueue_SetAccountId(aq,AB_AccountSpec_GetUniqueId(account));
+  AB_AccountQueue_SetAccountSpec(aq,AB_AccountSpec_dup(account));
+  AB_Transaction_SetRefUniqueId(t,0);
+  AB_Transaction_SetStatus(t,AB_Transaction_StatusEnqueued);
+  AB_AccountQueue_AddTransaction(aq,t);
+  AB_PROVIDERQUEUE *pq=AB_ProviderQueue_new();
+  AB_ProviderQueue_SetProviderName(pq,"aqhbci");
+  AB_ProviderQueue_AddAccountQueue(pq,aq);
+  int rv=send(provider,pq,ctx);
+  AB_ProviderQueue_free(pq);
+  int ended=AB_Banking_EndUseProvider(ab,provider);
+  return rv==0?ended:rv;
+}
+
 static int run_job(AB_BANKING *ab,int cmd) {
   AB_ACCOUNT_SPEC *account=NULL;
   int rv=AB_Banking_GetAccountSpecByUniqueId(ab,(uint32_t)strtoul(bc_text(&request,"account"),NULL,10),&account);
@@ -558,7 +633,8 @@ static int run_job(AB_BANKING *ab,int cmd) {
   }
   AB_TRANSACTION_LIST2 *commands=AB_Transaction_List2_new(); AB_Transaction_List2_PushBack(commands,t);
   AB_IMEXPORTER_CONTEXT *context=AB_ImExporterContext_new();
-  rv=AB_Banking_SendCommands(ab,commands,context);
+  rv=card_session?send_card_read_with(ab,account,t,context,AB_Provider_SendCommands):
+                  AB_Banking_SendCommands(ab,commands,context);
   int status=AB_Transaction_GetStatus(t);
   // An outer success is not proof that an individual payment was accepted.
   if(rv>=0 && status!=AB_Transaction_StatusAccepted) rv=GWEN_ERROR_GENERIC;
@@ -573,6 +649,74 @@ cleanup:
 }
 
 #include "cards.h"
+
+static int read_operation(const char *op) {
+  return !strcmp(op,"open") || !strcmp(op,"accounts") || !strcmp(op,"balance") || !strcmp(op,"transactions");
+}
+static int session_request_allowed(const BC_FRAME *next) {
+  const char *op=bc_text(next,"op");
+  if(!read_operation(op) && strcmp(op,"close")) return 0;
+  for(unsigned i=0;i<next->count;i++) {
+    const char *key=next->fields[i].key;
+    if(strcmp(key,"op") && strcmp(key,"account") && strcmp(key,"from") && strcmp(key,"to")) return 0;
+  }
+  return 1;
+}
+static int execute_request(AB_BANKING *ab) {
+  int rv=0;
+  const char *op=bc_text(&request,"op");
+  const char *operations[]={"probe","read_card","chiptan_usb","configure","open","accounts","reset_tan","balance","transactions","standing","transfer","scheduled","create_standing","delete_standing"};
+  int known=0;
+  for(unsigned i=0;i<sizeof(operations)/sizeof(operations[0]);i++) if(!strcmp(op,operations[i])) known=1;
+  if(!known) rv=GWEN_ERROR_INVALID;
+  else if(!strcmp(op,"probe")) rv=0;
+  else if(!strcmp(op,"read_card")) rv=read_card_context();
+  else if(!strcmp(op,"chiptan_usb")) rv=generate_tan();
+  else {
+    rv=ensure_user(ab);
+    if(rv==0) rv=upgrade_snapshot(ab);
+    if(rv==0 && !strcmp(op,"configure")) { /* offline setup only */ }
+    // Editing a wrong medium must work even when it prevents getaccounts.
+    // Use the methods already reported by the bank; no successful login is
+    // required just to correct the local TAN configuration.
+    else if(rv==0 && !strcmp(op,"reset_tan")) rv=select_tan(ab,1);
+    else if(rv==0) {
+      int accounts_fetched=0;
+      rv=initialize_access(ab,control,select_tan,&accounts_fetched);
+      if(rv==0 && !strcmp(op,"accounts") && !accounts_fetched) {
+        GWEN_DB_DeleteVar(bc_config,"sepa_initialized");
+        rv=control(ab,"getaccounts"); accounts_fetched=(rv==0);
+      }
+      if(rv==0) rv=ensure_sepa_accounts(ab,accounts_fetched,get_sepa_accounts);
+      if(rv==0) rv=prefer_camt_accounts(ab);
+      if(rv==0) {
+        begin_stage(op);
+        // Export the freshly rebuilt capabilities even when a selected job
+        // is unsupported. The parent must not keep pre-migration CAMT flags.
+        rv=emit_accounts(ab);
+      }
+      if(rv==0) {
+        if(!strcmp(op,"accounts") || !strcmp(op,"open")) rv=0;
+        else if(!strcmp(op,"balance")) rv=run_job(ab,AB_Transaction_CommandGetBalance);
+        else if(!strcmp(op,"transactions")) rv=run_job(ab,AB_Transaction_CommandGetTransactions);
+        else if(!strcmp(op,"standing")) rv=run_job(ab,AB_Transaction_CommandSepaGetStandingOrders);
+        else if(!strcmp(op,"transfer")) rv=run_job(ab,AB_Transaction_CommandSepaTransfer);
+        else if(!strcmp(op,"scheduled")) rv=run_job(ab,AB_Transaction_CommandSepaCreateDatedTransfer);
+        else if(!strcmp(op,"create_standing")) rv=run_job(ab,AB_Transaction_CommandSepaCreateStandingOrder);
+        else if(!strcmp(op,"delete_standing")) rv=run_job(ab,AB_Transaction_CommandSepaDeleteStandingOrder);
+        else rv=GWEN_ERROR_NOT_SUPPORTED;
+      }
+    }
+  }
+  return rv;
+}
+static void emit_done(int rv,int reusable) {
+  BC_FRAME result=event("done"); bc_number(&result,"code",rv); bc_number(&result,"cancelled",was_cancelled);
+  bc_number(&result,"bad_pin",bad_pin); bc_number(&result,"unsupported_account_job",unsupported_account_job);
+  bc_number(&result,"session",reusable);
+  bc_string(&result,"stage",operation_stage); bc_string(&result,"notice",last_notice);
+  emit_db(&result,"state",bc_config); bc_send(&result);
+}
 
 int main(int argc,char **argv) {
   (void)argc;(void)argv;
@@ -602,56 +746,37 @@ int main(int argc,char **argv) {
   AB_Banking_RuntimeConfig_SetCharValue(ab,"fintsApplicationVersionString",bc_text(&request,"product_version"));
   int rv=AB_Banking_Init(ab);
   if(rv>=0) {
-    const char *op=bc_text(&request,"op");
-    const char *operations[]={"probe","read_card","chiptan_usb","configure","open","accounts","reset_tan","balance","transactions","standing","transfer","scheduled","create_standing","delete_standing"};
-    int known=0;
-    for(unsigned i=0;i<sizeof(operations)/sizeof(operations[0]);i++) if(!strcmp(op,operations[i])) known=1;
-    if(!known) rv=GWEN_ERROR_INVALID;
-    else if(!strcmp(op,"probe")) rv=0;
-    else if(!strcmp(op,"read_card")) rv=read_card_context();
-    else if(!strcmp(op,"chiptan_usb")) rv=generate_tan();
-    else {
-      rv=ensure_user(ab);
-      if(rv==0) rv=upgrade_snapshot(ab);
-      if(rv==0 && !strcmp(op,"configure")) { /* offline setup only */ }
-      // Editing a wrong medium must work even when it prevents getaccounts.
-      // Use the methods already reported by the bank; no successful login is
-      // required just to correct the local TAN configuration.
-      else if(rv==0 && !strcmp(op,"reset_tan")) rv=select_tan(ab,1);
-      else if(rv==0) {
-        int accounts_fetched=0;
-        rv=initialize_access(ab,control,select_tan,&accounts_fetched);
-        if(rv==0 && !strcmp(op,"accounts") && !accounts_fetched) {
-          GWEN_DB_DeleteVar(bc_config,"sepa_initialized");
-          rv=control(ab,"getaccounts"); accounts_fetched=(rv==0);
-        }
-        if(rv==0) rv=ensure_sepa_accounts(ab,accounts_fetched,get_sepa_accounts);
-        if(rv==0) rv=prefer_camt_accounts(ab);
-        if(rv==0) {
-          begin_stage(op);
-          // Export the freshly rebuilt capabilities even when a selected job
-          // is unsupported. The parent must not keep pre-migration CAMT flags.
-          rv=emit_accounts(ab);
-        }
-        if(rv==0) {
-          if(!strcmp(op,"accounts") || !strcmp(op,"open")) rv=0;
-          else if(!strcmp(op,"balance")) rv=run_job(ab,AB_Transaction_CommandGetBalance);
-          else if(!strcmp(op,"transactions")) rv=run_job(ab,AB_Transaction_CommandGetTransactions);
-          else if(!strcmp(op,"standing")) rv=run_job(ab,AB_Transaction_CommandSepaGetStandingOrders);
-          else if(!strcmp(op,"transfer")) rv=run_job(ab,AB_Transaction_CommandSepaTransfer);
-          else if(!strcmp(op,"scheduled")) rv=run_job(ab,AB_Transaction_CommandSepaCreateDatedTransfer);
-          else if(!strcmp(op,"create_standing")) rv=run_job(ab,AB_Transaction_CommandSepaCreateStandingOrder);
-          else if(!strcmp(op,"delete_standing")) rv=run_job(ab,AB_Transaction_CommandSepaDeleteStandingOrder);
-          else rv=GWEN_ERROR_NOT_SUPPORTED;
-        }
-      }
+    BC_FRAME connection={0};
+    const char *keys[]={"blz","user","customer","url","medium","record"};
+    for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);i++) bc_string(&connection,keys[i],bc_text(&request,keys[i]));
+    card_session=!strcmp(bc_text(&request,"card_session"),"1");
+    if(card_session && (strcmp(bc_text(&request,"medium"),"zkacard") && strcmp(bc_text(&request,"medium"),"ddvcard")))
+      rv=GWEN_ERROR_INVALID;
+    unsigned count=0;
+    int emitted=0;
+    while(rv==0) {
+      if(card_session && !read_operation(bc_text(&request,"op"))) rv=GWEN_ERROR_INVALID;
+      else rv=execute_request(ab);
+      // Only a local capability rejection may continue. Authentication errors,
+      // device removal, cancellation and bank failures close the read session.
+      int reusable=card_session && !was_cancelled && !bad_pin && !certificate_rejected &&
+          (rv==0 || (rv==GWEN_ERROR_NOT_SUPPORTED && unsupported_account_job));
+      if(!reusable) break;
+      emit_done(rv,1); emitted=1;
+      BC_FRAME next={0};
+      if(!bc_read(&next)) break; // parent closed normally or disappeared
+      bc_free(&request); request=next;
+      if(!session_request_allowed(&request) || ++count>1024) { rv=GWEN_ERROR_INVALID; emitted=0; break; }
+      if(!strcmp(bc_text(&request,"op"),"close")) break;
+      for(unsigned i=0;i<connection.count;i++) bc_add(&request,connection.fields[i].key,connection.fields[i].value,connection.fields[i].size);
+      was_cancelled=bad_pin=certificate_rejected=unsupported_account_job=0;
+      begin_stage("initialize"); rv=0; emitted=0;
     }
+    bc_free(&connection);
     int fini=AB_Banking_Fini(ab); if(rv==0 && fini<0) rv=fini;
-  }
+    if(!emitted) emit_done(rv,0);
+  } else emit_done(rv,0);
   AB_Banking_free(ab);
-  BC_FRAME result=event("done"); bc_number(&result,"code",rv); bc_number(&result,"cancelled",was_cancelled); bc_number(&result,"bad_pin",bad_pin);
-  bc_number(&result,"unsupported_account_job",unsupported_account_job);
-  bc_string(&result,"stage",operation_stage); bc_string(&result,"notice",last_notice); emit_db(&result,"state",bc_config); bc_send(&result);
   GWEN_DB_Group_free(bc_config); bc_free(&request); bc_wipe(last_notice,sizeof(last_notice));
   GWEN_Gui_SetGui(NULL); GWEN_Gui_free(gui); GWEN_Fini(); fclose(bc_output); return 0;
 }

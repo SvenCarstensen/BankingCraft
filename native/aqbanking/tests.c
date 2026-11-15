@@ -10,7 +10,155 @@
 #include <aqhbci/joblayer/job_l.h>
 #include <aqhbci/joblayer/jobqueue_account.h>
 #include <aqbanking/banking_imex.h>
+#include <gwenhywfar/ct_be.h>
+#include <gwenhywfar/ctplugin_be.h>
 #include <assert.h>
+
+static GWEN_CRYPT_TOKEN_CONTEXT *synthetic_contexts[3];
+static int synthetic_context_error, context_resolutions, adduser_calls, expected_record, expected_token;
+static int synthetic_context_ids(GWEN_CRYPT_TOKEN *token,uint32_t *ids,uint32_t *count,uint32_t gid) {
+  (void)token;(void)gid;
+  if(synthetic_context_error) return synthetic_context_error;
+  assert(*count>=3); ids[0]=2; ids[1]=4; ids[2]=7; *count=3; return 0;
+}
+static const GWEN_CRYPT_TOKEN_CONTEXT *synthetic_context(GWEN_CRYPT_TOKEN *token,uint32_t id,uint32_t gid) {
+  (void)token;(void)gid;
+  return id==2?synthetic_contexts[0]:id==4?synthetic_contexts[1]:id==7?synthetic_contexts[2]:NULL;
+}
+static int synthetic_token_lifecycle(GWEN_CRYPT_TOKEN *token,int flags,uint32_t gid) {
+  (void)token;(void)flags;(void)gid;return 0;
+}
+static int synthetic_resolve(uint32_t *selected,GWEN_BUFFER *name) {
+  context_resolutions++;
+  GWEN_CRYPT_TOKEN *token=GWEN_Crypt_Token_new(GWEN_Crypt_Token_Device_Card,"synthetic","synthetic-card");
+  GWEN_Crypt_Token_SetGetContextIdListFn(token,synthetic_context_ids);
+  GWEN_Crypt_Token_SetGetContextFn(token,synthetic_context);
+  GWEN_Crypt_Token_SetOpenFn(token,synthetic_token_lifecycle);
+  GWEN_Crypt_Token_SetCloseFn(token,synthetic_token_lifecycle);
+  assert(GWEN_Crypt_Token_Open(token,0,0)==0);
+  int rv=match_card_context(token,bc_text(&request,"blz"),bc_text(&request,"user"),selected);
+  if(rv==0) GWEN_Buffer_AppendString(name,GWEN_Crypt_Token_GetTokenName(token));
+  assert(GWEN_Crypt_Token_Close(token,0,0)==0);
+  GWEN_Crypt_Token_free(token); return rv;
+}
+static int synthetic_adduser(AB_BANKING *bank,const char *backend,int argc,char **argv) {
+  (void)bank; adduser_calls++;
+  assert(!strcmp(backend,"aqhbci") && !strcmp(argv[0],"adduser"));
+  int found_record=0,found_token=0;
+  for(int i=1;i<argc;i++) {
+    if(!strncmp(argv[i],"--context=",10)) {assert(atoi(argv[i]+10)==expected_record);found_record++;}
+    if(!strcmp(argv[i],"-n")) {assert(i+1<argc && !strcmp(argv[++i],"synthetic-card"));found_token++;}
+  }
+  assert(found_record==1 && found_token==expected_token); return 0;
+}
+static void test_automatic_card_context(AB_BANKING *bank) {
+  for(unsigned i=0;i<3;i++) {
+    synthetic_contexts[i]=GWEN_Crypt_Token_Context_new();
+    GWEN_Crypt_Token_Context_SetServiceId(synthetic_contexts[i],i==0?"87654321":"12345678");
+    GWEN_Crypt_Token_Context_SetUserId(synthetic_contexts[i],i==2?"another-user":"synthetic-user");
+  }
+  request=event("configure");
+  bc_string(&request,"blz","12345678");bc_string(&request,"user","synthetic-user");
+  bc_string(&request,"medium","zkacard");bc_string(&request,"record","0");
+  expected_record=4;expected_token=1;
+  assert(ensure_user_with(bank,synthetic_resolve,synthetic_adduser)==0);
+  assert(context_resolutions==1 && adduser_calls==1); // ID 4, not 0, 1 or first entry 2
+
+  synthetic_context_error=GWEN_ERROR_USER_ABORTED;
+  assert(ensure_user_with(bank,synthetic_resolve,synthetic_adduser)==GWEN_ERROR_USER_ABORTED);
+  assert(adduser_calls==1);synthetic_context_error=0;
+  GWEN_Crypt_Token_Context_SetUserId(synthetic_contexts[1],"unrelated-user");
+  assert(ensure_user_with(bank,synthetic_resolve,synthetic_adduser)==GWEN_ERROR_NOT_FOUND);
+  assert(adduser_calls==1);
+  GWEN_Crypt_Token_Context_SetUserId(synthetic_contexts[1],"synthetic-user");
+  GWEN_Crypt_Token_Context_SetUserId(synthetic_contexts[2],"synthetic-user");
+  assert(ensure_user_with(bank,synthetic_resolve,synthetic_adduser)==GWEN_ERROR_INVALID);
+  assert(adduser_calls==1); // ambiguous matches never dispatch
+  bc_free(&request);
+
+  request=event("configure");bc_string(&request,"medium","zkacard");bc_string(&request,"record","7");
+  expected_record=7;expected_token=0;
+  assert(ensure_user_with(bank,synthetic_resolve,synthetic_adduser)==0);
+  assert(context_resolutions==4 && adduser_calls==2); // explicit IDs remain unchanged
+  bc_free(&request);
+  request=event("configure");bc_string(&request,"medium","pintan");bc_string(&request,"record","1");
+  expected_record=1;
+  assert(ensure_user_with(bank,synthetic_resolve,synthetic_adduser)==0);
+  assert(context_resolutions==4 && adduser_calls==3); // no card operations for PIN/TAN
+  bc_free(&request);
+  for(unsigned i=0;i<3;i++) GWEN_Crypt_Token_Context_free(synthetic_contexts[i]);
+  begin_stage("initialize");
+}
+
+static int card_opens,card_closes,card_dispatches;
+static int session_token_open(GWEN_CRYPT_TOKEN *token,int flags,uint32_t gid) {
+  (void)token;(void)flags;(void)gid; card_opens++; return 0;
+}
+static int session_token_close(GWEN_CRYPT_TOKEN *token,int flags,uint32_t gid) {
+  (void)token;(void)flags;(void)gid; card_closes++; return 0;
+}
+static GWEN_CRYPT_TOKEN *session_token_factory(GWEN_PLUGIN *plugin,const char *name) {
+  (void)plugin;
+  GWEN_CRYPT_TOKEN *token=GWEN_Crypt_Token_new(GWEN_Crypt_Token_Device_Card,"session-test",name);
+  GWEN_Crypt_Token_SetOpenFn(token,session_token_open);
+  GWEN_Crypt_Token_SetCloseFn(token,session_token_close);
+  return token;
+}
+static int synthetic_read_send(AB_PROVIDER *provider,AB_PROVIDERQUEUE *queue,AB_IMEXPORTER_CONTEXT *ctx) {
+  (void)ctx; card_dispatches++;
+  assert(!strcmp(AB_ProviderQueue_GetProviderName(queue),"aqhbci"));
+  AB_ACCOUNTQUEUE *account=AB_ProviderQueue_GetFirstAccountQueue(queue); assert(account);
+  assert(!AB_AccountQueue_List_Next(account));
+  assert(AB_AccountQueue_GetAccountId(account)==42);
+  assert(AB_AccountSpec_GetUniqueId(AB_AccountQueue_GetAccountSpec(account))==42);
+  AB_TRANSACTION_LIST2_ITERATOR *it=AB_Transaction_List2_First(AB_AccountQueue_GetTransactionList(account)); assert(it);
+  AB_TRANSACTION *t=AB_Transaction_List2Iterator_Data(it);
+  assert(AB_Transaction_GetUniqueAccountId(t)==42);
+  assert(AB_Transaction_GetStatus(t)==AB_Transaction_StatusEnqueued);
+  assert(!AB_Transaction_List2Iterator_Next(it)); AB_Transaction_List2Iterator_free(it);
+  GWEN_CRYPT_TOKEN *token=NULL;
+  assert(AB_Banking_GetCryptToken(AB_Provider_GetBanking(provider),"session-test","synthetic-card",&token)==0);
+  if(!GWEN_Crypt_Token_IsOpen(token)) assert(GWEN_Crypt_Token_Open(token,0,0)==0);
+  AB_Transaction_SetStatus(t,AB_Transaction_StatusAccepted);
+  return 0;
+}
+static void test_card_read_session(AB_BANKING *bank) {
+  GWEN_PLUGIN_MANAGER *pm=GWEN_PluginManager_FindPluginManager("ct"); assert(pm);
+  GWEN_PLUGIN *plugin=GWEN_Crypt_Token_Plugin_new(pm,GWEN_Crypt_Token_Device_Card,"session-test",NULL);
+  GWEN_Crypt_Token_Plugin_SetCreateTokenFn(plugin,session_token_factory);
+  GWEN_PluginManager_AddPlugin(pm,plugin);
+  AB_ACCOUNT_SPEC *account=AB_AccountSpec_new(); AB_AccountSpec_SetUniqueId(account,42);
+  AB_AccountSpec_SetBackendName(account,"aqhbci");
+  AB_TRANSACTION *t=AB_Transaction_new(); AB_Transaction_SetUniqueAccountId(t,42);
+  AB_IMEXPORTER_CONTEXT *ctx=AB_ImExporterContext_new();
+  const int commands[]={AB_Transaction_CommandGetBalance,AB_Transaction_CommandGetTransactions};
+  for(unsigned i=0;i<2;i++) {
+    AB_Transaction_SetCommand(t,commands[i]);
+    assert(send_card_read_with(bank,account,t,ctx,synthetic_read_send)==0);
+    assert(AB_Transaction_GetStatus(t)==AB_Transaction_StatusAccepted);
+  }
+  assert(card_dispatches==2 && card_opens==1 && card_closes==0);
+  AB_Transaction_SetCommand(t,AB_Transaction_CommandSepaTransfer);
+  assert(send_card_read_with(bank,account,t,ctx,synthetic_read_send)==GWEN_ERROR_INVALID);
+  AB_Transaction_SetCommand(t,AB_Transaction_CommandGetBalance);
+  AB_Transaction_SetUniqueAccountId(t,43);
+  assert(send_card_read_with(bank,account,t,ctx,synthetic_read_send)==GWEN_ERROR_INVALID);
+  assert(card_dispatches==2);
+  AB_Banking_ClearCryptTokenList(bank); assert(card_closes==1);
+  AB_Transaction_SetUniqueAccountId(t,42);
+  assert(send_card_read_with(bank,account,t,ctx,synthetic_read_send)==0);
+  assert(card_opens==2); // authentication is not reused by a new session
+  AB_Banking_ClearCryptTokenList(bank); assert(card_closes==2);
+  AB_ImExporterContext_free(ctx); AB_Transaction_free(t); AB_AccountSpec_free(account);
+  const char *denied[]={"transfer","scheduled","create_standing","delete_standing","reset_tan","configure","read_card"};
+  for(unsigned i=0;i<sizeof(denied)/sizeof(denied[0]);i++) {
+    BC_FRAME next={0};bc_string(&next,"op",denied[i]);
+    assert(!session_request_allowed(&next));bc_free(&next);
+  }
+  BC_FRAME next={0};bc_string(&next,"op","balance");bc_string(&next,"account","42");
+  assert(session_request_allowed(&next));bc_string(&next,"medium","pintan");
+  assert(!session_request_allowed(&next));bc_free(&next);
+}
 
 static void test_camt_entry_amounts(AB_BANKING *bank) {
   // Synthetic camt.052.001.08, imported through the same AqBanking profile
@@ -466,6 +614,8 @@ int main(int argc,char **argv) {
   test_camt_entry_amounts(bank);
   test_invalid_result_amounts();
   test_socket_wait_progress();
+  test_automatic_card_context(bank);
+  test_card_read_session(bank);
   GWEN_PLUGIN_MANAGER *tokens=GWEN_PluginManager_FindPluginManager("ct"); assert(tokens);
   const char *token_names[]={"ddvcard","zkacard"};
   for(unsigned i=0;i<2;i++) {

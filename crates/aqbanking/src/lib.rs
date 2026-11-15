@@ -9,7 +9,7 @@ use banking::{Account, Balance, Config, Error, Interaction, Interval, Result, Se
 use banking::AqBankingState;
 use rust_decimal::Decimal;
 use sha2::{Digest,Sha256};
-use std::{io, path::PathBuf, process::{Child,Command,Stdio}, sync::mpsc, time::{Duration,Instant}};
+use std::{io, path::PathBuf, process::{Child,ChildStdin,Command,Stdio}, sync::mpsc, time::{Duration,Instant}};
 use zeroize::{Zeroize,Zeroizing};
 
 #[derive(Clone)]
@@ -27,6 +27,7 @@ fn native_error(frame:&Frame,code:i64) -> Result<Error> {
     let stage=text(frame,"stage")?;
     let (label,access)=match stage {
         "initialize"=>("Verbindungseinrichtung",true),
+        "select_card_context"=>("Bankzugang auf der Chipkarte auswählen",true),
         "getkeys"=>("Bankschlüssel abrufen",true),
         "getbankinfo"=>("Bankparameter abrufen",true),
         "getsysid"=>("Systemkennung synchronisieren",true),
@@ -103,11 +104,35 @@ fn helper_path() -> Result<PathBuf> {
 struct Worker(Child);
 impl Drop for Worker { fn drop(&mut self) { let _=self.0.kill(); let _=self.0.wait(); } }
 
+// One native card session belongs to one Client/access and one UI generation.
+// No PIN bytes are cached here; Libchipcard retains the authenticated card handle.
+struct CardWorker {
+    worker:Worker,
+    input:ChildStdin,
+    receive:mpsc::Receiver<io::Result<Frame>>,
+    _blocker:tempfile::NamedTempFile,
+    generation:u64,
+}
+impl CardWorker {
+    fn close(mut self) {
+        let _=Frame::new("close").write(&mut self.input);
+        drop(self.input);
+        // Normal teardown lets Libchipcard unmount; never wait indefinitely on
+        // a stuck driver. Drop still kills/reaps workers on errors/cancellation.
+        for _ in 0..50 {
+            if self.worker.0.try_wait().ok().flatten().is_some() { return; }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+fn read_operation(op:&str) -> bool { matches!(op,"open"|"accounts"|"balance"|"transactions") }
+
 pub struct Client<'a> {
     config:Config,
     pub state:State,
     medium:Medium,
     ui:&'a dyn Interaction,
+    session:Option<CardWorker>,
 }
 impl<'a> Client<'a> {
     pub fn new(config:Config,mut state:State,medium:Medium,ui:&'a dyn Interaction) -> Result<Self> {
@@ -130,15 +155,18 @@ impl<'a> Client<'a> {
         if state.aqbanking.is_none() {
             state.aqbanking=Some(AqBankingState {version:1,binding,snapshot:Vec::new(),accounts:Vec::new()});
         }
-        Ok(Self {config,state,medium,ui})
+        Ok(Self {config,state,medium,ui,session:None})
     }
-    pub fn finish(self) -> State { self.state }
-    fn call(&mut self,mut request:Frame) -> Result<Vec<Frame>> {
-        let generation = self.ui.session_generation();
-        if self.ui.cancelled() { return Err(Error::Cancelled); }
+    pub fn finish(mut self) -> State {
+        if let Some(worker)=self.session.take() { worker.close(); }
+        self.state
+    }
+    fn spawn_worker(&self,request:&mut Frame,session:bool) -> Result<CardWorker> {
+        let generation=self.ui.session_generation();
         let helper=helper_path()?;
         let blocker=tempfile::NamedTempFile::new().map_err(failure)?;
         request.put("version","1"); request.put("data_path",blocker.path().to_str().ok_or_else(invalid)?);
+        if session { request.put("card_session","1"); }
         request.put("state",&self.state.aqbanking.as_ref().unwrap().snapshot);
         request.put("blz",&self.config.blz); request.put("user",&self.config.user_id);
         request.put("customer",if self.config.customer_id.is_empty() {&self.config.user_id} else {&self.config.customer_id});
@@ -151,21 +179,33 @@ impl<'a> Client<'a> {
         command.env("BANKINGCRAFT_CARD_READER",self.medium.reader());
         #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
         let mut worker=Worker(command.spawn().map_err(failure)?);
-        let mut input=worker.0.stdin.take().ok_or_else(invalid)?;
+        let input=worker.0.stdin.take().ok_or_else(invalid)?;
         let mut output=worker.0.stdout.take().ok_or_else(invalid)?;
         let (send,receive)=mpsc::sync_channel(8);
         std::thread::spawn(move || loop {
             let frame=Frame::read(&mut output); let failed=frame.is_err();
             if send.send(frame).is_err() || failed { break; }
         });
-        request.write(&mut input).map_err(failure)?; drop(request);
+        Ok(CardWorker {worker,input,receive,_blocker:blocker,generation})
+    }
+    fn call(&mut self,mut request:Frame) -> Result<Vec<Frame>> {
+        if self.ui.cancelled() { self.session.take(); return Err(Error::Cancelled); }
+        let use_session=!matches!(self.medium,Medium::PinTan) && read_operation(text(&request,"op")?);
+        if !use_session {
+            if let Some(worker)=self.session.take() { worker.close(); }
+        }
+        let mut worker=if let Some(worker)=self.session.take() {
+            if worker.generation!=self.ui.session_generation() { return Err(Error::Cancelled); }
+            worker
+        } else { self.spawn_worker(&mut request,use_session)? };
+        request.write(&mut worker.input).map_err(failure)?; drop(request);
         let mut frames=Vec::new(); let mut bytes=0usize; let mut idle=Instant::now(); let mut start=Instant::now(); let mut events=0usize;
         loop {
-            if self.ui.cancelled() || self.ui.session_generation() != generation { return Err(Error::Cancelled); }
+            if self.ui.cancelled() || self.ui.session_generation() != worker.generation { return Err(Error::Cancelled); }
             if idle.elapsed()>Duration::from_secs(90) || start.elapsed()>Duration::from_secs(15*60) {
                 return Err(Error::Transport("AqBanking-Zeitlimit erreicht. Bankstatus eines gesendeten Auftrags prüfen.".into()));
             }
-            let frame=match receive.recv_timeout(Duration::from_millis(100)) {
+            let frame=match worker.receive.recv_timeout(Duration::from_millis(100)) {
                 Ok(frame)=>frame.map_err(failure)?,
                 Err(mpsc::RecvTimeoutError::Timeout)=>continue,
                 Err(_)=>return Err(invalid()),
@@ -185,17 +225,23 @@ impl<'a> Client<'a> {
                     if number(&frame,"bad_pin")?!=0 { self.ui.pin_rejected(); }
                     if number(&frame,"cancelled")?!=0 { return Err(Error::Cancelled); }
                     let code=number(&frame,"code")?;
-                    if code!=0 {
-                        return Err(native_error(&frame,code)?);
+                    let result=if code!=0 { Err(native_error(&frame,code)?) } else { Ok(frames) };
+                    if use_session && frame.text("session").unwrap_or("0")=="1"
+                        && (result.is_ok() || matches!(&result,Err(Error::NotSupported(_)))) {
+                        self.session=Some(worker);
                     }
-                    return Ok(frames);
+                    // A failed card read must stop the account loop, rather than
+                    // reopen the card and request the PIN again for every account.
+                    return if use_session {
+                        result.map_err(|e| match e { Error::Bank{code,text}=>Error::Access{code,text},other=>other })
+                    } else { result };
                 },
                 "progress"=>self.ui.progress(&banking::display::strip_html(text(&frame,"text")?)),
                 "show"=>self.ui.hardware_prompt(true,&banking::display::strip_html(text(&frame,"text")?)),
                 "hide"=>self.ui.hardware_prompt(false,""),
                 "bad_pin"=>self.ui.pin_rejected(),
                 "password"|"message"|"vop"|"choice"=>{
-                    let reply=self.answer(&frame)?; reply.write(&mut input).map_err(failure)?;
+                    let reply=self.answer(&frame)?; reply.write(&mut worker.input).map_err(failure)?;
                     idle=Instant::now(); start=idle;
                 },
                 "account"|"balance"|"transaction"|"card"|"reader"|"tan"=>{
@@ -420,6 +466,65 @@ fn parse_balance(frames:&[Frame]) -> Result<Option<Balance>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    fn synthetic_card_worker(ui:&dyn Interaction,codes:Vec<(i64,bool)>) -> (CardWorker,std::thread::JoinHandle<Vec<String>>) {
+        // cat only echoes our IPC into the fixture thread; no native library,
+        // bank connection or physical reader is used by these Rust tests.
+        let mut child=Command::new("/bin/cat").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let input=child.stdin.take().unwrap(); let mut output=child.stdout.take().unwrap();
+        let (send,receive)=mpsc::sync_channel(8);
+        let handle=std::thread::spawn(move || {
+            let mut operations=Vec::new();
+            for (code,reusable) in codes {
+                let request=Frame::read(&mut output).unwrap();
+                operations.push(request.text("op").unwrap().into());
+                // Subsequent requests must not replace identity or native state.
+                assert!(request.bytes("state").is_empty());
+                assert!(request.bytes("user").is_empty());
+                let mut done=Frame::new("done"); done.put("event","done");
+                for (key,value) in [("code",code.to_string()),("bad_pin","0".into()),("cancelled","0".into()),
+                    ("stage","balance".into()),("notice","Synthetic card result".into()),("state","synthetic-state".into()),
+                    ("session",if reusable {"1"} else {"0"}.into()),("unsupported_account_job",if code == -68 {"1"} else {"0"}.into())] {
+                    done.put(key,value);
+                }
+                send.send(Ok(done)).unwrap();
+            }
+            operations
+        });
+        (CardWorker {worker:Worker(child),input,receive,_blocker:tempfile::NamedTempFile::new().unwrap(),generation:ui.session_generation()},handle)
+    }
+    #[test]
+    #[cfg(unix)]
+    fn card_reads_reuse_one_worker_and_stop_after_a_bank_failure() {
+        let ui=Capture::default();
+        let mut client=local_client(Medium::Rdh{reader:String::new(),record:1},&ui).unwrap();
+        let (worker,requests)=synthetic_card_worker(&ui,vec![(0,true),(-68,true),(-1,false)]);
+        let pid=worker.worker.0.id(); client.session=Some(worker);
+        client.call(Frame::new("open")).unwrap();
+        assert_eq!(client.session.as_ref().unwrap().worker.0.id(),pid);
+        assert!(matches!(client.call(Frame::new("transactions")),Err(Error::NotSupported(_))));
+        assert_eq!(client.session.as_ref().unwrap().worker.0.id(),pid);
+        assert!(matches!(client.call(Frame::new("balance")),Err(Error::Access{..})));
+        assert!(client.session.is_none());
+        assert_eq!(client.state.aqbanking.as_ref().unwrap().snapshot,b"synthetic-state");
+        assert_eq!(requests.join().unwrap(),["open","transactions","balance"]);
+    }
+    #[test]
+    #[cfg(unix)]
+    fn card_session_is_dropped_when_the_vault_generation_changes() {
+        let ui=Capture::default();
+        let mut client=local_client(Medium::Ddv{reader:String::new(),record:1},&ui).unwrap();
+        let (mut worker,requests)=synthetic_card_worker(&ui,vec![]);
+        worker.generation=ui.session_generation()+1; client.session=Some(worker);
+        assert!(matches!(client.call(Frame::new("open")),Err(Error::Cancelled)));
+        assert!(client.session.is_none()); assert!(requests.join().unwrap().is_empty());
+    }
+    #[test]
+    fn payments_and_card_management_never_reuse_read_sessions() {
+        for op in ["transfer","scheduled","create_standing","delete_standing","read_card","chiptan_usb","reset_tan","configure"] {
+            assert!(!read_operation(op));
+        }
+    }
     #[test]
     fn unsupported_account_jobs_keep_details_without_masking_setup_or_runtime_errors() {
         let mut frame=Frame::new("done");
@@ -482,7 +587,7 @@ mod tests {
         let mut frame=Frame::new("done");
         frame.put("bad_pin","0");
         frame.put("notice","HBCI: 9010 - Synthetic original rejection (S)\nHBCI: 9999 - Dialog bereits geschlossen. (S)");
-        for stage in ["initialize","getbankinfo","getkeys","getsysid","select_tan","select_tan_medium","getitanmodes","configure_accounts","getaccounts","getaccsepa","accounts"] {
+        for stage in ["initialize","select_card_context","getbankinfo","getkeys","getsysid","select_tan","select_tan_medium","getitanmodes","configure_accounts","getaccounts","getaccsepa","accounts"] {
             frame.put("stage",stage);
             let Error::Access {code,text}=native_error(&frame,3).unwrap() else {panic!("must stop the access")};
             assert_eq!(code,"3");

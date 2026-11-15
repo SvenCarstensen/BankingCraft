@@ -2,16 +2,18 @@
 
 Integration status: November 15, 2026. This change has been tested offline on
 macOS Apple Silicon. Postbank credit-card retrieval and the full Postbank account
-refresh have also completed in live checks; physical-card operation remains unverified.
+refresh have also completed in live checks. A VR Bank RDH refresh was exercised
+with a cyberJack, reusing one worker through the last account; the tester confirmed
+a single reader PIN entry. Other physical-card/reader combinations remain unverified.
 Windows/Linux automation is configured; its results are recorded in GitHub Actions.
 The local development app has been updated. No release containing this migration
 has been published.
 
 ## Boundaries and migration
 
-`app/src/jobs.rs` uses `crates/aqbanking` for banking operations. Each operation
-starts `bankingcraft-aqbanking`, which calls AqBanking's public banking APIs and
-its pinned AqHBCI TAN-selection APIs. Libchipcard crypt tokens handle DDV/ZKA
+`app/src/jobs.rs` uses `crates/aqbanking` for banking operations. The isolated
+`bankingcraft-aqbanking` worker calls AqBanking's banking/provider APIs and its
+pinned AqHBCI setup and TAN-selection APIs. Libchipcard crypt tokens handle DDV/ZKA
 cards; its chipTAN USB API handles TAN generation. Reader discovery still uses
 PC/SC. The application no longer invokes the old custom card diagnostic/APDUs.
 
@@ -34,7 +36,7 @@ AqBanking settings are an opaque, versioned snapshot inside each access's encryp
 vault record. A custom Gwenhywfar config manager keeps groups in memory. A regular
 empty file blocks writes through the native data-directory path. No native secrets
 are placed in command-line arguments or plaintext configuration files. The native
-process receives only the selected access and operation through pipes. Debug builds
+process receives only the selected access and requested operations through pipes. Debug builds
 can use `.native/helper-path`; release builds require the packaged worker.
 
 The snapshot reader uses Gwenhywfar's `GWEN_PATH_FLAGS_CREATE_GROUP`, matching its
@@ -56,6 +58,29 @@ older application after saving the new format is not promised.
 Existing transaction categories are retained; multiset duplicate matching handles
 formatting differences while preserving legitimate identical bookings. Old standing
 orders must be fetched again before deletion, to obtain the native bank descriptor.
+
+Imported card accesses can store entry `0` for automatic selection. Before adding
+such a user, the adapter reads Libchipcard's context list and resolves a unique
+match for the configured bank code and user ID. AqBanking receives the actual
+nonzero context ID and the same card's token name. Missing or ambiguous matches
+stop setup; explicit entry IDs remain unchanged. Selection is needed only before
+the native user exists and may require a separate card PIN confirmation.
+
+Card account refreshes keep one native worker and one Libchipcard token alive for
+account discovery, balances and transactions of the same access. AqHBCI's
+`nounmount` setup option and AqBanking's provider queue API avoid closing the card
+after each read. No PIN is cached by the adapter or added to the snapshot; the
+reader still verifies it. Additional card-required authentication remains possible.
+The first import may need a separate PIN for automatic card-context selection.
+
+The session accepts only read operations and account/date selectors after startup;
+it cannot change its bank identity, reader, medium or snapshot. Payments and card
+management run separately. Successful reads export updated snapshots immediately.
+Normal completion closes/unmounts the token. Vault locking, cancellation, process
+failure and timeout dispose of the worker. A card/bank read failure stops the
+refresh instead of restarting authentication for each remaining account; local
+unsupported-account capabilities may be skipped without reopening the card.
+The application's per-account balance/transaction progress labels remain intact.
 
 PIN/TAN initialization follows AqBanking's setup wizard and
 [documented setup order](https://www.aquamaniac.de/rdm/projects/aqbanking/wiki/SetupPinTan):
@@ -95,6 +120,12 @@ Unsupported operations are explicitly reported as limitations, preserve existing
 history and do not turn into empty reports. Bank/transport/setup failures remain
 errors; only a marked local capability rejection is classified as unsupported.
 Refresh counts include only accounts for which data was actually obtained.
+
+Group and overall balance completeness exclude securities accounts (types 30–39)
+when no balance is stored for them, matching their exclusion from account refresh.
+They remain visible and included in the account-list count. Existing stored balances
+are retained in totals; genuinely missing balances on other accounts remain visible
+as a partial balance. Depot holdings and valuations are not retrieved.
 
 Errors stay visible until dismissed or the vault is locked. The details window
 shows the complete selectable message and offers an explicit copy button.
@@ -236,6 +267,14 @@ Process-level regressions restore the same synthetic snapshot in separate worker
 check that credit-card permissions survive, and ensure unsupported requests return
 fresh capabilities and specific details without bank I/O. Snapshot tests preserve
 repeated UPD/TAN groups and verify the one-time parameter-refresh migration.
+Synthetic card-token tests select a matching non-first context, reject missing or
+ambiguous bank/user matches, stop on cancellation, and verify the actual adduser
+arguments without accessing a physical card or sending bank requests.
+Read-session tests count synthetic token opens/closes across balance and transaction
+queues, reject payment dispatch and mismatched account IDs, and require a fresh
+open after teardown. Process tests reject identity/snapshot changes, support EOF
+cleanup, and keep local unsupported jobs within the same session. Rust tests check
+worker reuse, state preservation on errors and invalidation after vault locking.
 
 The audit script pins Syft/Grype archives by SHA-256, generates a CycloneDX SBOM
 and scans it locally. Mac Homebrew, Linux package and Windows MSYS2 identities

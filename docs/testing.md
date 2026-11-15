@@ -14,15 +14,25 @@ See [native banking](native-banking.md) for build/test commands and
 review. Automated checks are offline/synthetic. Separate authorized live checks on
 macOS completed Postbank PIN/TAN account, balance and transaction retrieval, including
 credit-card transactions. The user also confirmed the account/operation progress
-display. No real payment or physical card workflow was exercised.
+display. A subsequent VR Bank Nord RDH refresh used one native worker through the
+last account and closed it afterwards; the user confirmed a single PIN entry on the
+cyberJack. No real payment was submitted. Other card/reader combinations remain
+unverified.
 
-The final local workspace run passed 151 tests, with 8 ignored by the default runner;
+The final local workspace run passed 155 tests, with 8 ignored by the default runner;
 Clippy with warnings as errors and the macOS release build passed. Native offline
 and ASan/UBSan regressions cover repeated snapshot groups, setup/TAN-medium repair,
 account capabilities, credit-card job selection, CAMT entry amounts and currencies,
 unused empty balances and malformed amounts. A UI-backed synthetic refresh test
 checks the account/balance/transaction status sequence for full and scoped refreshes,
 including native progress suppression and shared cancellation.
+
+Additional regressions cover automatic card-context matching, refusal of ambiguous
+matches, token reuse across balance/transaction reads, session teardown, rejection
+of payments or identity changes in a read session, and cancellation after a vault
+generation change. Imported access-name cleanup preserves account history and native
+state. Balance tests keep depots visible without treating their absent balance as a
+missing cash balance; actual missing balances and currency totals remain intact.
 
 
 Run from the repository root:
@@ -133,7 +143,7 @@ languages. Synthetic views can be exported for inspection:
 cargo test -p bankingcraft --locked render_balance_review -- --ignored --nocapture
 ```
 
-### Workflow matrix
+### Historical workflow matrix — before the native migration
 
 | Workflow | Cases covered | Tests |
 |---|---|---|
@@ -166,7 +176,7 @@ cargo test -p bankingcraft --locked render_balance_review -- --ignored --nocaptu
 | Group balances | Booked/pending amounts, separate currencies, partial totals, missing versus zero balances, available-only PayPal funds | `view::amount_tests`, `paypal::tests` |
 | Transaction view | Combined account/date/category/multiword search, case folding, unknown dates, pending first, amount/date formatting, per-currency totals | `view::amount_tests`, `business_tests`, `paypal::tests` |
 | Categories and analytics | Manual before learned before default rules, salary only for credits, month boundaries, exclusion of pending/undated/internal transfers, monthly series, EUR-only analytics | `business_tests`, `view::amount_tests`, `paypal::tests` |
-| Bank X import | Repeatability, normalization, preserved configuration/groups, format/field/account validation, size limit, encrypted backup, no partial import | `bankx_import::tests` |
+| Account import | Repeatability, normalization, preserved configuration/groups, format/field/account validation, size limit, encrypted backup, no partial import | `account_import::tests` |
 | CSV/CAMT export | Selection/order, invalid indices, special characters including CR, unknown dates, pending/debit/credit, references, CAMT re-import; PayPal available balance and non-IBAN identifiers | `business_tests`, `paypal::tests` |
 | Remove bank connection | Remove associated accounts, transactions, standing orders and group assignments; preserve other connections | `business_tests` |
 | Bank search and profiles | Common banks/search terms, verified host updates, retained newer URLs and whitespace handling | `banks::tests` |

@@ -52,15 +52,17 @@ not eliminate defects in integration, native dependencies or user authorization.
 ## Internal evidence
 
 Final local verification after removal of the legacy implementation and the
-Postbank/synchronization fixes: 151 workspace tests passed, 8 tests ignored by the default runner (including
+Postbank, card-session and balance-display fixes: 155 workspace tests passed, 8 tests ignored by the default runner (including
 subprocess helper tests invoked by their parent tests); Clippy with warnings as
 errors passed. The macOS ARM64 release built successfully and the packaged GUI
 stayed running for 12 seconds using an empty temporary profile. Native offline,
 ASan/UBSan and relocation checks passed. The packaged native scan covered 13
 components with zero matches and zero suppressed matches. Postbank PIN/TAN account,
 balance and transaction retrieval, including credit cards, completed in separate live
-checks on macOS. The user confirmed the account/operation progress display. Other
-banks, physical card workflows and Windows/Linux behavior were not exercised locally.
+checks on macOS. The user confirmed the account/operation progress display. A VR Bank
+Nord RDH refresh used a single worker through the last account and one cyberJack PIN
+entry, confirmed by the user. Other card/reader combinations and Windows/Linux
+behavior were not exercised locally.
 
 - Workspace tests cover encrypted persistence, exclusive lock/password changes,
   duplicate handling, uncertain queue status, session expiry and prompt revocation.
@@ -68,6 +70,10 @@ banks, physical card workflows and Windows/Linux behavior were not exercised loc
   text and acceptance/rejection/cancellation, and reject a certificate error.
 - Native tests create a synthetic home, prove no legacy import/config writes and
   reject truncated, duplicate, NUL-containing, oversized and seeded malformed IPC.
+- Card-session tests count token opens/closes and exercise automatic context matching,
+  read-only dispatch boundaries, identity isolation, vault generation changes and
+  failure teardown. Card authentication is retained only within one refresh; card
+  PINs are not persisted, and payments use a separate session.
 - Rust tests cover bounded wire decoding, exact decimal conversion, TAN responses,
   HHD rendering without double encoding and image dimension/allocation limits.
 - Import/export, form validation and scoped-refresh regressions remain. The old

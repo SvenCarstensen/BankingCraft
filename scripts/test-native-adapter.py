@@ -78,4 +78,26 @@ with tempfile.TemporaryDirectory(prefix="bankingcraft-adapter-") as directory:
         assert done["code"]==b"-68" and done["unsupported_account_job"]==b"1"
         assert b"keinen Umsatzabruf" in done["notice"]
         assert any(f["event"]==b"account" and f["id"]==unsupported["id"] and not f["allowed"] for f in rejected_frames)
-print("PASS: CAMT entry amounts/currencies/signs/optional details, unused empty balances, malformed amount rejection, socket-wait progress suppression, repeated snapshot groups/upgrade, cross-process card capabilities, statement-factory fallback, unsupported-job details, TAN-medium loading/entry/persistence/cancel/repair, CAMT/MT940/card jobs, SEPA import/identity/migration/retry, SCA, TLS and VoP; ASan/UBSan adapter")
+        # A card refresh retains one worker across read-only requests. Use the
+        # ready synthetic state and unsupported account to avoid any card/bank IO.
+        request.update(op="open",medium="zkacard",card_session="1",state=current[-1]["state"])
+        follow=[dict(op="transactions",account=unsupported["id"]),dict(op="open"),dict(op="close")]
+        session=subprocess.run([str(helper)],input=wire.encode(request)+b"".join(wire.encode(f) for f in follow),
+            stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=env,timeout=10)
+        assert session.returncode==0
+        done=[f for f in wire.decode(session.stdout) if f["event"]==b"done"]
+        assert [f["code"] for f in done]==[b"0",b"-68",b"0"]
+        assert all(f["session"]==b"1" for f in done)
+        # Neither payment dispatch nor a changed access identity may enter the
+        # existing card session. Rejection happens before setup or network IO.
+        for forbidden in [dict(op="transfer"),dict(op="open",user="another-user"),dict(op="open",state=b"")]:
+            result=subprocess.run([str(helper)],input=wire.encode(request)+wire.encode(forbidden),
+                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=env,timeout=10)
+            assert result.returncode==0
+            done=[f for f in wire.decode(result.stdout) if f["event"]==b"done"]
+            assert len(done)==2 and done[-1]["code"]!=b"0" and done[-1]["session"]==b"0"
+        # EOF also closes/unmounts normally instead of waiting for another job.
+        eof=subprocess.run([str(helper)],input=wire.encode(request),stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,env=env,timeout=10)
+        assert eof.returncode==0
+print("PASS: card context matching, card-session reuse/teardown/read-only boundaries, CAMT entry amounts/currencies/signs/optional details, unused empty balances, malformed amount rejection, socket-wait progress suppression, repeated snapshot groups/upgrade, cross-process card capabilities, statement-factory fallback, unsupported-job details, TAN-medium loading/entry/persistence/cancel/repair, CAMT/MT940/card jobs, SEPA import/identity/migration/retry, SCA, TLS and VoP; ASan/UBSan adapter")

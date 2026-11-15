@@ -17,7 +17,9 @@ separate experimental read-only integration.
 **The current backend uses AqBanking 6.9.2, Gwenhywfar 5.14.3 and Libchipcard
 5.1.6. Postbank PIN/TAN account, balance and transaction retrieval, including
 credit-card transactions, completed successfully on macOS on November 15, 2026.
-Real payments and physical card/reader operation remain unvalidated with this backend.**
+A VR Bank Nord RDH retrieval was also exercised with a cyberJack; the user confirmed
+one reader PIN entry for the refresh. Real payments and other card/reader combinations
+remain unvalidated with this backend.**
 
 Other bank/card configurations must be validated separately. The application remains
 an evaluation build.
@@ -42,8 +44,8 @@ See [native banking](docs/native-banking.md) and the
   validation with real readers, graphics drivers or bank connections on each platform.
 - **Security testing is limited.** Passing tests and dependency scans are not an independent
   security audit or banking certification. See [SECURITY.md](SECURITY.md) for confidential
-  reporting through GitHub. Private vulnerability reporting must be enabled after the repository
-  becomes public. Do not post vulnerabilities, credentials or bank data in public issues.
+  reporting through GitHub. Private vulnerability reporting must be enabled by the maintainer.
+  Do not post vulnerabilities, credentials or bank data in public issues.
 - **Packaged alpha releases** are built on GitHub Actions as a Linux AppImage, a Windows
   EXE installer/portable ZIP and macOS DMGs for Apple Silicon and Intel. Each release includes
   matching source with vendored Rust dependencies, license notices and SHA-256 checksums.
@@ -136,7 +138,8 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | TAN display | Native AqBanking optical HHD data, bounded photoTAN/QR images, text and app approval prompts |
 | chipTAN USB | Libchipcard generates the TAN; BankingCraft validates the bounded response |
 | HBCI smart cards | DDV and ZKA/RDH through AqBanking and Libchipcard crypt tokens; private keys remain on the card |
-| Secure PIN entry | Libchipcard handles reader PIN-pad capabilities and required prompts |
+| Secure PIN entry | Libchipcard handles reader PIN-pad capabilities; a shared card session avoids repeated PIN prompts within an account refresh |
+| Balance completeness | Securities accounts without a balance remain visible but do not trigger a missing-account-balance warning; depot holdings and valuations are not retrieved |
 | Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
 | Payment orders and recipients | Encrypted outgoing queue, saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
@@ -357,6 +360,16 @@ Technical AqBanking progress messages do not overwrite these labels. PIN/TAN and
 prompts still appear when required. Errors stay visible until dismissed, with complete
 selectable details available separately.
 
+Smart-card account discovery, balance retrieval and transaction retrieval share one
+card session per bank access. The card is closed after the refresh; cancellation,
+vault locking or a failed card read stops the session. Payments use a separate
+session. The app does not save the card PIN.
+
+Securities depots remain in the account list. Because depot holdings and valuations
+are not retrieved, a depot without a balance does not count as a missing cash
+balance in group or overall totals. Missing balances on other accounts still produce
+a **Partial balance** notice.
+
 [FinTS product registration](https://www.fints.org/de/hersteller/produktregistrierung) is handled
 by the software publisher. Once assigned, BankingCraft’s product ID will be embedded in a future
 release. Product registration fields are not shown in Settings.
@@ -438,7 +451,7 @@ clears unsaved forms and previous selections. Switching waits until bank operati
 UI updates are complete. Existing data is saved before switching, and a save failure keeps the
 current vault open. `vaults.json` in the original application data directory stores only recent
 file paths, without passwords or banking data. Appearance, language and window preferences
-remain application-wide. The one-time Bank X import only applies to the original default vault.
+remain application-wide. Pending account imports only apply to the original default vault.
 
 ## Account display names
 
@@ -503,12 +516,13 @@ native worker. Sharing libraries with GnuCash does not establish
 identical security: BankingCraft's UI, IPC, encrypted persistence, packaging and
 payment authorization are separate code requiring review.
 
-Local verification on November 15, 2026 passed **151 workspace tests**, Clippy with warnings
+Local verification on November 15, 2026 passed **155 workspace tests**, Clippy with warnings
 as errors, native offline regressions and ASan/UBSan adapter checks. The macOS release build
 starts successfully. A live Postbank PIN/TAN check retrieved account data, balances and
 transactions, including credit-card transactions; the updated synchronization display was
-also confirmed by the user. These checks do not validate other banks, physical cards or
-real payment submission.
+also confirmed by the user. A VR Bank Nord RDH refresh used one worker through the
+last account and one cyberJack PIN entry, confirmed by the user. These checks do not
+validate other banks, card/reader combinations or real payment submission.
 
 Run `cargo test --workspace --locked`, the native offline tests and the packaged
 runtime scan described in [native banking](docs/native-banking.md).
@@ -520,7 +534,7 @@ the bank's VoP protocol. Its complete VoP dialog text requires explicit confirma
 no result is silently accepted by that dialog adapter. Cancellation and unknown
 dialog types fail closed. To correct a payment, cancel and submit the revised form.
 Native adapter tests exercise the actual AqBanking VoP dialog with synthetic data.
-No real payment, bank VoP workflow or card signing flow has been tested with this backend.
+No real payment or bank VoP approval workflow has been tested with this backend.
 
 See [security hardening and audit scope](docs/security-hardening.md) for controls,
 known limits and outstanding independent review. PCI-DSS/FAPI compliance and security
