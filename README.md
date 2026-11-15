@@ -3,7 +3,7 @@
 BankingCraft is a Rust desktop banking application using **egui 0.36** and **eframe 0.36**.
 FinTS/HBCI banking is handled by **AqBanking**, with **Libchipcard** for smart cards and
 chipTAN USB. The app provides encrypted local vaults, account and credit-card retrieval,
-transaction lists, payment workflows and financial reports. PayPal retrieval uses a
+transaction lists, editable categories, payment workflows and financial reports. PayPal retrieval uses a
 separate experimental read-only integration.
 
 > [!WARNING]
@@ -71,7 +71,8 @@ the application. The demo works offline; all names, account numbers and payments
 ### Financial overview
 
 View balances including pending transactions alongside separately labelled booked balances,
-recent transactions, spending categories and upcoming standing orders.
+recent transactions, spending categories and upcoming standing orders. Cards in the same
+row share a height that adapts to their contents, including after group-filter changes.
 
 ![Financial overview with demo balances and spending categories](docs/screenshots/overview.png)
 
@@ -99,6 +100,13 @@ Prepare a standard, instant or scheduled transfer with an account-specific recip
 Explore income and expenses by category and compare the yearly trend.
 
 ![Monthly spending categories and yearly income and expense chart](docs/screenshots/reports.png)
+
+### Category management
+
+Create categories and rename or delete built-in and custom categories from a dedicated
+sidebar page. Pencil and trash icons sit beside each category name.
+
+![Category management with fictional custom categories](docs/screenshots/categories.png)
 
 ## License
 
@@ -143,12 +151,27 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
 | Payment orders and recipients | Encrypted outgoing queue, a navigation badge counting all orders in the list (hidden when empty), saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
+| Categories | A dedicated sidebar page below Bank connections; create categories, rename or delete custom and built-in categories per vault, with preserved assignments and a replacement for deleted categories |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
 | Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
 | Privacy | Local AES-256-GCM vault, key derived from the vault password using Argon2id; online banking PINs are saved only when explicitly requested and are additionally encrypted; card PINs are never saved |
 | Session protection | Manual lock, five-minute idle expiry, system-lock/resume monitoring, prompt revocation and exclusive vault access; platform limits documented in the security review |
-| Appearance | Light and dark themes, applied immediately; the first launch follows the system theme |
+| Appearance | Light and dark themes, applied immediately; the first launch follows the system theme; overview cards in each row share the same height; Lock vault sits last in the sidebar with a lock icon and the same hover highlight as other menu items |
 | Languages | German, English, French and Spanish; the first launch uses the system language, with English as the fallback; the language can be changed in Settings |
+
+## Categories
+
+Open **Categories** in the sidebar, directly below **Bank connections**. The page is also
+linked from Settings and from a transaction's category selector. Both built-in and custom
+categories can be renamed or deleted using the pencil and trash icons beside each name.
+New categories are available in transaction filters,
+reports and CSV exports. User-defined names stay as entered when the interface language changes.
+
+Renaming a built-in category preserves its automatic matching rules and color. Before
+deleting any category, choose a replacement; existing assignments, learned rules and future
+automatic matches use that replacement. Transactions are retained. At least one category
+must remain available; create another category first if there is no suitable replacement.
+All category settings are stored inside the encrypted vault, separately for each vault.
 
 ## REINER SCT cyberJack (secoder)
 

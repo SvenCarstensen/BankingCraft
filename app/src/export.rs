@@ -41,7 +41,7 @@ pub(crate) fn csv_content(v: &Vault, idx: &[usize]) -> String {
             t.tx.counterparty_bic.clone(),
             t.tx.purpose.clone(),
             t.tx.posting_text.clone(),
-            crate::view::category_label(&categorize(t, &v.rules)).to_string(),
+            v.category_label(&categorize(t, v)).to_string(),
             format!("{:.2}", t.tx.amount).replace('.', ","),
             t.tx.currency.clone(),
             i18n::tr(if t.tx.pending { "vorgemerkt" } else { "gebucht" }).to_string(),

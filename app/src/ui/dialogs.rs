@@ -28,7 +28,7 @@ fn modal(ui: &Ui, t: &Theme, id: &str, width: f32, f: impl FnOnce(&mut Ui)) {
         });
 }
 
-fn focus(ui: &Ui, id: &str, response: &egui::Response) {
+pub(super) fn focus(ui: &Ui, id: &str, response: &egui::Response) {
     let frame = ui.ctx().cumulative_frame_nr();
 
     let key = egui::Id::new(("dialog-focus", id));

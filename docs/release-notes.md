@@ -2,6 +2,15 @@
 
 These changes are not part of the published 0.0.10 packages.
 
+- Manage categories on a dedicated sidebar page below Bank connections. Create categories,
+  rename or delete both built-in and custom categories per vault. Renaming preserves
+  assignments and automatic matching; deletion redirects them to a chosen replacement.
+  Category edits are saved atomically in the encrypted vault. Each category name and
+  its pencil/trash actions share a single row, with tooltips and accessible labels.
+- Align the height of adjacent overview cards to the taller content, including after
+  changing group filters or resizing the window.
+- Place Lock vault last in the sidebar, with a lock icon and the same hover highlight
+  as the other menu items.
 - Use AqBanking and Libchipcard for FinTS/HBCI and card operations, with native
   configuration stored only in the encrypted vault.
 - Repair automatic card-context selection for imported RDH accesses and reuse

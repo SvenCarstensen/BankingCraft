@@ -502,7 +502,57 @@ pub fn columns(ui: &mut Ui, widths: &[f32], gap: f32, mut render: impl FnMut(&mu
         pos2((x - gap).max(start.x), bottom),
     ));
 }
-pub fn card<R>(ui: &mut Ui, t: &Theme, padding: i8, f: impl FnOnce(&mut Ui) -> R) -> R {
+/// Lay out contents once, then stretch every frame to the tallest frame in the row.
+pub fn framed_columns(
+    ui: &mut Ui,
+    columns: &[(f32, egui::Frame)],
+    gap: f32,
+    min_height: f32,
+    mut render: impl FnMut(&mut Ui, usize),
+) -> Vec<Response> {
+    let start = ui.cursor().min;
+    let id = ui.next_auto_id();
+    ui.skip_ahead_auto_ids(1);
+    let mut x = start.x;
+    let mut height = min_height;
+    let mut prepared = Vec::with_capacity(columns.len());
+    for (i, (width, frame)) in columns.iter().enumerate() {
+        let width = width.max(0.);
+        let mut child = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt((id, i))
+                .max_rect(Rect::from_min_size(pos2(x, start.y), vec2(width, 100000.)))
+                .layout(Layout::top_down(Align::Min)),
+        );
+        child.set_width(width);
+        let mut panel = frame.begin(&mut child);
+        panel
+            .content_ui
+            .set_width(panel.content_ui.available_width());
+        panel.content_ui.spacing_mut().item_spacing = vec2(10., 0.);
+        render(&mut panel.content_ui, i);
+        height = height.max(frame.outer_rect(panel.content_ui.min_rect()).height());
+        prepared.push((child, panel));
+        x += width + gap;
+    }
+    let bottom = ((start.y + height) * ui.pixels_per_point()).ceil() / ui.pixels_per_point();
+    let responses = prepared
+        .into_iter()
+        .map(|(mut child, mut panel)| {
+            let mut content = panel.content_ui.min_rect();
+            content.max.y = bottom - panel.frame.total_margin().bottom;
+            panel.content_ui.expand_to_include_rect(content);
+            panel.end(&mut child)
+        })
+        .collect();
+    ui.advance_cursor_after_rect(Rect::from_min_max(
+        start,
+        pos2((x - gap).max(start.x), bottom),
+    ));
+    responses
+}
+
+pub fn card_frame(t: &Theme, padding: i8) -> egui::Frame {
     egui::Frame::new()
         .fill(t.card_bg)
         .stroke(Stroke::new(1., t.card_border))
@@ -514,6 +564,9 @@ pub fn card<R>(ui: &mut Ui, t: &Theme, padding: i8, f: impl FnOnce(&mut Ui) -> R
             color: t.shadow,
         })
         .inner_margin(padding)
+}
+pub fn card<R>(ui: &mut Ui, t: &Theme, padding: i8, f: impl FnOnce(&mut Ui) -> R) -> R {
+    card_frame(t, padding)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing = vec2(10., 0.);
@@ -521,6 +574,7 @@ pub fn card<R>(ui: &mut Ui, t: &Theme, padding: i8, f: impl FnOnce(&mut Ui) -> R
         })
         .inner
 }
+
 pub fn header(ui: &mut Ui, t: &Theme, title: &str, subtitle: &str) {
     ui.vertical(|ui| {
         text(ui, tr(title), 15., true, t.text);

@@ -1,6 +1,6 @@
 //! Turns the vault into UI view models.
 
-use crate::categorize::{categorize, color_of, CATEGORIES};
+use crate::categorize::{categorize, color_of};
 use crate::store::{AccessKind, StoredTx, Vault};
 use crate::{AccessRow, AccountRow, AccountGroupRow, GroupBalanceRow, AppState, AppWindow, BarStat, MonthStat, StandingRow, TxDetail, TxRow};
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
@@ -70,9 +70,6 @@ fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(v))
 }
 
-pub fn category_label(name: &str) -> &str {
-    if CATEGORIES.iter().any(|c| c.name == name) { i18n::tr(name) } else { name }
-}
 
 fn ss(s: impl AsRef<str>) -> SharedString {
     SharedString::from(s.as_ref())
@@ -267,10 +264,11 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
         st.set_last_sync(ss(i18n::tr("Willkommen – richten Sie einen Bankzugang ein oder laden Sie die Demo-Daten.")));
     }
 
-    // categories
-    st.set_categories(model(CATEGORIES.iter().map(|c| ss(c.name)).collect()));
-    st.set_category_labels(model(CATEGORIES.iter().map(|c| ss(i18n::tr(c.name))).collect()));
-    st.set_category_colors(model(CATEGORIES.iter().map(|c| color_of(c.name)).collect()));
+    // Built-in keys remain stable; custom names are never translated.
+    let categories = v.category_names();
+    st.set_categories(model(categories.clone()));
+    st.set_category_labels(model(categories.iter().map(|c| ss(v.category_label(c))).collect()));
+    st.set_category_colors(model(categories.iter().map(|c| color_of(c)).collect()));
 
     // overview month figures
     let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
@@ -340,7 +338,7 @@ fn month_stats_for(v: &Vault, month_start: NaiveDate, accounts: Option<&HashSet<
         if balance_currency(&t.tx.currency) != "EUR" || accounts.is_some_and(|ids| !ids.contains(&t.account_id)) || t.tx.pending || t.tx.date_unknown || t.tx.booking_date < month_start || t.tx.booking_date >= month_end {
             continue;
         }
-        let cat = categorize(t, &v.rules);
+        let cat = categorize(t, v);
         if cat == "Umbuchung" {
             continue;
         }
@@ -354,14 +352,14 @@ fn month_stats_for(v: &Vault, month_start: NaiveDate, accounts: Option<&HashSet<
     (inc, exp, cats)
 }
 
-fn bar_stats(cats: &BTreeMap<String, Decimal>, limit: usize) -> Vec<BarStat> {
+fn bar_stats(v: &Vault, cats: &BTreeMap<String, Decimal>, limit: usize) -> Vec<BarStat> {
     let mut list: Vec<(&String, &Decimal)> = cats.iter().collect();
     list.sort_by(|a, b| b.1.cmp(a.1));
     let max = list.first().map(|x| *x.1).unwrap_or(Decimal::ONE);
     list.into_iter()
         .take(limit)
         .map(|(name, amount)| BarStat {
-            label: ss(category_label(name)),
+            label: ss(v.category_label(name)),
             value: ss(fmt_eur(*amount)),
             ratio: if max.is_zero() { 0.0 } else { (*amount / max).to_string().parse::<f32>().unwrap_or(0.0) },
             color: color_of(name),
@@ -400,25 +398,25 @@ pub fn refresh_analysis(app: &AppWindow, v: &Vault) {
     let start = if offset < 0 { base - Months::new((-offset) as u32) } else { base + Months::new(offset as u32) };
     st.set_analysis_label(ss(format!("{} {}", i18n::tr(MONTHS[start.month0() as usize]), start.year())));
     let (_, _, cats) = month_stats(v, start);
-    st.set_analysis_categories(model(bar_stats(&cats, 15)));
+    st.set_analysis_categories(model(bar_stats(v, &cats, 15)));
     // income by category
     let end = start + Months::new(1);
     let mut inc: BTreeMap<String, Decimal> = BTreeMap::new();
     for t in &v.transactions {
         if balance_currency(&t.tx.currency) == "EUR" && !t.tx.pending && !t.tx.date_unknown && t.tx.booking_date >= start && t.tx.booking_date < end && !t.tx.amount.is_sign_negative() {
-            let c = categorize(t, &v.rules);
+            let c = categorize(t, v);
             if c != "Umbuchung" {
                 *inc.entry(c).or_default() += t.tx.amount;
             }
         }
     }
-    st.set_analysis_income(model(bar_stats(&inc, 10)));
+    st.set_analysis_income(model(bar_stats(v, &inc, 10)));
     st.set_analysis_months(model(month_series(v, start, 12)));
 }
 
 pub fn tx_row(v: &Vault, i: usize, with_account: bool) -> TxRow {
     let t = &v.transactions[i];
-    let cat = categorize(t, &v.rules);
+    let cat = categorize(t, v);
     let name = if t.tx.counterparty_name.is_empty() { t.tx.posting_text.clone() } else { t.tx.counterparty_name.clone() };
     let purpose = if t.tx.purpose.is_empty() { t.tx.posting_text.clone() } else { t.tx.purpose.clone() };
     TxRow {
@@ -433,7 +431,7 @@ pub fn tx_row(v: &Vault, i: usize, with_account: bool) -> TxRow {
         negative: t.tx.amount.is_sign_negative(),
         pending: t.tx.pending,
         cat_color: color_of(&cat),
-        category: ss(category_label(&cat)),
+        category: ss(v.category_label(&cat)),
         account: ss(if with_account { account_label(v, t.account_id) } else { String::new() }),
     }
 }
@@ -453,7 +451,7 @@ fn transaction_indices(v: &Vault, account: Option<u32>, since: Option<NaiveDate>
                     return false;
                 }
             }
-            if !cat_filter.is_empty() && categorize(t, &v.rules) != cat_filter {
+            if !cat_filter.is_empty() && categorize(t, v) != cat_filter {
                 return false;
             }
             if !search.is_empty() {
@@ -574,7 +572,8 @@ pub fn show_detail(app: &AppWindow, v: &Vault, i: usize) {
         eref: ss(&t.tx.end_to_end_id),
         mref: ss(&t.tx.mandate_id),
         creditor_id: ss(&t.tx.creditor_id),
-        category: ss(category_label(&categorize(t, &v.rules))),
+        category: ss(v.category_label(&categorize(t, v))),
+        category_id: categorize(t, v),
         account: ss(account_label(v, t.account_id)),
         pending: t.tx.pending,
     });

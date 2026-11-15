@@ -1,6 +1,14 @@
 //! UI view models. Banking data remains owned by the vault.
 use super::{Color, Image, ModelRc, SharedString};
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct CategoryManager {
+    pub original: String,
+    pub name: String,
+    pub deleting: bool,
+    pub replacement: String,
+    pub error: String,
+}
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct AccountDropTarget {
     pub id: i32,
     pub after: bool,
@@ -73,6 +81,7 @@ pub struct TxDetail {
     pub category: SharedString,
     pub account: SharedString,
     pub pending: bool,
+    pub category_id: SharedString,
 }
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BarStat {
@@ -198,6 +207,7 @@ pub struct Data {
     pub tx_period: i32,
     pub tx_summary: SharedString,
     pub tx_detail: TxDetail,
+    pub category_manager: CategoryManager,
     pub categories: ModelRc<SharedString>,
     pub category_labels: ModelRc<SharedString>,
     pub category_colors: ModelRc<Color>,
@@ -350,6 +360,7 @@ impl Default for Data {
             tx_period: 2,
             tx_summary: Default::default(),
             tx_detail: Default::default(),
+            category_manager: Default::default(),
             categories: Default::default(),
             category_labels: Default::default(),
             category_colors: Default::default(),
@@ -484,6 +495,8 @@ pub struct Callbacks {
     tx_filter_changed: Callback<dyn Fn()>,
     tx_select: Callback<dyn Fn(i32)>,
     set_category: Callback<dyn Fn(i32, SharedString)>,
+    save_category: Callback<dyn Fn()>,
+    delete_category: Callback<dyn Fn()>,
     export_csv: Callback<dyn Fn()>,
     export_camt: Callback<dyn Fn()>,
     check_iban: Callback<dyn Fn(SharedString)>,
@@ -696,6 +709,9 @@ impl AppState {
         }
         if before.tx_detail != after.tx_detail {
             data.tx_detail = after.tx_detail.clone();
+        }
+        if before.category_manager != after.category_manager {
+            data.category_manager = after.category_manager.clone();
         }
         if before.categories != after.categories {
             data.categories = after.categories.clone();
@@ -1292,6 +1308,26 @@ impl AppState {
     }
     pub fn set_tx_detail(&self, value: TxDetail) {
         self.data.borrow_mut().tx_detail = value;
+    }
+    pub fn get_category_manager(&self) -> CategoryManager {
+        self.data.borrow().category_manager.clone()
+    }
+    pub fn set_category_manager(&self, value: CategoryManager) {
+        self.data.borrow_mut().category_manager = value;
+    }
+    pub fn on_save_category(&self, callback: impl Fn() + 'static) {
+        self.callbacks.borrow_mut().save_category = Some(std::rc::Rc::new(callback));
+    }
+    pub fn invoke_save_category(&self) {
+        let callback = self.callbacks.borrow().save_category.clone();
+        if let Some(callback) = callback { callback(); }
+    }
+    pub fn on_delete_category(&self, callback: impl Fn() + 'static) {
+        self.callbacks.borrow_mut().delete_category = Some(std::rc::Rc::new(callback));
+    }
+    pub fn invoke_delete_category(&self) {
+        let callback = self.callbacks.borrow().delete_category.clone();
+        if let Some(callback) = callback { callback(); }
     }
     pub fn get_categories(&self) -> ModelRc<SharedString> {
         self.data.borrow().categories.clone()

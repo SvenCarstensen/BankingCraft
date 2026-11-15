@@ -331,6 +331,7 @@ impl Desktop {
         }
         for (i, (page, label, path)) in [
             (6, "Bankzugänge", icons::KEY),
+            (10, "Kategorien", icons::TAG),
             (7, "Kartenleser", icons::READER),
             (8, "Einstellungen", icons::SETTINGS),
         ]
@@ -340,7 +341,7 @@ impl Desktop {
             nav(
                 ui,
                 Rect::from_min_size(
-                    pos2(rail.left() + 14., rail.bottom() - 140. + i as f32 * 43.),
+                    pos2(rail.left() + 14., rail.bottom() - 219. + i as f32 * 43.),
                     vec2(208., 40.),
                 ),
                 t,
@@ -350,10 +351,15 @@ impl Desktop {
                 a,
             );
         }
-        let r=Rect::from_min_size(pos2(rail.left()+14.,rail.bottom()-185.),vec2(208.,40.));
+        let r=Rect::from_min_size(pos2(rail.left()+14.,rail.bottom()-47.),vec2(208.,40.));
         let response=ui.interact(r,egui::Id::new("lock_vault"),Sense::click());
         response.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,tr("Tresor sperren")));
-        elide(ui,r.shrink2(vec2(12.,0.)),tr("Tresor sperren"),14.,false,t.nav_text,Align2::LEFT_CENTER);
+        if response.hovered() {
+            ui.painter().rect_filled(r, 6., t.nav_bg_hover);
+        }
+        icon(ui, icons::LOCK, Rect::from_center_size(pos2(r.left() + 22., r.center().y), vec2(20., 20.)), t.nav_text);
+        let label_rect = Rect::from_min_max(r.min + vec2(44., 0.), r.max - vec2(12., 0.));
+        elide(ui,label_rect,tr("Tresor sperren"),14.,false,t.nav_text,Align2::LEFT_CENTER);
         if response.clicked() {
             a.push(Box::new(|_|crate::session::request_lock()));
         }

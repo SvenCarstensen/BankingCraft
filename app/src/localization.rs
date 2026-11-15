@@ -169,7 +169,7 @@ mod rendering_tests {
                 assert_eq!(st.get_accounts().row_data(0).unwrap().name.as_str(), "Mein Konto");
                 assert_eq!(st.get_tf_name().as_str(), "Noch nicht gesendet");
                 assert_eq!(st.get_tf_amount().as_str(), "12,34");
-                assert_eq!(view::category_label("Einstellungen"), "Einstellungen", "custom category is not UI text");
+                assert_eq!(vault.category_label("Einstellungen"), "Einstellungen", "custom category is not UI text");
                 assert_eq!(serde_json::to_vec(&vault).unwrap(), original);
             });
         }

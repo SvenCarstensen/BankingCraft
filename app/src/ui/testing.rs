@@ -174,6 +174,131 @@ fn overview_dropdowns_dispatch_independently_and_filter_the_visible_models() {
 }
 
 #[test]
+fn overview_cards_share_row_heights_after_content_changes_and_resize() {
+    use super::{theme::Theme, Model, ModelRc};
+    use egui::{Rect, Shape};
+
+    fn card_bounds(shape: &Shape, theme: &Theme, bounds: &mut Vec<Rect>) {
+        match shape {
+            Shape::Vec(shapes) => {
+                for shape in shapes {
+                    card_bounds(shape, theme, bounds);
+                }
+            }
+            Shape::Rect(rect)
+                if rect.fill == theme.card_bg
+                    && rect.stroke.color == theme.card_border
+                    && rect.rect.height() > 200. =>
+            {
+                bounds.push(rect.rect);
+            }
+            Shape::Mesh(mesh) => {
+                // The large mesh is the total-balance gradient; icons are much smaller.
+                let rect = mesh.vertices.iter().fold(Rect::NOTHING, |rect, vertex| {
+                    rect.union(Rect::from_min_max(vertex.pos, vertex.pos))
+                });
+                if rect.width() > 200. && rect.height() > 200. {
+                    bounds.push(rect);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    i18n::with_language(i18n::Language::German, || {
+        let app = AppWindow::new().unwrap();
+        let st = app.global::<crate::AppState>();
+        st.set_unlocked(true);
+        st.set_theme_mode(2);
+        let mut vault = crate::store::Vault::default();
+        crate::demo::add_demo(&mut vault);
+        crate::view::refresh_all(&app, &vault, &mut Default::default());
+        let recent = st.get_recent();
+        let categories = st.get_category_stats();
+        let upcoming = st.get_upcoming();
+        let mut harness = harness(&app, 1360., 1800.);
+        let theme = Theme::new(true);
+        for width in [1360., 1100., 1900.] {
+            harness.set_size(egui::vec2(width, 1800.));
+            let mut dense_height = 0.;
+            for case in ["normal", "dense", "empty"] {
+                st.set_recent(if case == "empty" {
+                    Default::default()
+                } else {
+                    recent.clone()
+                });
+                st.set_category_stats(if case == "empty" {
+                    Default::default()
+                } else {
+                    categories.clone()
+                });
+                st.set_upcoming(match case {
+                    "empty" => Default::default(),
+                    "dense" => ModelRc::new(
+                        (0..12)
+                            .map(|i| super::state::StandingRow {
+                                name: format!("Demo-Dauerauftrag {i}"),
+                                amount: "−10,00 €".into(),
+                                ..upcoming.row_data(0).unwrap_or_default()
+                            })
+                            .collect(),
+                    ),
+                    _ => upcoming.clone(),
+                });
+                harness.run_steps(4);
+                let mut bounds = Vec::new();
+                for shape in &harness.output().shapes {
+                    card_bounds(&shape.shape, &theme, &mut bounds);
+                }
+                bounds.sort_by(|a, b| {
+                    a.top()
+                        .total_cmp(&b.top())
+                        .then(a.left().total_cmp(&b.left()))
+                });
+                assert_eq!(
+                    bounds.len(),
+                    6,
+                    "all overview cards: {width} {case}: {bounds:?}"
+                );
+                for (row, pair) in bounds.as_chunks::<2>().0.iter().enumerate() {
+                    assert!(
+                        (pair[0].top() - pair[1].top()).abs() < 0.1,
+                        "row {row}: {pair:?}"
+                    );
+                    assert!(
+                        (pair[0].bottom() - pair[1].bottom()).abs() < 0.1,
+                        "row {row}: {width} {case}: {pair:?}"
+                    );
+                    assert!(pair[0].right() < pair[1].left());
+                    assert!(pair[1].right() <= width);
+                    if row > 0 {
+                        assert!(bounds[(row - 1) * 2].bottom() < pair[0].top());
+                    }
+                }
+                if case == "dense" {
+                    dense_height = bounds[4].height();
+                }
+                if case == "empty" {
+                    assert!(
+                        bounds[4].height() < dense_height,
+                        "row must shrink when filtered"
+                    );
+                }
+                if let Some(dir) = std::env::var_os("BANKINGCRAFT_LAYOUT_REVIEW") {
+                    let dir = std::path::PathBuf::from(dir);
+                    std::fs::create_dir_all(&dir).unwrap();
+                    harness
+                        .render()
+                        .unwrap()
+                        .save(dir.join(format!("overview-{width}-{case}.png")))
+                        .unwrap();
+                }
+            }
+        }
+    });
+}
+
+#[test]
 fn changing_vault_selection_wipes_password_drafts() {
     let app = AppWindow::new().unwrap();
     let st = app.global::<crate::AppState>();

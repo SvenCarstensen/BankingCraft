@@ -90,6 +90,12 @@ pub struct Vault {
     pub transactions: Vec<StoredTx>,
     pub standing: Vec<StoredStanding>,
     pub rules: Vec<Rule>,
+    /// User-defined category names, stored inside the encrypted vault.
+    #[serde(default)]
+    pub custom_categories: Vec<String>,
+    /// Stable built-in category identities with vault-specific labels or replacements.
+    #[serde(default)]
+    pub category_overrides: std::collections::BTreeMap<String, crate::categories::CategoryOverride>,
     pub product_id: String,
     pub product_version: String,
     pub chiptan_reader: String,

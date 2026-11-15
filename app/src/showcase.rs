@@ -32,8 +32,10 @@ fn demo_vault() -> Vault {
         account.account.owner = "Alex Morgan".into();
         account.account.product = if index == 0 { "Everyday account" } else { "Savings account" }.into();
     }
-    for stored in &mut vault.transactions {
-        stored.category = Some(crate::categorize::categorize(stored, &vault.rules));
+    for index in 0..vault.transactions.len() {
+        let category = crate::categorize::categorize(&vault.transactions[index], &vault);
+        let stored = &mut vault.transactions[index];
+        stored.category = Some(category);
         stored.tx.counterparty_name = english(&stored.tx.counterparty_name);
         stored.tx.purpose = english(&stored.tx.purpose);
         stored.tx.posting_text = english(&stored.tx.posting_text);
@@ -55,13 +57,15 @@ fn demo_vault() -> Vault {
     transfer.purpose = "Apartment maintenance".into();
     vault.queue_transfer(account_id, transfer, false, true).unwrap();
     vault.save_recipient(account_id, "Alex Morgan", &crate::demo::iban(crate::demo::DEMO_BLZ, "4711099"), "DEMODEXXXXX").unwrap();
+    vault.create_category("Home projects").unwrap();
+    vault.create_category("Holidays").unwrap();
     assert!(vault.accesses.iter().all(|a| a.kind == crate::store::AccessKind::Demo && a.config.url.is_empty() && a.saved_pin.is_none()));
     assert!(vault.product_id.is_empty());
     vault
 }
 
 #[test]
-#[ignore = "exports a separate fictional demo vault and five English README screenshots"]
+#[ignore = "exports a separate fictional demo vault and six English README screenshots"]
 fn export_english_showcase() {
     let vault = demo_vault();
     if let Some(path) = std::env::var_os("BANKINGCRAFT_DEMO_VAULT") {
@@ -99,7 +103,7 @@ fn export_english_showcase() {
     let output = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../docs/screenshots");
     std::fs::create_dir_all(&output).unwrap();
 
-    for (page, name) in [(0, "overview"), (1, "accounts"), (2, "transactions"), (3, "transfer"), (5, "reports")] {
+    for (page, name) in [(0, "overview"), (1, "accounts"), (2, "transactions"), (3, "transfer"), (5, "reports"), (10, "categories")] {
         let (width, height) = (1440, if page == 0 { 1360 } else { 1000 });
         st.set_page(page);
         crate::ui::testing::snapshot(&app,width,height,output.join(format!("{name}.png")));
@@ -111,7 +115,7 @@ fn export_english_showcase() {
     let light = std::env::temp_dir().join("bankingcraft-egui-light-review");
     std::fs::create_dir_all(&light).unwrap();
     st.set_theme_mode(1);
-    for (page, name) in [(0, "overview"), (2, "transactions"), (3, "transfer"), (4, "standing"), (5, "reports"), (6, "accesses"), (7, "reader"), (8, "settings"), (9, "orders")] {
+    for (page, name) in [(0, "overview"), (2, "transactions"), (3, "transfer"), (4, "standing"), (5, "reports"), (6, "accesses"), (7, "reader"), (8, "settings"), (9, "orders"), (10, "categories")] {
         st.set_page(page);
         crate::ui::testing::snapshot(&app, 1360, if page == 0 { 1360 } else { 860 }, light.join(format!("{name}.png")));
     }

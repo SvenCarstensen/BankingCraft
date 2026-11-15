@@ -14,6 +14,8 @@ mod product_id;
 mod account_import;
 mod bridge;
 mod categorize;
+mod categories;
+mod categories_ui;
 mod demo;
 mod export;
 mod jobs;
@@ -39,7 +41,7 @@ use jobs::Ctx;
 use crate::ui::{Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
-use store::{AccessKind, BankAccess, Rule, Vault, VaultFile};
+use store::{AccessKind, BankAccess, Vault, VaultFile};
 use zeroize::Zeroizing;
 
 thread_local! {
@@ -176,6 +178,7 @@ fn main() {
     localization::install(&app);
     accounts_ui::install(&app);
     transactions_ui::install(&app);
+    categories_ui::install(&app);
     let st = app.global::<AppState>();
     st.set_tx_period(1);
     st.set_so_first(Local::now().date_naive().format("%d.%m.%Y").to_string());
@@ -279,27 +282,6 @@ fn main() {
             let c = ctx();
             let v = c.vault.lock().unwrap();
             view::show_detail(&app, &v, i.max(0) as usize);
-        });
-    }
-    {
-        let weak = app.as_weak();
-        st.on_set_category(move |i, cat| {
-            let app = weak.unwrap();
-            let c = ctx();
-            {
-                let mut v = c.vault.lock().unwrap();
-                let Some(t) = v.transactions.get_mut(i as usize) else { return };
-                t.category = Some(cat.to_string());
-                let name = t.tx.counterparty_name.to_lowercase();
-                if !name.is_empty() {
-                    v.rules.retain(|r| r.pattern != name);
-                    v.rules.push(Rule { pattern: name, category: cat.to_string() });
-                }
-            }
-            let _ = c.save();
-            refresh_view(&app);
-            let v = c.vault.lock().unwrap();
-            view::show_detail(&app, &v, i as usize);
         });
     }
     {

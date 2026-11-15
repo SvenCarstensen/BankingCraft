@@ -1,4 +1,4 @@
-use crate::store::{Rule, StoredTx};
+use crate::store::{Rule, StoredTx, Vault};
 
 pub struct Category {
     pub name: &'static str,
@@ -91,7 +91,11 @@ pub fn color_of(name: &str) -> crate::ui::Color {
     crate::ui::Color::from_rgb(c.0, c.1, c.2)
 }
 
-pub fn categorize(t: &StoredTx, rules: &[Rule]) -> String {
+pub fn categorize(t: &StoredTx, vault: &Vault) -> String {
+    vault.resolved_category(&base_category(t, &vault.rules)).to_owned()
+}
+
+fn base_category(t: &StoredTx, rules: &[Rule]) -> String {
     if let Some(c) = &t.category {
         return c.clone();
     }

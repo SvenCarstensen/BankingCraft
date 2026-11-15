@@ -21,3 +21,6 @@ pub const PASTE: &str = "M9 4h6v3H9z M7 5H5v16h14V5h-2 M9 12h6 M9 16h4";
 pub const CHECK: &str = "M5 12l5 5 9-10";
 pub const CHEVRON_DOWN: &str = "M6 9l6 6 6-6";
 pub const CHEVRON_RIGHT: &str = "M9 6l6 6-6 6";
+
+pub const TAG: &str = "M3 3h8l10 10-8 8L3 11z M7 7h0.01";
+pub const EDIT: &str = "M4 15L15 4l5 5L9 20H4z M13 6l5 5 M4 15l5 5";

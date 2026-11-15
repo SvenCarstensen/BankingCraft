@@ -60,6 +60,7 @@ pub fn show(
                     7 => reader(ui, t, d, a),
                     8 => settings(ui, t, d, a),
                     9 => orders(ui, t, d, a),
+                    10 => categories(ui, t, d, a),
                     _ => {}
                 }
             });
@@ -115,12 +116,17 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
         .max(80. + d.accounts.row_count() as f32 * 58.)
         .max(300. + d.account_groups.row_count() as f32 * 160.);
 
-    columns(ui, &[left, w - left - 18.], 18., |ui, col| {
-        if col == 0 {
-            let background = ui.painter().add(egui::Shape::Noop);
-            let panel = egui::Frame::new().inner_margin(22).show(ui, |ui| {
-                ui.set_min_height(height - 44.);
-
+    let background = ui.painter().add(egui::Shape::Noop);
+    let panels = framed_columns(
+        ui,
+        &[
+            (left, egui::Frame::new().inner_margin(22)),
+            (w - left - 18., card_frame(t, 18)),
+        ],
+        18.,
+        height,
+        |ui, col| {
+            if col == 0 {
                 text(
                     ui,
                     tr("Gesamtsaldo aller Konten"),
@@ -131,11 +137,37 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
 
                 ui.add_space(10.);
 
-                text(ui, balance_labels(d.total_has_paypal, true)[0], 12., false, hex(0xc9d9f2));
-                balance_text(ui, &d.total_balance, 30., true, Color32::WHITE, hex(0xffb3b8));
+                text(
+                    ui,
+                    balance_labels(d.total_has_paypal, true)[0],
+                    12.,
+                    false,
+                    hex(0xc9d9f2),
+                );
+                balance_text(
+                    ui,
+                    &d.total_balance,
+                    30.,
+                    true,
+                    Color32::WHITE,
+                    hex(0xffb3b8),
+                );
                 ui.add_space(8.);
-                text(ui, balance_labels(d.total_has_paypal, true)[1], 12., false, hex(0xc9d9f2));
-                balance_text(ui, &d.total_booked_balance, 18., true, Color32::WHITE, hex(0xffb3b8));
+                text(
+                    ui,
+                    balance_labels(d.total_has_paypal, true)[1],
+                    12.,
+                    false,
+                    hex(0xc9d9f2),
+                );
+                balance_text(
+                    ui,
+                    &d.total_booked_balance,
+                    18.,
+                    true,
+                    Color32::WHITE,
+                    hex(0xffb3b8),
+                );
                 text(ui, &d.total_balance_note, 11., false, hex(0xc9d9f2));
 
                 ui.add_space(24.);
@@ -188,15 +220,32 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                             .corner_radius(8.)
                             .inner_margin(12)
                             .show(ui, |ui| {
-                                let balance_theme = Theme { text: Color32::WHITE, text_muted: hex(0xc9d9f2), negative: hex(0xffb3b8), ..*t };
+                                let balance_theme = Theme {
+                                    text: Color32::WHITE,
+                                    text_muted: hex(0xc9d9f2),
+                                    negative: hex(0xffb3b8),
+                                    ..*t
+                                };
                                 text(ui, &g.name, 14., true, Color32::WHITE);
                                 ui.add_space(8.);
                                 for b in g.balances.iter() {
-                                    balance_pair(ui, &balance_theme, &b.amount, &b.booked_amount, balance_labels(b.has_paypal, true));
+                                    balance_pair(
+                                        ui,
+                                        &balance_theme,
+                                        &b.amount,
+                                        &b.booked_amount,
+                                        balance_labels(b.has_paypal, true),
+                                    );
                                     ui.add_space(8.);
                                 }
                                 if g.balances.row_count() == 0 {
-                                    balance_pair(ui, &balance_theme, "–", "–", balance_labels(false, true));
+                                    balance_pair(
+                                        ui,
+                                        &balance_theme,
+                                        "–",
+                                        "–",
+                                        balance_labels(false, true),
+                                    );
                                 }
                                 text(ui, &g.balance_note, 11., false, hex(0xc9d9f2));
                             });
@@ -208,12 +257,7 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                 if pill(ui, tr("Umsätze synchronisieren")).clicked() {
                     action!(a, invoke_refresh_all);
                 }
-            });
-            ui.painter().set(background, gradient_shape(panel.response.rect, 135., &[(0., hex(0x1e6fd9)), (1., hex(0x13233a))]));
-        } else {
-            card(ui, t, 18, |ui| {
-                ui.set_min_height(height - 36.);
-
+            } else {
                 card_header(
                     ui,
                     t,
@@ -259,9 +303,17 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                         }
                     });
                 }
-            });
-        }
-    });
+            }
+        },
+    );
+    ui.painter().set(
+        background,
+        gradient_shape(
+            panels[0].rect,
+            135.,
+            &[(0., hex(0x1e6fd9)), (1., hex(0x13233a))],
+        ),
+    );
 
     ui.add_space(18.);
 
@@ -271,10 +323,16 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
         .max(100. + d.recent.row_count() as f32 * 52.)
         .max(100. + d.category_stats.row_count() as f32 * 46.);
 
-    columns(ui, &[left, w - left - 18.], 18., |ui, col| {
-        if col == 0 {
-            card(ui, t, 0, |ui| {
-                ui.set_min_height(height);
+    framed_columns(
+        ui,
+        &[
+            (left, card_frame(t, 0)),
+            (w - left - 18., card_frame(t, 18)),
+        ],
+        18.,
+        height,
+        |ui, col| {
+            if col == 0 {
                 egui::Frame::new()
                     .inner_margin(egui::Margin {
                         left: 18,
@@ -300,25 +358,27 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                     text(ui, tr("Keine Umsätze vorhanden."), 14., false, t.text_faint);
                 }
                 ui.add_space(8.);
-            });
-        } else {
-            card(ui, t, 18, |ui| {
-                ui.set_min_height(height - 36.);
+            } else {
                 header(ui, t, "Ausgaben nach Kategorie", &d.month_label);
                 group(ui, t, d, a, 1);
                 bars(ui, t, &d.category_stats);
-            });
-        }
-    });
+            }
+        },
+    );
 
     ui.add_space(18.);
 
     let left = (w - 18.) * 0.6 - 76.;
 
-    columns(ui, &[left, w - left - 18.], 18., |ui, col| {
-        card(ui, t, 18, |ui| {
-            ui.set_min_height(295. + extra - 36.);
-
+    framed_columns(
+        ui,
+        &[
+            (left, card_frame(t, 18)),
+            (w - left - 18., card_frame(t, 18)),
+        ],
+        18.,
+        295. + extra,
+        |ui, col| {
             if col == 0 {
                 header(ui, t, "Einnahmen & Ausgaben", tr("Letzte 6 Monate"));
 
@@ -396,8 +456,8 @@ fn overview(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions, drag: &mut Op
                     );
                 }
             }
-        });
-    });
+        },
+    );
 }
 
 /// Keep both balance meanings visible, including when the card is narrow.
@@ -1212,7 +1272,7 @@ ui.add_space(12.);
 ui.add_space(12.);
 text(ui,tr("Kategorie"),12.,true,t.text_muted);
 ui.add_space(12.);
-let mut selected=d.category_labels.iter().position(|c|c==detail.category).unwrap_or(0) as i32;
+let mut selected=d.categories.iter().position(|c|c==detail.category_id).unwrap_or(0) as i32;
 if combo(ui,t,"detail-category",&d.category_labels,&mut selected){
 if let Some(c)=d.categories.row_data(selected as usize){
 action!(a,invoke_set_category,detail.index,c);
@@ -1220,6 +1280,12 @@ action!(a,invoke_set_category,detail.index,c);
 }
 ui.add_space(12.);
 text(ui,tr("Gleiche Gegenparteien werden künftig automatisch so kategorisiert."),11.,false,t.text_faint);
+ui.add_space(12.);
+if ghost(ui, t, "Kategorien verwalten", "") {
+    d.category_manager = CategoryManager::default();
+    d.page = 10;
+}
+
 
     }
 );
@@ -2325,6 +2391,15 @@ fn settings(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
     title(ui, t, "Einstellungen", "", |_| {});
 
     card(ui, t, 22, |ui| {
+        header(ui, t, "Kategorien", tr("Kategorien für diesen Tresor erstellen, umbenennen und löschen."));
+        if primary(ui, t, "Kategorien verwalten", "", !d.busy) {
+            d.category_manager = CategoryManager::default();
+            d.page = 10;
+        }
+    });
+    ui.add_space(18.);
+
+    card(ui, t, 22, |ui| {
         header(
             ui,
             t,
@@ -2493,6 +2568,99 @@ fn settings(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
         if ghost(ui, t, "Demo-Bankzugang hinzufügen", "") {
             action!(a, invoke_load_demo);
+        }
+    });
+}
+
+fn categories(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
+    use super::state::CategoryManager;
+    let mut names: Vec<_> = d.categories.iter().collect();
+    let labels: std::collections::HashMap<_, _> = names.iter().cloned().zip(d.category_labels.iter()).collect();
+    names.sort_by_key(|name| crate::categories::is_builtin(name));
+    let manager = &mut d.category_manager;
+    title(ui, t, "Kategorien", tr("Vorgegebene und eigene Kategorien für diesen Tresor verwalten."), |_| {});
+    card(ui, t, 22, |ui| {
+        ui.spacing_mut().item_spacing = vec2(10., 14.);
+        if manager.deleting {
+            text(ui, &i18n::tr_format!("Kategorie „{}“ löschen?", labels.get(&manager.original).unwrap_or(&manager.original)), 16., true, t.text);
+            text(ui, tr("Zugeordnete Umsätze sowie gelernte und automatische Regeln verwenden künftig die gewählte Ersatzkategorie."), 14., false, t.text_muted);
+            text(ui, tr("Ersatzkategorie"), 13., true, t.text);
+            let replacements: Vec<_> = names.iter().filter(|c| *c != &manager.original).cloned().collect();
+            let replacement_labels = super::ModelRc::new(replacements.iter().map(|c| labels.get(c).cloned().unwrap_or_else(|| c.clone())).collect());
+            let mut selected = replacements.iter().position(|c| c == &manager.replacement).map(|i| i as i32).unwrap_or(-1);
+            if combo(ui, t, "category-replacement", &replacement_labels, &mut selected) {
+                manager.replacement = replacements.get(selected as usize).cloned().unwrap_or_default();
+                manager.error.clear();
+            }
+            if replacements.is_empty() {
+                text(ui, tr("Legen Sie zuerst eine weitere Kategorie als Ersatz an."), 13., false, t.text_muted);
+            }
+            if !manager.error.is_empty() { text(ui, &manager.error, 13., false, t.negative); }
+            ui.horizontal(|ui| {
+                if ghost(ui, t, "Abbrechen", "") {
+                    *manager = CategoryManager::default();
+                }
+                if primary(ui, t, "Kategorie löschen", "", selected >= 0) {
+                    action!(a, invoke_delete_category);
+                }
+            });
+        } else {
+            let editing = !manager.original.is_empty();
+            text(ui, tr(if editing { "Kategorie umbenennen" } else { "Neue Kategorie" }), 16., true, t.text);
+            let r = input(ui, t, "category-name", &mut manager.name, tr("Kategoriename"), false);
+            super::dialogs::focus(ui, &format!("category-name-{}", manager.original), &r);
+            let accepted = accepted(ui, &r);
+            if r.changed() { manager.error.clear(); }
+            if !manager.error.is_empty() { text(ui, &manager.error, 13., false, t.negative); }
+            ui.horizontal(|ui| {
+                if editing && ghost(ui, t, "Abbrechen", "") {
+                    *manager = CategoryManager::default();
+                }
+                if primary(ui, t, if editing { "Umbenennen" } else { "Kategorie erstellen" }, "", !manager.name.trim().is_empty()) || accepted {
+                    action!(a, invoke_save_category);
+                }
+            });
+            separator(ui, t);
+            text(ui, &i18n::tr_format!("Vorhandene Kategorien ({})", names.len()), 14., true, t.text);
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical().id_salt("category-list")
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                .max_height((ui.ctx().content_rect().height() - 390.).max(160.)).auto_shrink([false, true]).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 8.;
+                    for name in &names {
+                        let label = labels.get(name).unwrap_or(name);
+                        ui.push_id(name, |ui| {
+                            ui.horizontal(|ui| {
+                                let actions_width = button_width(ui, "", icons::EDIT, false)
+                                    + button_width(ui, "", icons::TRASH, false)
+                                    + 2. * ui.spacing().item_spacing.x;
+                                let name_width = (ui.available_width() - actions_width).max(0.);
+                                ui.allocate_ui_with_layout(vec2(name_width, 34.), Layout::left_to_right(Align::Center), |ui| {
+                                    ui.set_min_size(vec2(name_width, 34.));
+                                    ui.add(egui::Label::new(egui::RichText::new(label).font(font(14., true)).color(t.text))
+                                        .truncate()).on_hover_text(label);
+                                });
+                                let rename_label = i18n::tr_format!("Kategorie umbenennen: {}", label);
+                                let rename = button(ui, t, "", icons::EDIT, false, true).on_hover_text(&rename_label);
+                                rename.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &rename_label));
+                                if rename.clicked() {
+                                    *manager = CategoryManager { original: name.clone(), name: label.clone(), ..Default::default() };
+                                }
+                                let delete_label = i18n::tr_format!("Kategorie löschen: {}", label);
+                                let delete = button(ui, t, "", icons::TRASH, false, true).on_hover_text(&delete_label);
+                                delete.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &delete_label));
+                                if delete.clicked() {
+                                    let replacement = names.iter().find(|c| c.as_str() == "Sonstiges" && *c != name)
+                                        .or_else(|| names.iter().find(|c| *c != name)).cloned().unwrap_or_default();
+                                    *manager = CategoryManager { original: name.clone(), deleting: true, replacement, ..Default::default() };
+                                }
+                            });
+                        });
+                    }
+                });
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            *manager = CategoryManager::default();
         }
     });
 }

@@ -53,7 +53,7 @@ pub(super) fn refresh(app: &AppWindow, v: &Vault, filters: &mut Filters) {
 
     let accounts = filters.selected[1].accounts(v);
     let (_, _, categories) = month_stats_for(v, start, accounts.as_ref());
-    st.set_category_stats(model(bar_stats(&categories, 6)));
+    st.set_category_stats(model(bar_stats(v, &categories, 6)));
     let accounts = filters.selected[2].accounts(v);
     st.set_months(model(month_series_for(v, start, 6, accounts.as_ref())));
 

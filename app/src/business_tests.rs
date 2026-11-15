@@ -169,12 +169,12 @@ fn failed_vault_replace_removes_temporary_file() {
 #[test]
 fn categories_prioritize_manual_then_learned_then_builtin_and_fallback() {
     let mut t = StoredTx { account_id: 1, tx: tx(-100, "2026-11-01"), category: None }; t.tx.counterparty_name = "REWE".into();
-    assert_eq!(categorize(&t, &[]), "Lebensmittel");
-    let rules = vec![Rule { pattern: "rewe".into(), category: "Freizeit".into() }]; assert_eq!(categorize(&t, &rules), "Freizeit");
-    t.category = Some("Wohnen".into()); assert_eq!(categorize(&t, &rules), "Wohnen");
-    t.category = None; t.tx.counterparty_name = "REWE Nebenbetrieb".into(); assert_eq!(categorize(&t, &rules), "Lebensmittel");
-    t.tx.counterparty_name = "Unbekannt".into(); t.tx.purpose = "Gehalt".into(); assert_eq!(categorize(&t, &[]), "Sonstiges");
-    t.tx.amount = Decimal::ONE; assert_eq!(categorize(&t, &[]), "Gehalt"); t.tx.purpose.clear(); assert_eq!(categorize(&t, &[]), "Einnahmen");
+    assert_eq!(categorize(&t, &Vault::default()), "Lebensmittel");
+    let v = Vault { rules: vec![Rule { pattern: "rewe".into(), category: "Freizeit".into() }], ..Default::default() }; assert_eq!(categorize(&t, &v), "Freizeit");
+    t.category = Some("Wohnen".into()); assert_eq!(categorize(&t, &v), "Wohnen");
+    t.category = None; t.tx.counterparty_name = "REWE Nebenbetrieb".into(); assert_eq!(categorize(&t, &v), "Lebensmittel");
+    t.tx.counterparty_name = "Unbekannt".into(); t.tx.purpose = "Gehalt".into(); assert_eq!(categorize(&t, &Vault::default()), "Sonstiges");
+    t.tx.amount = Decimal::ONE; assert_eq!(categorize(&t, &Vault::default()), "Gehalt"); t.tx.purpose.clear(); assert_eq!(categorize(&t, &Vault::default()), "Einnahmen");
 }
 
 #[test]

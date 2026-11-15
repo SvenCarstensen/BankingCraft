@@ -1,5 +1,54 @@
 # Testing
 
+## Overview layout and sidebar — November 15, 2026
+
+The overview regression checks the rendered bounds of all six cards: both cards in
+each row share their top and bottom edges, stay within the window width and do not
+overlap the next row. It covers 1100, 1360 and 1900 pixel widths, populated and empty
+lists, and a long standing-order list that grows and shrinks within the same session.
+The group-filter interaction regression also passes. The focused UI suite passed
+11 tests (2 screenshot exporters ignored), followed by Clippy and the local macOS
+release build with `local-fints-test`.
+
+```sh
+cargo test -p bankingcraft --locked overview_cards_share_row_heights_after_content_changes_and_resize
+```
+
+Set `BANKINGCRAFT_LAYOUT_REVIEW` to a local output directory to save synthetic
+overview screenshots. The sidebar places Categories below Bank connections and Lock
+vault after Settings. Lock vault uses the same hover color and rounded background
+as the other navigation items. README screenshots are regenerated from fictional
+demo data with `cargo test -p bankingcraft --locked export_english_showcase -- --ignored`.
+
+Before committing, `./scripts/test-business.sh` passed for the normal build:
+164 workspace tests passed (8 ignored), the license bundle for 488 external packages
+was verified, and Clippy passed with warnings treated as errors. The six English
+README screenshots were exported and visually reviewed; the lock action is also
+translated in English, French and Spanish.
+
+## Category management — November 15, 2026
+
+Offline regressions cover creating categories and renaming or deleting both custom and
+built-in categories, duplicate and reserved names, old vaults without a category registry,
+and reassignment of manual
+transaction categories and learned rules. Interactive UI tests check the dedicated page,
+cancelled deletion, filters, details, reports and encrypted persistence. Failed saves and
+locked/busy vaults must leave the stored data unchanged; vault resets clear the editor.
+
+The category page is checked in all four languages and both themes at 1100 × 680,
+including the sidebar order below Bank connections. Built-in identities and colors survive
+renaming; repeated deletion redirects and default categorization survive reloading.
+Custom names remain untranslated. The category checkpoint passed 163 workspace tests
+(8 ignored), license-bundle verification and Clippy with warnings as errors.
+To run the focused checks:
+
+```sh
+cargo test -p bankingcraft --locked categories
+```
+
+Set `BANKINGCRAFT_CATEGORY_REVIEW` to a local output directory to also export synthetic
+screenshots from the page test. No real bank data or payment submission is involved.
+
 ## Payment-order navigation badge — November 15, 2026
 
 The navigation badge counts all entries shown in Payment orders, including saved,
@@ -44,7 +93,7 @@ last account and closed it afterwards; the user confirmed a single PIN entry on 
 cyberJack. No real payment was submitted. Other card/reader combinations remain
 unverified.
 
-The final local workspace run passed 155 tests, with 8 ignored by the default runner;
+The migration workspace run passed 155 tests, with 8 ignored by the default runner;
 Clippy with warnings as errors and the macOS release build passed. Native offline
 and ASan/UBSan regressions cover repeated snapshot groups, setup/TAN-medium repair,
 account capabilities, credit-card job selection, CAMT entry amounts and currencies,

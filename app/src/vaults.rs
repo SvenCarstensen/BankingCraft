@@ -308,6 +308,7 @@ pub(crate) fn reset_vault_view(app: &AppWindow) {
     st.set_tx_category(Default::default());
     st.set_tx_summary(Default::default());
     st.set_tx_detail(Default::default());
+    st.set_category_manager(Default::default());
     st.set_categories(Default::default());
     st.set_category_labels(Default::default());
     st.set_category_colors(Default::default());
