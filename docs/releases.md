@@ -30,6 +30,7 @@ If FUSE is unavailable, run `./BankingCraft-VERSION-linux-x86_64.AppImage --appi
 Smart-card access additionally needs the system PC/SC service and a compatible reader driver;
 the AppImage does not install or start system services. PIN/TAN does not require a reader.
 On Windows, the installer and portable ZIP include the Visual C++ runtime from the build runner.
+The application uses OpenGL and needs a compatible graphics driver on Windows and Linux.
 Uninstalling the application does not delete banking vaults or user configuration.
 
 The existing [alpha limitations](../README.md#development-status-and-known-limitations) apply,
@@ -68,6 +69,9 @@ The Windows installer definition is `packaging/windows/BankingCraft.iss`.
 The DMG check verifies its filesystem, bundle metadata, ad-hoc signature and system-only
 dynamic-library links. Startup checks run the packaged executables for twelve seconds;
 Windows also verifies silent installation and uninstallation.
+If the hosted Windows VM cannot provide an OpenGL context, the startup test retries with a
+checksum-verified Mesa llvmpipe driver. That driver is used only in the temporary test installation
+and is not included in the installer or portable ZIP. Other startup failures still fail the job.
 
 Extract the matching source archive and follow the platform prerequisites in the README.
 Its `.cargo/config.toml` points to the bundled Rust sources, so `cargo build --release --locked
