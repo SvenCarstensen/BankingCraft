@@ -13,6 +13,9 @@ These changes are not part of the published 0.0.10 packages.
   access names while preserving bank identity, account history and native state.
 - Keep securities depots visible without counting their absent balance as a
   missing cash balance in group or overall summaries.
+- Show a count badge beside Payment orders in the navigation. It counts all
+  entries in the list, including sent orders and orders requiring review, and
+  disappears when the list is empty. The count is also exposed to screen readers.
 
 Local checks include the workspace suite, Clippy, native IPC and sanitizer tests.
 Live retrieval was exercised with Postbank PIN/TAN and a VR Bank Nord RDH card;

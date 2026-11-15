@@ -1,5 +1,30 @@
 # Testing
 
+## Payment-order navigation badge — November 15, 2026
+
+The navigation badge counts all entries shown in Payment orders, including saved,
+sent and review-required orders. Empty lists have no badge; the accessible navigation
+label includes the count when present.
+
+The existing `render_payment_pages` exporter passed with synthetic data. The German
+and French order pages were visually inspected at 1100 pixels: the badge shows all
+three sample orders, and the longer French label leaves room for the count. The
+existing payment-form test, Clippy with warnings as errors and the macOS release
+build also passed with `local-fints-test`. The updated app was installed and opened;
+no real payment was created or submitted for this check.
+
+Before committing, `./scripts/test-business.sh` also passed for the normal build:
+license-bundle verification, the complete workspace test suite and Clippy.
+
+To reproduce the synthetic screenshots:
+
+```sh
+cargo test -p bankingcraft --locked render_payment_pages -- --ignored
+```
+
+The exporter writes into `bankingcraft-egui-payment-review` in the operating system's
+temporary directory.
+
 ## AqBanking migration and removal — November 15, 2026
 
 The current runtime uses AqBanking and Libchipcard. The old `fints` and `cardreader`

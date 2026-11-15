@@ -3,7 +3,7 @@ use super::{
     state::Data,
     theme::{hex, Theme},
     widgets::*,
-    AppState, AppWindow,
+    AppState, AppWindow, Model,
 };
 use egui::{self, pos2, vec2, Align, Align2, Color32, Layout, Rect, Sense, Ui};
 use std::{collections::HashMap, sync::Arc};
@@ -318,17 +318,13 @@ impl Desktop {
                 y += 37.;
                 continue;
             }
-            let label = if page == 9 && d.queued_order_count > 0 {
-                format!("{} ({})", tr(label), d.queued_order_count)
-            } else {
-                tr(label).into()
-            };
             nav(
                 ui,
                 Rect::from_min_size(pos2(rail.left() + 14., y), vec2(208., 40.)),
                 t,
-                (page, &label, path),
+                (page, tr(label), path),
                 d.page,
+                if page == 9 { d.payment_orders.row_count() } else { 0 },
                 a,
             );
             y += 43.;
@@ -350,6 +346,7 @@ impl Desktop {
                 t,
                 (page, tr(label), path),
                 d.page,
+                0,
                 a,
             );
         }
@@ -368,11 +365,13 @@ fn nav(
     t: &Theme,
     (page, label, path): (i32, &str, &str),
     current: i32,
+    count: usize,
     a: &mut Actions,
 ) {
     let response = ui.interact(r, egui::Id::new(("nav", page)), Sense::click());
     response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+        let accessible_label = if count > 0 { format!("{label} ({count})") } else { label.into() };
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), accessible_label)
     });
     if page == current || response.hovered() {
         ui.painter().rect_filled(
@@ -391,19 +390,31 @@ fn nav(
         Rect::from_min_size(r.min + vec2(12., 10.), vec2(20., 20.)),
         t.nav_text,
     );
+    let color = if page == current { Color32::WHITE } else { t.nav_text };
+    let mut label_rect = Rect::from_min_max(r.min + vec2(44., 0.), r.max - vec2(12., 0.));
+    let badge = (count > 0).then(|| {
+        let color = if t.dark { t.nav_bg } else { Color32::WHITE };
+        let galley = ui.painter().layout_no_wrap(count.to_string(), font(12., true), color);
+        let width = (galley.size().x + 12.).max(20.);
+        label_rect.max.x -= width + 8.;
+        (galley, width, color)
+    });
     elide(
         ui,
-        Rect::from_min_max(r.min + vec2(44., 0.), r.max - vec2(12., 0.)),
+        label_rect,
         label,
         14.,
         page == current,
-        if page == current {
-            Color32::WHITE
-        } else {
-            t.nav_text
-        },
+        color,
         Align2::LEFT_CENTER,
     );
+    if let Some((galley, width, badge_color)) = badge {
+        let label_width = ui.painter().layout_no_wrap(label.to_owned(), font(14., page == current), color)
+            .size().x.min(label_rect.width().max(0.));
+        let badge_rect = Rect::from_min_size(pos2(label_rect.left() + label_width + 8., r.center().y - 10.), vec2(width, 20.));
+        ui.painter().rect_filled(badge_rect, 10., t.accent);
+        ui.painter().galley(badge_rect.center() - galley.size() * 0.5, galley, badge_color);
+    }
     if response.clicked() {
         action!(a, invoke_navigate, page);
     }

@@ -141,7 +141,7 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | Secure PIN entry | Libchipcard handles reader PIN-pad capabilities; a shared card session avoids repeated PIN prompts within an account refresh |
 | Balance completeness | Securities accounts without a balance remain visible but do not trigger a missing-account-balance warning; depot holdings and valuations are not retrieved |
 | Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
-| Payment orders and recipients | Encrypted outgoing queue, saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
+| Payment orders and recipients | Encrypted outgoing queue, a navigation badge counting all orders in the list (hidden when empty), saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
 | Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
