@@ -45,7 +45,7 @@ including pending FinTS product registration. Packaged startup tests do not cont
 3. Commit and push the changes. Run **Release packages → Run workflow** on the branch to
    validate and download packages without creating a release.
 4. After a successful run, create and push an annotated tag matching the version, for example
-   `git tag -a v0.0.10 -m 'BankingCraft 0.0.10'` and `git push origin v0.0.10`.
+   `git tag -a v0.0.11 -m 'BankingCraft 0.0.11'` and `git push origin v0.0.11`.
 
 Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
 current version, then creates its tag and publishes the release only after every check passes.

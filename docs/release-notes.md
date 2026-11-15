@@ -1,4 +1,17 @@
-First packaged alpha release of BankingCraft.
+BankingCraft 0.0.10 includes the local interface improvements that were not part of 0.0.9.
+
+- Drag accounts to reorder them or move them between groups, including collapsed and empty
+  groups. Dragging near the viewport edge scrolls the list; Escape cancels a drag.
+- Collapse and expand account groups independently, retaining their state within each vault
+  while navigating, refreshing or renaming groups.
+- Highlight negative balances separately for each currency and for booked balances.
+- Clear input fields with an inline button, with improved vertical text alignment.
+- Optionally add one fictional demo account with sample transactions when creating the first
+  vault. The checkbox is enabled by default and can be cleared; subsequent vaults start empty.
+- Include translations and regression tests for group dragging, cancellation, encrypted
+  persistence and first-vault setup.
+
+Downloads:
 
 - Linux x64 AppImage.
 - Windows x64 EXE installer and a portable ZIP containing the executable and runtime libraries.
