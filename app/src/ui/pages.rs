@@ -2164,14 +2164,6 @@ fn accesses(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
             text(ui,tr("Wird über die Banksuche ausgefüllt. Abweichende Adressen finden Sie im Onlinebanking Ihrer Bank (Stichwort „FinTS“). Die PIN wird nicht gespeichert."),11.,false,t.text_faint);
 
-            ui.add_space(14.);
-            text(ui, tr("Umsatzformat"), 12., true, t.text_muted);
-            ui.add_space(8.);
-            combo(ui, t, "statement-format", &options(&[
-                "Automatisch (CAMT bevorzugen)", "CAMT bevorzugen", "MT940 bevorzugen (ältere Zugänge)",
-            ]), &mut d.af_statement_format);
-            text(ui, tr("Die Auswahl gilt nur für Formate, die Ihre Bank für das Konto anbietet."), 11., false, t.text_faint);
-            ui.add_space(14.);
         } else {
             columns(ui, &[w - 354., 120., 210.], 12., |ui, col| {
                 text(

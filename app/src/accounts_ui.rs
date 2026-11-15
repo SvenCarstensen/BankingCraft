@@ -91,7 +91,7 @@ mod tests {
                 let path = std::env::temp_dir().join(format!("bankingcraft-group-drag-{:016x}", rand::random::<u64>()));
                 let mut vault = Vault::default();
                 let ids = vault.merge_accounts(1, ["Alpha", "Beta", "Gamma", "Delta"].into_iter().enumerate()
-                    .map(|(i, name)| fints::Account { account_number: i.to_string(), product: name.into(), ..Default::default() }).collect());
+                    .map(|(i, name)| banking::Account { account_number: i.to_string(), product: name.into(), ..Default::default() }).collect());
                 let private = vault.create_group("Privat").unwrap();
                 let other = vault.create_group("Weitere").unwrap();
                 let empty = vault.create_group("Leer").unwrap();
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn display_name_survives_bank_refresh_and_legacy_vaults_still_load() {
         let mut vault = Vault::default();
-        let mut bank_account = fints::Account { account_number: "123".into(), product: "Original bank name".into(), ..Default::default() };
+        let mut bank_account = banking::Account { account_number: "123".into(), product: "Original bank name".into(), ..Default::default() };
         let id = vault.merge_accounts(1, vec![bank_account.clone()])[0];
         vault.rename_account(id, "  Meine Rücklagen für die Familie  ").unwrap();
         bank_account.product = "Updated bank name".into();
@@ -331,7 +331,7 @@ mod visual_review {
         let group = vault.create_group("Privat").unwrap();
         vault.assign_group(vault.accounts[0].id, Some(group)).unwrap();
         let mut tall_vault = vault.clone();
-        tall_vault.merge_accounts(tall_vault.accounts[0].access_id, (0..8).map(|i| fints::Account {
+        tall_vault.merge_accounts(tall_vault.accounts[0].access_id, (0..8).map(|i| banking::Account {
             account_number: format!("900{i}"), product: format!("Weiteres Demokonto {}", i + 1), ..Default::default()
         }).collect());
         let mut vs = view::ViewState::default();
@@ -366,8 +366,8 @@ mod visual_review {
                     }
                     crate::payee_ui::clear(&st);
                     if name.starts_with("vop-") {
-                        crate::payee_ui::show(&app, &fints::vop::PayeeVerification {
-                            status: match name { "vop-match" => fints::vop::PayeeStatus::Match, "vop-close" => fints::vop::PayeeStatus::CloseMatch, _ => fints::vop::PayeeStatus::Unavailable },
+                        crate::payee_ui::show(&app, &banking::payee::PayeeVerification {
+                            status: match name { "vop-match" => banking::payee::PayeeStatus::Match, "vop-close" => banking::payee::PayeeStatus::CloseMatch, _ => banking::payee::PayeeStatus::Unavailable },
                             name: "Beispielhandel für nachhaltige Haushaltswaren".into(), iban: "DE12500105170648489890".into(),
                             suggested_name: if name == "vop-close" { "Beispielhandel für nachhaltige Haushaltswaren und regionale Produkte GmbH".into() } else { String::new() },
                             reason: if name == "vop-unavailable" { i18n::tr("Die Bank hat kein Prüfergebnis geliefert.").into() } else { String::new() },

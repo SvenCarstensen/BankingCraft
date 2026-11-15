@@ -153,7 +153,8 @@ def generate(cargo_about):
                 if key not in covered:
                     raise ValueError(f"Add the upstream MIT copyright notice for {key}")
 
-    escape = html.escape
+    def escape(text):
+        return html.escape(text.replace("\r\n", "\n").replace("\r", "\n"))
     parts = ['<!doctype html><html lang="en"><meta charset="utf-8">',
              '<meta name="viewport" content="width=device-width, initial-scale=1">',
              '<title>BankingCraft — third-party licenses</title>',
@@ -196,7 +197,8 @@ def generate(cargo_about):
     (BUNDLE / "upstream/README.md").write_text("\n".join(lines) + "\n")
 
     inputs = [ROOT / "Cargo.lock", ROOT / "about.toml", Path(__file__).resolve(),
-              ROOT / "LICENSE", ROOT / "THIRD_PARTY_NOTICES.md", ROOT / "app/data/banks.tsv"]
+              ROOT / "LICENSE", ROOT / "THIRD_PARTY_NOTICES.md", ROOT / "app/data/banks.tsv",
+              ROOT / "native/dependencies.json"]
     inputs.extend(ROOT / p for p in ("Cargo.toml", "app/Cargo.toml"))
     inputs.extend(sorted((ROOT / "crates").glob("*/Cargo.toml")))
     files = inputs + [p for p in sorted(BUNDLE.rglob("*")) if p.is_file() and p.name != "manifest.json"]

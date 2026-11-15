@@ -11,6 +11,7 @@ mkdir -p "$stage/.cargo" "$root/dist"
 # Only committed files enter the source release; never include the developer's local vault/config.
 git archive HEAD | tar -x -C "$stage"
 cargo vendor --locked --versioned-dirs "$stage/vendor" > "$stage/.cargo/config.toml"
+python3 scripts/vendor-native-sources.py "$stage/native/vendor"
 python3 - "$stage/.cargo/config.toml" "$stage/vendor" <<'PY'
 from pathlib import Path
 import sys

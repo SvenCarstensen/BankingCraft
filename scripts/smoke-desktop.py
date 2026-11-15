@@ -14,7 +14,7 @@ args = parser.parse_args()
 
 with tempfile.TemporaryDirectory(prefix="bankingcraft-smoke-") as directory:
     environment = os.environ.copy()
-    for variable in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "APPDATA", "LOCALAPPDATA"):
+    for variable in ("HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "APPDATA", "LOCALAPPDATA"):
         environment[variable] = directory
     executable = args.executable.resolve()
     log_path = args.log or Path(directory) / "startup.log"

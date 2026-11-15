@@ -1,7 +1,7 @@
 //! Read-only NVP client, independently implemented from PayPal's public API reference.
 //! No redirects, wire logging or automatic retries. Never return provider text in errors.
 use chrono::{DateTime, Duration, Utc};
-use fints::Transaction;
+use banking::Transaction;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::{collections::{BTreeMap, BTreeSet}, io::Read, str::FromStr};

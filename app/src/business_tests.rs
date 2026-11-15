@@ -1,7 +1,7 @@
 //! Offline business scenarios; only synthetic data and isolated temporary vaults.
 use crate::{categorize::categorize, export, store::*, view};
 use chrono::{Duration, NaiveDate};
-use fints::{Account, Balance, Interval, SepaTransfer, StandingOrder, Transaction};
+use banking::{Account, Balance, Interval, SepaTransfer, StandingOrder, Transaction};
 use rust_decimal::Decimal;
 
 pub(crate) fn date(s: &str) -> NaiveDate { s.parse().unwrap() }
@@ -211,11 +211,18 @@ fn camt_export_roundtrips_debit_credit_pending_references_and_xml_characters() {
     let mut debit = tx(-1234, "2026-11-01"); debit.counterparty_name = "A & B <Test>".into(); debit.purpose = "A&B <invoice>".into(); debit.mandate_id = "MANDATE&1".into(); debit.end_to_end_id = "REF&1".into();
     let mut pending = tx(-300, "2026-11-02"); pending.pending = true; pending.date_unknown = true;
     v.merge_transactions(id, vec![debit.clone(), tx(500, "2026-11-02"), pending]);
-    let xml = export::camt052_content(&v, &[0, 1, 2, 999]); let parsed = fints::camt::parse(xml.as_bytes()).unwrap();
-    assert_eq!(parsed.transactions.len(), 3); assert_eq!(parsed.transactions[0].amount, debit.amount);
-    assert_eq!(parsed.transactions[0].counterparty_name, debit.counterparty_name); assert_eq!(parsed.transactions[0].purpose, debit.purpose);
-    assert_eq!(parsed.transactions[0].end_to_end_id, debit.end_to_end_id); assert_eq!(parsed.transactions[0].mandate_id, debit.mandate_id);
-    assert_eq!(parsed.transactions[1].amount, Decimal::from(5)); assert!(parsed.transactions[2].pending); assert!(parsed.transactions[2].date_unknown);
+    let xml = export::camt052_content(&v, &[0, 1, 2, 999]);
+    let parsed=roxmltree::Document::parse(&xml).unwrap();
+    let entries=parsed.descendants().filter(|n|n.has_tag_name("Ntry")).collect::<Vec<_>>();
+    assert_eq!(entries.len(),3);
+    let text=|n:roxmltree::Node<'_, '_>,tag:&str|n.descendants().find(|n|n.has_tag_name(tag)).and_then(|n|n.text()).unwrap_or("").to_owned();
+    assert_eq!(text(entries[0],"Amt"),"12.34"); assert_eq!(text(entries[0],"CdtDbtInd"),"DBIT");
+    assert_eq!(text(entries[0],"Nm"),debit.counterparty_name); assert_eq!(text(entries[0],"Ustrd"),debit.purpose);
+    assert_eq!(text(entries[0],"EndToEndId"),debit.end_to_end_id); assert_eq!(text(entries[0],"MndtId"),debit.mandate_id);
+    assert_eq!(text(entries[1],"Amt"),"5.00"); assert_eq!(text(entries[1],"CdtDbtInd"),"CRDT");
+    assert_eq!(text(entries[2],"Cd"),"PDNG");
+    assert!(!entries[2].descendants().any(|n|n.has_tag_name("BookgDt")));
+
 }
 
 #[test]

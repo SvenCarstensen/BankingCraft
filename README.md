@@ -1,7 +1,10 @@
 # BankingCraft – Desktop banking for Windows, Linux and macOS
 
-BankingCraft is a Rust desktop banking application using **egui 0.36** and **eframe 0.36**: a navigation sidebar,
-an account dashboard, transaction lists with daily balances, payment forms and financial reports.
+BankingCraft is a Rust desktop banking application using **egui 0.36** and **eframe 0.36**.
+FinTS/HBCI banking is handled by **AqBanking**, with **Libchipcard** for smart cards and
+chipTAN USB. The app provides encrypted local vaults, account and credit-card retrieval,
+transaction lists, payment workflows and financial reports. PayPal retrieval uses a
+separate experimental read-only integration.
 
 > [!WARNING]
 > **Early alpha — intended for evaluation and development.**
@@ -11,25 +14,24 @@ an account dashboard, transaction lists with daily balances, payment forms and f
 
 ## Development status and known limitations
 
-**So far, only Postbank access via PIN/TAN and VR Bank Nord access via an RDH smart card
-have been tested successfully with real bank accounts. These retrieval flows work in the
-tested setups.**
+**The current backend uses AqBanking 6.9.2, Gwenhywfar 5.14.3 and Libchipcard
+5.1.6. Postbank PIN/TAN account, balance and transaction retrieval, including
+credit-card transactions, completed successfully on macOS on November 15, 2026.
+Real payments and physical card/reader operation remain unvalidated with this backend.**
 
-| Bank and access method | Confirmed working scope |
-|---|---|
-| Postbank — FinTS PIN/TAN | Account, balance and transaction retrieval, including credit card balances and transactions; confirmed on November 12, 2026 |
-| VR Bank Nord — RDH-7 smart card | Account retrieval through the real bank/card connection; successful retrieval confirmed by the user on November 13, 2026 |
-
-Other banks, RDH-9/10, DDV and other card/reader combinations have **not** been confirmed
-through successful real-world tests. Simulator tests and protocol implementations do not
-establish compatibility with untested banks or hardware.
+Historical Postbank PIN/TAN retrieval (November 12, 2026) and VR Bank Nord RDH-7
+retrieval (November 13, 2026) used the previous Rust backend. Those successes do
+not establish compatibility of the new integration. Other bank/card configurations
+must be validated separately. The application remains an evaluation build.
+See [native banking](docs/native-banking.md) and the
+[security implementation and audit handoff](docs/security-hardening.md).
 
 Bank profiles were compared with AqBanking and current bank publications on
 **November 13–14, 2026**. Setup hints, selected outdated endpoints, statement-format
 negotiation and account-data handling have been updated. See the
 [bank compatibility review](docs/bank-compatibility.md) for the per-bank sources,
 remaining uncertainties (including Consorsbank's documented FinTS version) and
-offline test coverage. **This does not expand the live-tested bank list above.**
+offline test coverage. **This is historical reference material for the previous backend.**
 
 - **FinTS product registration is pending.** BankingCraft does not yet have its own registered
   product ID. Normal builds without a configured ID send an unregistered placeholder and may
@@ -65,6 +67,8 @@ location; the file format, `vault.kontor` filename and key derivation remain com
 ## Downloads
 
 Get versioned packages from [GitHub Releases](https://github.com/SvenCarstensen/BankingCraft/releases).
+The AqBanking/Libchipcard migration and fixes described here are on `master` and are
+not included in the previously published `v0.0.10` packages.
 See [installation and release instructions](docs/releases.md) for platform requirements, signatures
 and the workflow for publishing a new version.
 
@@ -135,29 +139,30 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 
 | Area | Implementation |
 |---|---|
-| Current accounts | UPD account discovery, IBAN/BIC (HKSPA), booked and available balances (HKSAL v5–7), camt.052 transactions (HKCAZ) with MT940/MT942 fallback (HKKAZ v5–7), pending transactions, pagination and duplicate detection |
-| Credit cards | HKKKU v1 / DKKKU v2 transactions; HKKKS v1 / DKKKS v3 balances or balances from transaction reports; account permissions, pagination, debit/credit and pending entries |
+| Current accounts | AqBanking account discovery, balances and transaction retrieval, with normalized duplicate detection across the backend migration |
+| Credit cards | Retrieval through AqBanking where the account advertises support; Postbank retrieval confirmed on macOS, other banks unverified |
+| Synchronization | Account, group or complete-bank refresh; progress shows the current account and whether balances or transactions are being retrieved; persistent errors with selectable details |
 | PayPal | Read-only NVP API signature access, live/sandbox endpoints, available balances per currency, signed net transactions including fees, bounded date-range splitting at the 100-result limit; credentials encrypted in the vault |
-| PIN/TAN | FinTS 3.0, PSD2 SCA (HKTAN v6/v7, processes 4/2/S), system synchronization, TAN method/media selection and decoupled app approval |
-| TAN display | Optical chipTAN with adjustable animated flicker code, photoTAN/QR-TAN images from HHDuc, SMS/text |
-| chipTAN USB | HHDuc sent through `FEATURE_MCT_READER_DIRECT` (SCardControl) or `FF 91 06 00` APDU; TAN read back from the reader |
-| HBCI smart cards (DDV) | DDV-0/DDV-1; bank details and signature counters read from the card; RIPEMD-160 and card-generated DES retail MAC; two-key 3DES CBC encryption; HBCI over TCP port 3000 |
-| RDH smart cards | ZKA/SECCOS cards such as VR-NetWorld-Card, RDH-7/9/10 profiles, card notepad access, HKISA bank keys checked against the card hash, card-generated RSA-PSS signatures and signature counters, two-key 3DES and RSA key transport (PKCS#1 v1.5 for RDH-7/9, mode 2 for RDH-10), bank signature verification |
-| Secure PIN entry | `FEATURE_VERIFY_PIN_DIRECT` for class 2/3 readers; the PIN stays on the reader. Software PIN entry is available only for readers without a PIN pad |
-| Payments | SEPA transfers (HKCCS), instant transfers (HKIPZ), scheduled transfers (HKCSE), standing order creation/retrieval/deletion (HKCDE/HKCDB/HKCDL), pain.001.001.03/.001.003.03/.001.001.09 |
+| PIN/TAN | AqBanking handles FinTS, synchronization, TAN method/media selection and bank authorization |
+| TAN display | Native AqBanking optical HHD data, bounded photoTAN/QR images, text and app approval prompts |
+| chipTAN USB | Libchipcard generates the TAN; BankingCraft validates the bounded response |
+| HBCI smart cards | DDV and ZKA/RDH through AqBanking and Libchipcard crypt tokens; private keys remain on the card |
+| Secure PIN entry | Libchipcard handles reader PIN-pad capabilities and required prompts |
+| Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
 | Payment orders and recipients | Encrypted outgoing queue, saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
 | Bank directory | 2,787 institutions with PIN/TAN URLs or HBCI hosts; search by name, city, bank code or BIC, tolerant of German umlaut spelling; embedded in `app/data/banks.tsv` |
 | Privacy | Local AES-256-GCM vault, key derived from the vault password using Argon2id; online banking PINs are saved only when explicitly requested and are additionally encrypted; card PINs are never saved |
+| Session protection | Manual lock, five-minute idle expiry, system-lock/resume monitoring, prompt revocation and exclusive vault access; platform limits documented in the security review |
 | Appearance | Light and dark themes, applied immediately; the first launch follows the system theme |
 | Languages | German, English, French and Spanish; the first launch uses the system language, with English as the fallback; the language can be changed in Settings |
 
 ## REINER SCT cyberJack (secoder)
 
 Readers with “cyberJack” or “REINER SCT” in their PC/SC name are detected and preferred.
-**Card reader → Check reader & card** shows the reported PC/SC Part 10 capabilities
-(secure PIN entry, MCT/chipTAN USB, display), the inserted HBCI card and its bank connections.
+**Card reader → Check reader & card** shows the PC/SC reader inventory and card presence.
+Bank details are read by Libchipcard when configuring the card access.
 
 The proprietary Secoder display of payment details during HBCI signing is not implemented.
 For chipTAN USB, the reader displays payment details using the standard HHDuc mechanism.
@@ -171,6 +176,9 @@ the version used by CI, and the committed lockfile. Install [Rust through rustup
 Git and Python 3 first. Reopen your terminal after installing tools so they are on `PATH`.
 A working graphics driver with OpenGL support is required to run the native app.
 No bank credentials, card reader or FinTS product ID are needed to compile or use demo data.
+Banking operations require the native runtime beside the executable, including in release
+builds. Build it with `scripts/build-native.py` and package it with `scripts/package-native.py`.
+Full platform prerequisites and the MSYS2 Windows steps are in [native banking](docs/native-banking.md).
 
 ### macOS
 
@@ -180,7 +188,13 @@ Install Apple's Command Line Tools (compiler, linker and SDK) if needed:
 xcode-select --install
 ```
 
-After installing Rust and Python 3, open Terminal and run:
+After installing Rust, Python 3 and Homebrew, install the native prerequisites:
+
+```sh
+brew install pkg-config gettext gnutls libgcrypt gmp libxml2 libxmlsec1
+```
+
+Then run:
 
 ```sh
 git clone https://github.com/SvenCarstensen/BankingCraft.git
@@ -188,7 +202,9 @@ cd BankingCraft
 rustup toolchain install 1.99.1 --profile minimal --component clippy
 rustup override set 1.99.1
 python3 scripts/update-licenses.py --check
+python3 scripts/build-native.py
 cargo build --release --locked -p bankingcraft
+python3 scripts/package-native.py target/release
 ./target/release/bankingcraft
 ```
 
@@ -218,6 +234,7 @@ Set-Location BankingCraft
 rustup toolchain install 1.99.1-x86_64-pc-windows-msvc --profile minimal --component clippy
 rustup override set 1.99.1-x86_64-pc-windows-msvc
 py -3 scripts/update-licenses.py --check
+# Build/package the native runtime in MSYS2 as described in docs/native-banking.md.
 cargo build --release --locked -p bankingcraft
 .\target\release\bankingcraft.exe
 ```
@@ -236,7 +253,8 @@ sudo apt-get update
 sudo apt-get install -y build-essential pkg-config git curl python3 \
   libpcsclite-dev pcscd libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libfreetype6-dev \
   libx11-dev libxi-dev libxrandr-dev libxcursor-dev libxinerama-dev \
-  libgl1 fonts-noto-core
+  libgl1 fonts-noto-core gettext libgnutls28-dev libgcrypt20-dev libgmp-dev \
+  libxml2-dev libxmlsec1-dev patchelf
 ```
 
 Install Rust through rustup, then build and run from a graphical desktop session:
@@ -247,7 +265,9 @@ cd BankingCraft
 rustup toolchain install 1.99.1 --profile minimal --component clippy
 rustup override set 1.99.1
 python3 scripts/update-licenses.py --check
+python3 scripts/build-native.py
 cargo build --release --locked -p bankingcraft
+python3 scripts/package-native.py target/release
 ./target/release/bankingcraft
 ```
 
@@ -309,8 +329,9 @@ saved to a vault. A configured vault ID always takes precedence. Normal builds i
 copying the test app to another machine does not copy its local configuration.
 The former `BANKINGCRAFT_DEFAULT_PRODUCT_ID` build variable is no longer used.
 
-Set `RUST_LOG=debug` for protocol diagnostics. Message contents and PINs/TANs are not logged.
-Error reports contain technical segment summaries, without free-form bank messages.
+Raw FinTS protocol logs are disabled. Application diagnostics retain warning/error metadata
+without formatted messages or panic payloads. Bank errors remain visible in the app through
+**Show details**, with an explicit copy action; redact personal data before sharing them.
 
 ## Automated checks
 
@@ -324,6 +345,9 @@ checks current RustSec advisories on pushes, pull requests and every week. Known
 unsoundness and yanked packages fail the check. Unmaintained-package warnings remain visible;
 no advisories are suppressed. The current lockfile still contains unmaintained `zbus_names`,
 `zvariant` and `zvariant_derive` dependencies. See [test documentation](docs/testing.md).
+Native CI also builds the pinned AqBanking, Gwenhywfar and Libchipcard sources, tests the
+worker, inventories the packaged libraries and runs local SBOM/CVE scans. Unix adapter
+tests use AddressSanitizer and UndefinedBehaviorSanitizer. See [native banking](docs/native-banking.md).
 
 ## Getting started
 
@@ -338,6 +362,12 @@ account, then retrieves its balance and transactions. Group synchronization does
 only the accounts in that group. The global button and **All accounts** synchronize all bank
 connections: all their saved orders are sent before any balance or transaction retrieval starts.
 **Back to accounts** at the top left returns to the account list.
+
+During retrieval, the progress dialog identifies the account and bank connection, followed
+by **Retrieve balance** or **Retrieve transactions**. Account discovery has its own status.
+Technical AqBanking progress messages do not overwrite these labels. PIN/TAN and card
+prompts still appear when required. Errors stay visible until dismissed, with complete
+selectable details available separately.
 
 [FinTS product registration](https://www.fints.org/de/hersteller/produktregistrierung) is handled
 by the software publisher. Once assigned, BankingCraft’s product ID will be embedded in a future
@@ -450,16 +480,16 @@ are marked as missing rather than treated as zero. Drag accounts within the over
 to reorder them; an insertion line shows the destination. The order survives application restarts
 and account refreshes, and sorting preserves group assignments.
 
-Standing order retrieval negotiates HKCDB version 1 or 2 and the bank’s supported pain.001 formats.
-Version 2 also supplies execution times. Failed retrievals preserve existing standing orders and
-are reported as failures or partial successes.
+Standing order retrieval uses AqBanking's supported jobs and the bank's account capabilities.
+Failed retrievals preserve existing standing orders and are reported as failures or partial
+successes.
 
 ## Project layout
 
 ```
-crates/fints         FinTS 3.0 syntax, messages, PIN/TAN/DDV/RDH security, BPD/UPD,
-                     banking operations, MT940, camt.052, pain.001 and flicker codes
-crates/cardreader    PC/SC, DDV/RDH smart cards, chipTAN USB, PIN pads and diagnostics
+crates/aqbanking     Bounded IPC client, native data mapping and process lifetime
+native/aqbanking     C adapter, in-memory configuration and Libchipcard operations
+crates/banking-models Shared data models, vault compatibility and local form validation
 crates/i18n          Shared translation catalogue, locale resolution and runtime messages
 crates/i18n-macros   Compile-time checked translated format strings
 app                  egui/eframe UI, encrypted vault, categorization and background jobs
@@ -481,76 +511,37 @@ remains authoritative; the endpoint can be edited in the connection form.
 The [LGPL-2.1 license text](licenses/bank-directory/LGPL-2.1.txt), provenance and
 modification notice are included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#bank-directory-from-hbci4java).
 
-## Compatibility with AqBanking/GnuCash
+## AqBanking, GnuCash and verification
 
-Message structure and dialog flow follow AqBanking, the FinTS library used by GnuCash
-(behavior reimplemented; no AqBanking source code copied):
+The current application uses AqBanking and Libchipcard directly through a separate
+native worker. It no longer dispatches bank requests or card cryptography through
+the previous Rust implementation. Sharing libraries with GnuCash does not establish
+identical security: BankingCraft's UI, IPC, encrypted persistence, packaging and
+payment authorization are separate code requiring review.
 
-- System IDs obtained with a single-step dialog: method 999, security profile `PIN:1`, no HKTAN.
-  Two-step dialogs use `PIN:2` and HKTAN processes 4 → 2/S.
-- The TAN medium, such as a BestSign device, is placed in HKTAN field 11 in every process step.
-- HKVVB protocol dialog language remains 1, independently of the UI language. SEPA orders use
-  complete KTI data; HKCDB/HKCDL field ordering follows AqBanking.
-- Decoupled approval uses HKTAN process S, detected through HITANS or return code 3955.
+Local verification on November 15, 2026 passed **151 workspace tests**, Clippy with warnings
+as errors, native offline regressions and ASan/UBSan adapter checks. The macOS release build
+starts successfully. A live Postbank PIN/TAN check retrieved account data, balances and
+transactions, including credit-card transactions; the updated synchronization display was
+also confirmed by the user. These checks do not validate other banks, physical cards or
+real payment submission.
 
-### RDH smart cards compared with AqBanking/GnuCash
-
-**Review updated November 13, 2026: full equivalence has not been established.** GnuCash uses
-AqBanking/AqHBCI and libchipcard for ZKA cards. BankingCraft reimplements part of this functionality in Rust.
-
-| Area | BankingCraft after review |
-|---|---|
-| RDH-7/9/10 cryptography | SHA-256/SHA-256, RSA-PSS, two-key 3DES and profile-specific RSA key transport; tested locally with RSA-2048 |
-| Response validation | Personalized RDH responses must be fully encrypted and validly signed. Missing keys/signatures, inconsistent control references and unprotected additional segments are rejected |
-| Card access | ZKA/SECCOS notepad, private keys, fresh signature counter and PIN pad; corrected EF_KEYD descriptors and extended APDU lengths |
-| Trust | Bank keys checked against the card hash or explicitly verified by the user; no automatic acceptance of unverified keys |
-| Scope | Previously initialized RDH smart cards; no software key files, initial INI setup, key changes/revocation or certificate workflows |
-| Real-world validation | Successful VR Bank Nord retrieval using an RDH-7 smart card, confirmed by the user on November 13, 2026; other profiles and card/reader combinations remain unverified |
-
-Findings, sources, fixes and test limits: [RDH code review](docs/rdh-review.md).
-
-## Verification
-
-Run the offline regression suite with `./scripts/test-business.sh`. Test cases and limitations are
-listed in [docs/testing.md](docs/testing.md). The [security review](docs/security-review.md) covers
-fixes, the dependency scan and remaining limitations.
-
-- Flicker code generation matches all six reference vectors from the hbci4java test suite.
-- Tests cover message structure, escaping, binary data, MT940/SEPA fields, pain.001 round trips and IBAN validation.
-- DDV and chipTAN USB APDU sequences follow the hbci4java `smartcardio` implementation.
-- A complete RDH-7 dialog is tested against a simulated bank using real RSA-2048 keys: key retrieval,
-  hash validation, synchronization, signing, encryption and bank signature verification. Card layouts
-  such as the notepad, EF_KEYD and PIN formats use test fixtures.
-- **Postbank PIN/TAN:** real account, balance and transaction retrieval succeeded on November 12, 2026
-  after the camt fix; credit card balances and transactions were also retrieved successfully.
-- **VR Bank Nord RDH-7:** the user confirmed successful retrieval with the real bank/card
-  connection on November 13, 2026. This does not validate other banks, RDH-9/10 or other
-  card/reader combinations.
-- **Only these two bank/access combinations have been confirmed working with real bank accounts.**
-- No real payment orders have been submitted for testing.
-- Language tests cover first-start detection, English fallback, persistence, all four bundled UI
-  languages, translated format placeholders, stable categories and unchanged account/group/form data.
-- Direct debit reversal is not implemented. Standing orders are changed by deleting and recreating them.
+Run `cargo test --workspace --locked`, the native offline tests and the packaged
+runtime scan described in [native banking](docs/native-banking.md). The historical
+[RDH review](docs/rdh-review.md), [bank compatibility review](docs/bank-compatibility.md)
+describe the former backend; the superseded protocol simulators and implementations
+have been removed. Those historical reviews are not evidence
+of live compatibility or cryptographic validation of the new integration.
 
 ### Verification of Payee
 
-Standard, instant and scheduled transfers use the bank's FinTS Verification of Payee service
-(HKVPP/HIVPP, version 1). Before authorization, BankingCraft displays the result for the submitted
-name and IBAN together with the complete bank message. For a close match, the recipient name
-reported by the receiving bank is shown and can be copied. To make a correction, cancel and check
-the revised payment again. For a mismatch or an unavailable check, continuing requires explicit
-acknowledgement. A missing result is never presented as a match.
+BankingCraft shows a fixed local payment summary before dispatch. AqBanking handles
+the bank's VoP protocol. Its complete VoP dialog text requires explicit confirmation;
+no result is silently accepted by that dialog adapter. Cancellation and unknown
+dialog types fail closed. To correct a payment, cancel and submit the revised form.
+Native adapter tests exercise the actual AqBanking VoP dialog with synthetic data.
+No real payment, bank VoP workflow or card signing flow has been tested after migration.
 
-Further submission follows the bank's response codes: continue the existing TAN authorization
-for code 3091; otherwise resubmit the identical payment with HKVPA and the bank's VoP ID.
-Smart cards always require the second submission. Queued payment orders use the same flow;
-payments are never retried automatically. Standing order creation uses the check when the bank
-advertises support for it in its parameters. If the bank offers no supported verification flow
-for transfers, authorization remains blocked and the app directs the user to the bank's online
-banking service. Explicit execution by the bank without further authorization (3091 + 3076)
-is shown as already completed. Demo mode clearly indicates that no bank verification took place.
-
-References: [FinTS specification, VoP V1.02 dated October 19, 2026](https://www.fints.org/de/spezifikation/aenderungen)
-and [DK Annex 3 V3.9, section 2.2.6, pain.002.001.10](https://www.ebics.de/de/datenformate/gueltige-version).
-Verification is tested with simulated bank responses; real bank and hardware tests are outside
-the scope of the offline suite.
+See [security hardening and audit scope](docs/security-hardening.md) for controls,
+known limits and outstanding independent review. PCI-DSS/FAPI compliance and security
+certification are not claimed.

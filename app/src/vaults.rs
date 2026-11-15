@@ -212,7 +212,14 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
     st.on_unlock(move |password| {
         let app = weak.unwrap();
         if !can_switch(&app) || selection.borrow().creating { return; }
-        let result = VaultFile::open(selection.borrow().path.clone(), &password)
+        let password = zeroize::Zeroizing::new(password);
+        let result = {
+            let c = ctx(); let file = c.file.lock().unwrap();
+            match file.as_ref().filter(|f| f.path() == selection.borrow().path) {
+                Some(file) => file.reopen_session(&password),
+                None => VaultFile::open_session(selection.borrow().path.clone(), &password),
+            }
+        }
             .and_then(|(file, vault)| { save_current(&app)?; Ok((file, vault)) });
         match result {
             Ok((file, vault)) => activate(&app, &selection, vault, file),
@@ -221,6 +228,8 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
     });
     let weak = app.as_weak(); let selection = manager.clone();
     st.on_create_vault(move |password, repeat| {
+        let password = zeroize::Zeroizing::new(password);
+        let repeat = zeroize::Zeroizing::new(repeat);
         let app = weak.unwrap();
         let st = app.global::<AppState>();
         if !can_switch(&app) || !selection.borrow().creating { return; }
@@ -245,7 +254,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
 
 /// Never carry a payment, bank-access draft, authorization or selected transaction
 /// from one vault into another. The caller has already checked that no job is running.
-fn reset_vault_view(app: &AppWindow) {
+pub(crate) fn reset_vault_view(app: &AppWindow) {
     let c = ctx();
     c.bridge.answer(crate::bridge::Answer::Cancel);
     *c.bridge.pin_cache.lock().unwrap() = None;
@@ -542,7 +551,7 @@ mod tests {
         assert_eq!(VaultFile::open(first.clone(), "first-password").unwrap().1.accounts.len(), 2);
         assert!(VaultFile::open(second.clone(), "second-password").unwrap().1.accounts.is_empty());
         assert!(VaultFile::open(second.clone(), "first-password").is_err());
-        c.edit_vault(|v| { v.merge_accounts(1, vec![fints::Account { product: "Only business".into(), account_number: "123".into(), ..Default::default() }]); Ok(()) }).unwrap();
+        c.edit_vault(|v| { v.merge_accounts(1, vec![banking::Account { product: "Only business".into(), account_number: "123".into(), ..Default::default() }]); Ok(()) }).unwrap();
         crate::refresh_view(&app);
         st.set_tf_name("business draft".into());
         st.invoke_choose_vault(2);

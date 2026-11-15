@@ -14,8 +14,8 @@ local-fints-test = []
 [dependencies]
 sys-locale = "0.3"
 i18n = { package = "bankingcraft-i18n", path = "../crates/i18n" }
-fints = { path = "../crates/fints" }
-cardreader = { path = "../crates/cardreader" }
+banking = { package = "bankingcraft-models", path = "../crates/banking-models" }
+aqbanking = { package = "bankingcraft-aqbanking", path = "../crates/aqbanking" }
 egui = "=0.36.0"
 eframe = { version = "=0.36.0", default-features = false, features = ["default_fonts", "glow", "x11", "wayland", "accesskit"] }
 svgtypes = "0.16"
@@ -33,7 +33,6 @@ argon2 = "0.5"
 rand = "0.8"
 directories = "5"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp"] }
-env_logger = "0.11"
 zeroize = "1"
 arboard = { version = "3.7", default-features = false }
 sha2 = "0.10"
@@ -41,10 +40,20 @@ rfd = "0.18"
 ureq = { version = "2", default-features = false, features = ["tls"] }
 url = "2"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
+
+[build-dependencies]
+cc = "1"
+
 [package.metadata.bundle]
 name = "BankingCraft"
 identifier = "de.appcreation.bankingcraft"
 
 [dev-dependencies]
+roxmltree = "0.20"
 egui_kittest = { version = "=0.36.0", features = ["wgpu", "snapshot", "eframe"] }
 i18n = { package = "bankingcraft-i18n", path = "../crates/i18n", features = ["test-support"] }

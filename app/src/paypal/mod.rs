@@ -3,7 +3,7 @@ mod client;
 use crate::{jobs::{Ctx, JobResult}, store::{AccessKind, BankAccess, StoredTx, Vault}, ui::{AppWindow, state::AppState}};
 use chrono::{Duration, Utc};
 use client::{Client, Credentials, Http, Snapshot};
-use fints::{Account, Balance};
+use banking::{Account, Balance};
 use rust_decimal::Decimal;
 use std::{collections::{BTreeSet, HashMap, HashSet}, sync::atomic::Ordering};
 use zeroize::Zeroizing;

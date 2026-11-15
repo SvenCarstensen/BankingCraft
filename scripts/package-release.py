@@ -49,10 +49,12 @@ def macos(version, temporary, output):
     executable = app / "Contents/MacOS/BankingCraft"
     executable.parent.mkdir(parents=True)
     shutil.copy2(ROOT / "target/release/bankingcraft", executable)
+    run(sys.executable, "scripts/package-native.py", str(executable.parent))
     resources(app / "Contents/Resources")
     shutil.copy2(ROOT / "macos/BankingCraft.icns", app / "Contents/Resources/BankingCraft.icns")
     info = plistlib.loads((ROOT / "macos/Info.plist").read_bytes())
-    info["LSMinimumSystemVersion"] = os.environ.get("MACOSX_DEPLOYMENT_TARGET", "11.0")
+    minimums = [os.environ.get("MACOSX_DEPLOYMENT_TARGET", "11.0"), (executable.parent / "native/minimum-macos.txt").read_text().strip()]
+    info["LSMinimumSystemVersion"] = max(minimums, key=lambda v: tuple(map(int, v.split("."))))
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
     # Distribution certificates are optional; never imply this ad-hoc signature is notarization.
     run("codesign", "--force", "--sign", "-", str(app))
@@ -74,6 +76,7 @@ def windows(version, temporary, output):
     payload = temporary / "BankingCraft"
     resources(payload)
     shutil.copy2(ROOT / "target/release/bankingcraft.exe", payload / "BankingCraft.exe")
+    run(sys.executable, "scripts/package-native.py", str(payload))
     shutil.copy2(ROOT / "packaging/windows/BankingCraft.ico", payload / "BankingCraft.ico")
     # Rust's MSVC target uses the shared CRT. Ship its app-local runtime with both packages.
     vswhere = Path(os.environ["ProgramFiles(x86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"

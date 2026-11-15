@@ -38,6 +38,8 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   build_failed
 fi
 
+python3 scripts/build-native.py 2>&1 | tee -a "$LOG"
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then build_failed; fi
 cargo build --release --locked 2>&1 | tee -a "$LOG"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   echo "BUILD FAILED" | tee -a "$LOG"
@@ -52,7 +54,10 @@ fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/bankingcraft "$APP/Contents/MacOS/BankingCraft"
+python3 scripts/package-native.py "$APP/Contents/MacOS" 2>&1 | tee -a "$LOG"
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then build_failed; fi
 cp macos/Info.plist "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $(cat "$APP/Contents/MacOS/native/minimum-macos.txt")" "$APP/Contents/Info.plist"
 sh scripts/copy-license-bundle.sh "$APP/Contents/Resources" 2>&1 | tee -a "$LOG"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   echo "LICENSE COPY FAILED" | tee -a "$LOG"

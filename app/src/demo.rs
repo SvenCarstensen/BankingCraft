@@ -3,7 +3,7 @@
 
 use crate::store::{AccessKind, BankAccess, StoredStanding, Vault};
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use fints::{Account, Balance, Interval, SepaTransfer, StandingOrder, Transaction};
+use banking::{Account, Balance, Interval, SepaTransfer, StandingOrder, Transaction};
 use rust_decimal::Decimal;
 
 pub const DEMO_BLZ: &str = "12345678";
@@ -68,8 +68,8 @@ fn add_demo_data(v: &mut Vault, full_demo: bool) {
         id: access_id,
         name: "Demo-Bank (lokal)".into(),
         kind: AccessKind::Demo,
-        config: fints::Config { blz: DEMO_BLZ.into(), user_id: "demo".into(), ..Default::default() },
-        state: fints::State { tan_method: Some("Demo-chipTAN".into()), ..Default::default() },
+        config: banking::Config { blz: DEMO_BLZ.into(), user_id: "demo".into(), ..Default::default() },
+        state: banking::State::default(),
         saved_pin: None,
     });
     let giro = Account {
@@ -193,4 +193,4 @@ fn add_demo_data(v: &mut Vault, full_demo: bool) {
 }
 
 /// HHD 1.4 sample from the hbci4java test-suite, used to demonstrate the flicker dialog.
-pub const DEMO_FLICKER: &str = "039870110490631098765432100812345678041,00";
+pub const DEMO_FLICKER: &[u8] = &[0x17,0x84,0x01,0x10,0x49,0x06,0x3f,0x05,0x98,0x76,0x54,0x32,0x10,0x04,0x12,0x34,0x56,0x78,0x44,0x31,0x2c,0x30,0x30,0x19];

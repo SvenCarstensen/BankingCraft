@@ -48,6 +48,7 @@ jobs:
           restore-keys: desktop-${{ runner.os }}-${{ runner.arch }}-1.99.1-
       - name: Verify license bundle
         run: python3 scripts/update-licenses.py --check
+      - uses: ./.github/actions/native-runtime
       - name: Test with synthetic data only
         run: cargo test --workspace --locked
       - name: Clippy

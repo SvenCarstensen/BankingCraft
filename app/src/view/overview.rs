@@ -72,7 +72,7 @@ mod tests {
 
     fn fixture() -> (Vault, Vec<u32>, u32, u32) {
         let mut v = Vault::default();
-        let ids = v.merge_accounts(1, (0..4).map(|i| fints::Account { account_number: format!("{i}"), product: format!("Account {i}"), ..Default::default() }).collect());
+        let ids = v.merge_accounts(1, (0..4).map(|i| banking::Account { account_number: format!("{i}"), product: format!("Account {i}"), ..Default::default() }).collect());
         v.accounts[1].access_id = 2; // A group can span bank connections.
         let a = v.create_group("Personal").unwrap();
         let b = v.create_group("Business").unwrap();

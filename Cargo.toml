@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fints", "crates/cardreader", "app", "crates/i18n", "crates/i18n-macros", "crates/crossfont-compat"]
+members = ["crates/banking-models", "crates/aqbanking", "app", "crates/i18n", "crates/i18n-macros", "crates/crossfont-compat"]
 
 # winit 0.30 / sctk-adwaita 0.10 require crossfont 0.8, whose fontconfig-sys 5
 # conflicts with Fontique's version 6. Crossfont 0.9 preserves the rendering API;

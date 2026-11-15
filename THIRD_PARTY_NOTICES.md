@@ -84,6 +84,24 @@ The editable corresponding data source is [app/data/banks.tsv](app/data/banks.ts
 it is included with the macOS license bundle. The directory can be modified in
 that source file and incorporated by rebuilding BankingCraft.
 
+## AqBanking and Libchipcard runtime
+
+The application now delegates banking to **AqBanking 6.9.2 (GPL-2.0-or-later)**,
+using **Gwenhywfar 5.14.3 (LGPL-2.1-or-later)** and **Libchipcard 5.1.6
+(LGPL-2.1-or-later, with the upstream OpenSSL exception)**. Original COPYING
+and authorship files are retained in `licenses/native/` under each project name.
+Pinned source URLs and SHA-256 hashes are in `native/dependencies.json`.
+BankingCraft's changes are applied explicitly by `scripts/build-native.py` and
+described in [the native runtime documentation](docs/native-banking.md).
+
+Packages include the actual transitive native library inventory and license
+notices in `native/`. macOS uses Homebrew metadata, Windows MSYS2 package
+metadata, and Linux Debian/Ubuntu package metadata. Sources for the three pinned
+projects accompany the source archive. Before distributing binaries, collect the
+matching corresponding sources and patches for bundled GPL/LGPL transitive
+libraries as well; the inventory and notices alone do not satisfy that obligation.
+No new release has been published as part of this migration.
+
 ## Maintaining and distributing these notices
 
 Keep this file, `LICENSE`, the complete `licenses/` directory and the editable

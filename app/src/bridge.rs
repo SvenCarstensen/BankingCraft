@@ -1,8 +1,7 @@
 //! Blocking bridge between the FinTS worker thread and the egui dialogs.
 
 use crate::{AppState, AppWindow, ChoiceRow};
-use fints::tan::{parse_matrix_code, FlickerCode};
-use fints::{Interaction, TanAnswer, TanChallenge, TanKind, TanMethod};
+use banking::{Interaction, TanAnswer, TanChallenge, TanKind};
 use crate::ui::{ModelRc, SharedPixelBuffer, Rgba8Pixel, SharedString, VecModel};
 use std::cell::{Cell, RefCell};
 use std::sync::mpsc;
@@ -18,8 +17,15 @@ pub enum Answer {
 #[derive(Clone)]
 pub struct Bridge {
     pub weak: crate::ui::Weak<AppWindow>,
+    /// Sync jobs publish account/operation progress themselves. This setting is
+    /// local to a client clone; prompts and cancellation still share the session.
+    native_progress: bool,
     /// Cancellation is control flow, independent of the translated message.
     pub cancelled: Arc<std::sync::atomic::AtomicBool>,
+    pub locked: Arc<std::sync::atomic::AtomicBool>,
+    pub generation: Arc<std::sync::atomic::AtomicU64>,
+    pub prompt_id: Arc<std::sync::atomic::AtomicU64>,
+    pub pin_was_rejected: Arc<std::sync::atomic::AtomicBool>,
     pub pending: Arc<Mutex<Option<mpsc::Sender<Answer>>>>,
     /// HHDuc bytes for chipTAN USB while a TAN dialog is open.
     pub usb_payload: Arc<Mutex<Option<Vec<u8>>>>,
@@ -75,7 +81,12 @@ impl Bridge {
     pub fn new(weak: crate::ui::Weak<AppWindow>) -> Self {
         Self {
             weak,
+            native_progress: true,
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            locked: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            prompt_id: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            pin_was_rejected: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             pending: Arc::new(Mutex::new(None)),
             usb_payload: Arc::new(Mutex::new(None)),
             pin_cache: Arc::new(Mutex::new(None)),
@@ -85,16 +96,36 @@ impl Bridge {
     }
 
     fn ask(&self, setup: impl FnOnce(&AppWindow) + Send + 'static) -> Answer {
+        use std::sync::atomic::Ordering;
+        if self.locked.load(Ordering::Acquire) || self.cancelled.load(Ordering::Acquire) { return Answer::Cancel; }
+        let epoch = self.session_generation();
+        let prompt = self.prompt_id.fetch_add(1, Ordering::AcqRel) + 1;
         let (tx, rx) = mpsc::channel();
         *self.pending.lock().unwrap() = Some(tx);
-        if self.weak.upgrade_in_event_loop(move |app| setup(&app)).is_err() {
+        let locked = self.locked.clone();
+        let generation = self.generation.clone();
+        let prompt_id = self.prompt_id.clone();
+        if self.weak.upgrade_in_event_loop(move |app| {
+            if !locked.load(Ordering::Acquire) && generation.load(Ordering::Acquire) == epoch && prompt_id.load(Ordering::Acquire) == prompt { setup(&app); }
+        }).is_err() {
+            self.pending.lock().unwrap().take();
             return Answer::Cancel;
         }
-        rx.recv().unwrap_or(Answer::Cancel)
+        loop {
+            if self.locked.load(Ordering::Acquire) || self.cancelled.load(Ordering::Acquire) || self.session_generation() != epoch {
+                self.pending.lock().unwrap().take(); return Answer::Cancel;
+            }
+            match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(answer) => return answer,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Answer::Cancel,
+                Err(mpsc::RecvTimeoutError::Timeout) => {},
+            }
+        }
     }
 
     /// Called from UI callbacks.
     pub fn answer(&self, a: Answer) {
+        self.prompt_id.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         if let Some(tx) = self.pending.lock().unwrap().take() {
             let _ = tx.send(a);
         }
@@ -102,22 +133,30 @@ impl Bridge {
 
     pub fn status(&self, text: &str) {
         let t = SharedString::from(text);
+        let locked = self.locked.clone();
+        let generation = self.generation.clone();
+        let epoch = self.session_generation();
         let _ = self.weak.upgrade_in_event_loop(move |app| {
+            if locked.load(std::sync::atomic::Ordering::Acquire) || generation.load(std::sync::atomic::Ordering::Acquire) != epoch { return; }
             app.global::<AppState>().set_busy_text(t);
         });
     }
 
+    pub fn with_application_progress(&self) -> Self {
+        Self { native_progress: false, ..self.clone() }
+    }
+
     pub fn pinpad(&self, show: bool, text: &str) {
         let t = SharedString::from(text);
+        let locked = self.locked.clone();
+        let generation = self.generation.clone();
+        let epoch = self.session_generation();
         let _ = self.weak.upgrade_in_event_loop(move |app| {
+            if locked.load(std::sync::atomic::Ordering::Acquire) || generation.load(std::sync::atomic::Ordering::Acquire) != epoch { return; }
             let st = app.global::<AppState>();
             st.set_pinpad_text(t);
             st.set_show_pinpad(show);
         });
-    }
-
-    pub fn ask_pin(&self, prompt: &str) -> Option<String> {
-        self.ask_input(i18n::tr("PIN-Eingabe"), prompt, true)
     }
 
     pub fn ask_input(&self, heading: &str, prompt: &str, masked: bool) -> Option<String> {
@@ -160,12 +199,29 @@ impl Bridge {
     }
 
     pub fn has_reader(&self) -> bool {
-        cardreader::list_readers().map(|r| !r.is_empty()).unwrap_or(false)
+        aqbanking::list_readers().map(|r| !r.is_empty()).unwrap_or(false)
     }
 }
 
 impl Interaction for Bridge {
+    fn session_generation(&self) -> u64 { self.generation.load(std::sync::atomic::Ordering::Acquire) }
+    fn pin_rejected(&self) {
+        self.pin_was_rejected.store(true,std::sync::atomic::Ordering::Release);
+        *self.pin_cache.lock().unwrap()=None;
+        *self.pin_save_requested.lock().unwrap()=false;
+    }
+    fn secret(&self,title:&str,prompt:&str,cache:bool) -> Option<String> {
+        if cache { self.pin(prompt) } else { self.ask_input(title,prompt,true) }
+    }
+    fn select(&self,title:&str,text:&str,options:&[(String,String)]) -> Option<String> {
+        self.choose(&format!("{title}\n\n{text}"),options.iter().map(|(id,label)|(id.clone(),label.clone(),String::new())).collect())
+    }
+    fn hardware_prompt(&self,show:bool,text:&str) { self.pinpad(show,text); }
+    fn cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::Acquire) || self.locked.load(std::sync::atomic::Ordering::Acquire)
+    }
     fn pin(&self, prompt: &str) -> Option<String> {
+        if self.cancelled() { return None; }
         if let Some(p) = self.pin_cache.lock().unwrap().clone() {
             return Some(p.to_string());
         }
@@ -175,50 +231,46 @@ impl Interaction for Bridge {
         Some(p)
     }
 
-    fn choose_tan_method(&self, methods: &[TanMethod]) -> Option<String> {
-        let rows = methods
-            .iter()
-            .map(|m| {
-                let kind = match m.kind() {
-                    TanKind::ChipTan => i18n::tr("chipTAN (optisch / USB)"),
-                    TanKind::Matrix => "photoTAN / QR-TAN",
-                    TanKind::Decoupled => i18n::tr("Freigabe in der Banking-App"),
-                    TanKind::Sms => "mobileTAN / SMS",
-                    TanKind::Other => i18n::tr("TAN-Verfahren"),
-                };
-                (m.security_function.clone(), m.name.clone(), i18n::tr_format!("{kind} · Verfahren {}", m.security_function))
-            })
-            .collect();
-        self.choose(i18n::tr("TAN-Verfahren wählen"), rows)
+    fn tan(&self,ch:&TanChallenge,rendered:Option<&[u8]>,image:Option<(&str,&[u8])>)->TanAnswer {self.render_tan(ch,rendered,image)}
+
+    fn progress(&self, text: &str) {
+        if self.native_progress { self.status(text); }
     }
 
-    fn choose_tan_medium(&self, media: &[String]) -> Option<String> {
-        if media.is_empty() {
-            return None;
-        }
-        let rows = media.iter().map(|m| (m.clone(), m.clone(), String::new())).collect();
-        self.choose(i18n::tr("TAN-Medium wählen"), rows)
+    fn text(&self, title: &str, prompt: &str) -> Option<String> {
+        self.ask_input(title, prompt, false)
     }
 
-    fn tan(&self, ch: &TanChallenge) -> TanAnswer {
-        let text = fints::client::strip_html(&ch.text);
-        let hhduc_text = ch.hhduc.as_ref().map(|b| fints::syntax::latin1_to_string(b)).unwrap_or_default();
-        let flicker = FlickerCode::parse(&hhduc_text).or_else(|| FlickerCode::parse(&ch.text));
-        let matrix = ch.hhduc.as_ref().and_then(|b| parse_matrix_code(b));
+    fn verify_payee(&self, result: &banking::payee::PayeeVerification, already_executed: bool) -> bool {
+        let result = result.clone();
+        matches!(self.ask(move |app| crate::payee_ui::show(app, &result, already_executed)), Answer::Confirmed)
+    }
+
+    fn confirm(&self, title: &str, text: &str) -> bool {
+        let (t, x, b) = (title.to_string(), text.to_string(), self.clone());
+        matches!(self.ask(move |app| crate::confirm_blocking(app, &t, &x, b)), Answer::Confirmed)
+    }
+}
+
+impl Bridge {
+    fn render_tan(&self, ch: &TanChallenge, rendered:Option<&[u8]>, native_image:Option<(&str,&[u8])>) -> TanAnswer {
+        let text = banking::display::strip_html(&ch.text);
+        let matrix = native_image.map(|(mime,data)|(mime.to_owned(),data.to_vec()));
         let kind = if ch.decoupled {
             3
         } else if matrix.is_some() {
             2
-        } else if flicker.is_some() && ch.method.kind() != TanKind::Matrix {
+        } else if rendered.is_some() && ch.method.kind() != TanKind::Matrix {
             1
         } else {
             0
         };
-        let frames = if kind == 1 { flicker.as_ref().map(|f| f.frames()).unwrap_or_default() } else { vec![] };
-        let usb = if kind == 1 { flicker.as_ref().map(|f| f.usb_payload()) } else { None };
+        let frames = if kind == 1 { rendered.map(rendered_hhd_frames).unwrap_or_default() } else { vec![] };
+        let usb = if kind == 1 { rendered.map(<[u8]>::to_vec) } else { None };
         let usb_possible = usb.is_some() && self.has_reader();
         *self.usb_payload.lock().unwrap() = usb;
-        let pixels = matrix.and_then(|(_, img)| decode_tan_image(&img));
+        let pixels = matrix.as_ref().and_then(|(_, img)| decode_tan_image(img));
+        if matrix.is_some() && pixels.is_none() { return TanAnswer::Cancel; }
         let title = SharedString::from(i18n::tr_format!("Freigabe · {}", ch.method.name));
         let text = SharedString::from(text);
         let answer = self.ask(move |app| {
@@ -246,23 +298,10 @@ impl Interaction for Bridge {
         }
     }
 
-    fn progress(&self, text: &str) {
-        self.status(text);
-    }
+}
 
-    fn text(&self, title: &str, prompt: &str) -> Option<String> {
-        self.ask_input(title, prompt, false)
-    }
-
-    fn verify_payee(&self, result: &fints::vop::PayeeVerification, already_executed: bool) -> bool {
-        let result = result.clone();
-        matches!(self.ask(move |app| crate::payee_ui::show(app, &result, already_executed)), Answer::Confirmed)
-    }
-
-    fn confirm(&self, title: &str, text: &str) -> bool {
-        let (t, x, b) = (title.to_string(), text.to_string(), self.clone());
-        matches!(self.ask(move |app| crate::confirm_blocking(app, &t, &x, b)), Answer::Confirmed)
-    }
+fn rendered_hhd_frames(payload:&[u8])->Vec<[bool;5]> {
+    [0x0f,0xff].iter().chain(payload).flat_map(|b| [b&15,b>>4]).flat_map(|n| [true,false].map(|clock|[clock,n&1!=0,n&2!=0,n&4!=0,n&8!=0])).collect()
 }
 
 fn decode_tan_image(bytes: &[u8]) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
@@ -280,6 +319,41 @@ fn decode_tan_image(bytes: &[u8]) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
 #[cfg(test)]
 mod image_security_tests {
     use super::*;
+    #[test]
+    fn native_hhd_bytes_are_not_encoded_twice() {
+        let payload=crate::demo::DEMO_FLICKER;
+        let frames=rendered_hhd_frames(payload);
+        let mut decoded=Vec::new();
+        for chunk in frames.as_chunks::<4>().0.iter().skip(2) {
+            assert!(chunk[0][0] && !chunk[1][0] && chunk[2][0] && !chunk[3][0]);
+            let nibble=|frame:[bool;5]|(1..=4).fold(0u8,|n,i|n|((frame[i] as u8)<<(i-1)));
+            decoded.push(nibble(chunk[0]) | (nibble(chunk[2])<<4));
+        }
+        assert_eq!(decoded,payload);
+    }
+    #[test]
+    fn queued_prompts_cannot_reappear_in_a_new_session() {
+        use std::sync::atomic::Ordering;
+        let app = AppWindow::new().unwrap();
+        let bridge = Bridge::new(app.as_weak());
+        bridge.status("old account details");
+        bridge.pinpad(true, "old reader prompt");
+        bridge.generation.fetch_add(1, Ordering::AcqRel);
+        app.pump(&egui::Context::default());
+        assert_ne!(app.global::<AppState>().get_busy_text(), "old account details");
+        assert!(!app.global::<AppState>().get_show_pinpad());
+        let worker_bridge = bridge.clone();
+        let worker = std::thread::spawn(move || worker_bridge.ask_input("old secret", "old prompt", true));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while bridge.pending.lock().unwrap().is_none() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        bridge.generation.fetch_add(1, Ordering::AcqRel);
+        app.pump(&egui::Context::default());
+        assert_eq!(worker.join().unwrap(), None);
+        assert!(!app.global::<AppState>().get_show_pin());
+    }
     #[test]
     fn tan_image_decodes_normal_image_but_rejects_excessive_dimensions_and_input() {
         let mut encoded = std::io::Cursor::new(Vec::new());

@@ -1,6 +1,6 @@
 //! Displays bank verification before the worker may continue to payment authorization.
 use crate::{AppState, AppWindow, bridge::{Answer, Bridge}};
-use fints::vop::{PayeeStatus, PayeeVerification};
+use banking::payee::{PayeeStatus, PayeeVerification};
 
 
 pub fn show(app: &AppWindow, result: &PayeeVerification, already_executed: bool) {

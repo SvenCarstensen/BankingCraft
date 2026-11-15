@@ -62,7 +62,7 @@ fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
             candidate.accesses.push(BankAccess {
                 id, name: a.name,
                 kind: AccessKind::RdhCard { reader: String::new(), record: 0 },
-                config: fints::Config {
+                config: banking::Config {
                     blz: a.blz.clone(), user_id: a.user_id, customer_id: a.customer_id,
                     url: a.host, ..Default::default()
                 },
@@ -73,7 +73,7 @@ fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
         };
         for account in a.accounts {
             let iban = account.iban.replace(' ', "").to_ascii_uppercase();
-            if !fints::pain::iban_valid(&iban) || account.number.is_empty()
+            if !banking::validation::iban_valid(&iban) || account.number.is_empty()
                 || !account.number.bytes().all(|c| c.is_ascii_digit())
                 || account.currency.len() != 3 || !account.currency.bytes().all(|c| c.is_ascii_uppercase())
                 || (iban.starts_with("DE") && (iban.len() != 22 || iban[4..12] != a.blz
@@ -86,7 +86,7 @@ fn merge(vault: &Vault, bytes: &[u8]) -> Result<(Vault, usize, usize), String> {
                     && old.account.sub_account == account.sub_account))) {
                 continue;
             }
-            candidate.merge_accounts(access_id, vec![fints::Account {
+            candidate.merge_accounts(access_id, vec![banking::Account {
                 iban, bic: account.bic, account_number: account.number, sub_account: account.sub_account,
                 blz: a.blz.clone(), owner: account.owner, product: account.name, currency: account.currency,
                 // Actual capabilities and account types are refreshed from the bank's UPD.
@@ -180,11 +180,11 @@ mod tests {
     fn import_is_idempotent_and_preserves_existing_data() {
         let (mut first, a, c) = merge(&Vault::default(), &fixture()).unwrap();
         assert_eq!((a,c), (1,1));
-        first.accesses[0].state.system_id = "keep".into();
+        first.accesses[0].state.aqbanking.get_or_insert_with(Default::default).binding = "keep".into();
         first.accounts[0].account.product = "Mein Konto".into();
         let (second, a, c) = merge(&first, &fixture()).unwrap();
         assert_eq!((a,c), (0,0));
-        assert_eq!(second.accesses[0].state.system_id, "keep");
+        assert_eq!(second.accesses[0].state.aqbanking.as_ref().unwrap().binding, "keep");
         assert_eq!(second.accounts[0].account.product, "Mein Konto");
     }
     #[test]

@@ -1,0 +1,5 @@
+[
+  {"name":"gwenhywfar","version":"5.14.3","url":"https://www.aquamaniac.de/rdm/attachments/download/662/gwenhywfar-5.14.3.tar.gz","sha256":"be1371a668d4d42f113f9dbebd850a66c63437037a027d3c1148afff5503998b","license":"LGPL-2.1-or-later"},
+  {"name":"libchipcard","version":"5.1.6","url":"https://www.aquamaniac.de/rdm/attachments/download/382/libchipcard-5.1.6.tar.gz","sha256":"6c07f527417f7562074f99012da4d11eb4dbafd33f49e66b442ccd6e3b8cfd20","license":"LGPL-2.1-or-later"},
+  {"name":"aqbanking","version":"6.9.2","url":"https://www.aquamaniac.de/rdm/attachments/download/654/aqbanking-6.9.2.tar.gz","sha256":"244b5f7a139f829928f5cdc3f5f7488517b3e8aa63625a92741c3efc1892bb3f","license":"GPL-2.0-or-later"}
+]

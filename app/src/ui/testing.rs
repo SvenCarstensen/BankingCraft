@@ -22,6 +22,38 @@ pub fn snapshot(app: &AppWindow, width: u32, height: u32, path: impl AsRef<std::
 }
 
 #[test]
+fn long_bank_error_details_copy_the_complete_message_and_close_with_the_toast() {
+    use egui_kittest::kittest::Queryable;
+    i18n::with_language(i18n::Language::German, || {
+        let app = AppWindow::new().unwrap();
+        let st = app.global::<crate::AppState>();
+        st.set_unlocked(true);
+        let message = format!("Testbank: Umsatzabruf fehlgeschlagen.\n{}\nHBCI: 9160 - Nicht belegt.\n(AqBanking-Status -1)",
+            "Synthetischer Bankhinweis ohne Kontodaten.\n".repeat(30));
+        crate::toast(&app, &message, true);
+        let mut harness = harness(&app, 1100., 680.);
+        let preview = message.lines().take(2).collect::<Vec<_>>().join("\n");
+        assert!(harness.get_by_label("Details anzeigen").rect().top() >= harness.get_by_label(&preview).rect().bottom());
+        harness.get_by_label("Details anzeigen").click();
+        harness.run_steps(4);
+        harness.get_by_label("Fehlermeldung kopieren").click();
+        let mut copied = false;
+        for _ in 0..4 {
+            harness.step();
+            copied |= harness.output().platform_output.commands.iter().any(|command|
+                matches!(command, egui::OutputCommand::CopyText(text) if text == &message));
+        }
+        assert!(copied, "copy must include the offscreen error code and final status");
+        if let Some(path) = std::env::var_os("BANKINGCRAFT_ERROR_PREVIEW") {
+            harness.render().unwrap().save(path).unwrap();
+        }
+        st.set_toast(Default::default()); // dismissal / vault-lock cleanup
+        harness.run_steps(3);
+        assert!(harness.query_by_label("Fehlermeldung kopieren").is_none());
+    });
+}
+
+#[test]
 fn grouped_account_drag_scrolls_at_the_viewport_edge_and_can_be_cancelled() {
     use egui_kittest::kittest::Queryable;
     i18n::with_language(i18n::Language::German, || {
@@ -29,7 +61,7 @@ fn grouped_account_drag_scrolls_at_the_viewport_edge_and_can_be_cancelled() {
         let st = app.global::<crate::AppState>();
         st.set_unlocked(true); st.set_page(1);
         let mut vault = crate::store::Vault::default();
-        vault.merge_accounts(1, (0..8).map(|i| fints::Account {
+        vault.merge_accounts(1, (0..8).map(|i| banking::Account {
             account_number: i.to_string(), product: format!("Row {i}"), ..Default::default()
         }).collect());
         crate::view::refresh_all(&app, &vault, &mut Default::default());
@@ -42,19 +74,6 @@ fn grouped_account_drag_scrolls_at_the_viewport_edge_and_can_be_cancelled() {
         assert!(row.is_none_or(|r| r.rect().top() < source.top() - 100.));
         harness.key_press(egui::Key::Escape); harness.run_steps(2);
         harness.drop_at(egui::pos2(1000., 400.)); harness.run_steps(3);
-    });
-}
-
-#[test]
-fn bank_setup_statement_preference_survives_ui_state_merge() {
-    use egui_kittest::kittest::Queryable;
-    i18n::with_language(i18n::Language::German, || {
-        let app = AppWindow::new().unwrap(); let st = app.global::<crate::AppState>();
-        st.set_unlocked(true); st.set_page(6); st.set_af_open(true);
-        let mut harness = harness(&app, 1360., 1100.);
-        harness.get_by_role(egui::accesskit::Role::ComboBox).click(); harness.run();
-        harness.get_by_label("MT940 bevorzugen (ältere Zugänge)").click(); harness.run();
-        assert_eq!(st.get_af_statement_format(), 2);
     });
 }
 
@@ -269,10 +288,10 @@ fn balance_test_app_with_amounts(booked: i64, pending_cents: i64) -> AppWindow {
     st.set_unlocked(true);
     st.set_theme_mode(2);
     let mut vault = crate::store::Vault::default();
-    let id = vault.merge_accounts(1, vec![fints::Account {
+    let id = vault.merge_accounts(1, vec![banking::Account {
         product: "Demo current account".into(), account_number: "100000".into(), ..Default::default()
     }])[0];
-    vault.accounts[0].balance = Some(fints::Balance {
+    vault.accounts[0].balance = Some(banking::Balance {
         booked: rust_decimal::Decimal::from(booked), available: None,
         currency: "EUR".into(), date: date("2026-11-12"),
     });

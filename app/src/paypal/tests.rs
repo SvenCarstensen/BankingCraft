@@ -6,7 +6,7 @@ fn access() -> BankAccess { BankAccess { id: 1, name: "Synthetic PayPal".into(),
 fn snapshot(pending: bool) -> Snapshot {
     Snapshot { from: time("2026-11-01T00:00:00Z"), to: time("2026-11-14T00:00:00Z"), balance_date: time("2026-11-14T00:00:00Z").date_naive(),
         balances: [("EUR".into(), Decimal::from(90)), ("USD".into(), Decimal::from(42))].into(),
-        transactions: vec![fints::Transaction { booking_date: time("2026-11-02T00:00:00Z").date_naive(), value_date: time("2026-11-02T00:00:00Z").date_naive(), amount: Decimal::from(-10), currency: "EUR".into(), fingerprint: "paypal:TX01:EUR:Payment".into(), end_to_end_id: "TX01".into(), pending, ..Default::default() }] }
+        transactions: vec![banking::Transaction { booking_date: time("2026-11-02T00:00:00Z").date_naive(), value_date: time("2026-11-02T00:00:00Z").date_naive(), amount: Decimal::from(-10), currency: "EUR".into(), fingerprint: "paypal:TX01:EUR:Payment".into(), end_to_end_id: "TX01".into(), pending, ..Default::default() }] }
 }
 fn setup() -> (Vault, BankAccess) { let access = access(); let vault = Vault { next_id: 1, accesses: vec![access.clone()], ..Default::default() }; (vault, access) }
 #[test]

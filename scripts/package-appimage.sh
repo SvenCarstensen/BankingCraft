@@ -8,6 +8,7 @@ trap 'rm -rf "$work"' EXIT
 appdir="$work/BankingCraft.AppDir"
 mkdir -p "$root/dist" "$appdir/usr/bin"
 cp target/release/bankingcraft "$appdir/usr/bin/"
+python3 scripts/package-native.py "$appdir/usr/bin"
 python3 scripts/package-release.py resources --destination "$appdir/usr/share/bankingcraft"
 
 # Released versions and verified digests; update these deliberately when upgrading tooling.

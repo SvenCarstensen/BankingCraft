@@ -47,6 +47,7 @@ pub struct Desktop {
     active_vault_path: String,
     theme_mode: i32,
     title: String,
+    toast_details: bool,
     pub group_drafts: HashMap<i32, (String, String)>,
     pub drag_account: Option<i32>,
     pub texture: Option<(super::Image, egui::TextureHandle)>,
@@ -55,6 +56,10 @@ pub struct Desktop {
     window_state: Option<crate::window_state::WindowState>,
     last_geometry: Option<NativeGeometry>,
     geometry_changed: std::time::Instant,
+    session: crate::session::Guard,
+}
+impl Drop for Desktop {
+    fn drop(&mut self) { self.passwords.iter_mut().for_each(zeroize::Zeroize::zeroize); }
 }
 impl Desktop {
     pub fn new(app: AppWindow, ctx: &egui::Context) -> Self {
@@ -79,6 +84,7 @@ impl Desktop {
             active_vault_path: String::new(),
             theme_mode: -1,
             title: String::new(),
+            toast_details: false,
             group_drafts: Default::default(),
             drag_account: None,
             texture: None,
@@ -87,11 +93,23 @@ impl Desktop {
             window_state: None,
             last_geometry: None,
             geometry_changed: std::time::Instant::now(),
+            session: Default::default(),
         }
     }
     pub fn draw(&mut self, ui: &mut Ui) {
         let st = self.app.global::<AppState>();
-        let before = st.snapshot();
+        let (input,focused) = ui.input(|i| (!i.events.is_empty(),i.focused));
+        let system_locked = crate::session::take_system_lock(focused);
+        let manual = st.get_unlocked() && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND,egui::Key::L));
+        if self.session.tick(st.get_unlocked(),input,system_locked,std::time::Instant::now(),std::time::SystemTime::now()) || manual {
+            crate::session::lock(&self.app);
+            self.passwords.iter_mut().for_each(zeroize::Zeroize::zeroize);
+            self.group_drafts.clear(); self.drag_account=None; self.texture=None;
+            // Remove cached edit state and layout data belonging to the session.
+            ui.ctx().memory_mut(|m| *m=egui::Memory::default());
+        }
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+        let mut before = st.snapshot();
         let mut d = before.clone();
         if d.data_path != self.active_vault_path {
             self.group_drafts.clear();
@@ -181,20 +199,26 @@ impl Desktop {
                         .corner_radius(10.)
                         .inner_margin(12)
                         .show(ui, |ui| {
-                            ui.set_max_width(616.);
-                            ui.horizontal(|ui| {
-                                ui.set_max_width(616.);
-                                text(
-                                    ui,
-                                    &d.toast.text,
-                                    14.,
-                                    false,
-                                    if d.toast.error {
-                                        hex(0xffc9cd)
-                                    } else {
-                                        Color32::WHITE
-                                    },
-                                );
+                            let width=(rect.width()-if rect.width()>900. {284.} else {48.}).clamp(180.,616.);
+                            ui.set_width(width);
+                            ui.horizontal_top(|ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("toast-details")
+                                    .max_width(width-44.)
+                                    .max_height((rect.height()*0.4).max(80.))
+                                    .auto_shrink([false,true])
+                                    .show(ui, |ui| {
+                                      ui.vertical(|ui| {
+                                        let preview = if d.toast.error {
+                                            d.toast.text.lines().take(2).collect::<Vec<_>>().join("\n")
+                                        } else { d.toast.text.to_string() };
+                                        text(ui, &preview, 14., false,
+                                            if d.toast.error {hex(0xffc9cd)} else {Color32::WHITE});
+                                        if d.toast.error && ghost(ui, &t, "Details anzeigen", "") {
+                                            self.toast_details = true;
+                                        }
+                                      });
+                                    });
                                 if ghost(ui, &t, "", icons::CLOSE) {
                                     action!(actions, invoke_toast_close);
                                 }
@@ -202,10 +226,33 @@ impl Desktop {
                         });
                 });
         }
+        if !d.toast.visible || !d.toast.error { self.toast_details = false; }
+        if self.toast_details {
+            egui::Window::new(tr("Fehlermeldung"))
+                .id(egui::Id::new("toast-error-window"))
+                .open(&mut self.toast_details)
+                .collapsible(false)
+                .resizable(true)
+                .default_width((rect.width()-64.).clamp(240.,900.))
+                .show(ui.ctx(), |ui| {
+                    if ghost(ui, &t, "Fehlermeldung kopieren", "") {
+                        ui.ctx().copy_text(d.toast.text.to_string());
+                    }
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .max_height((rect.height()-180.).max(100.))
+                        .show(ui, |ui| {
+                            ui.add(egui::Label::new(egui::RichText::new(d.toast.text.as_str()).font(font(14.,false)))
+                                .wrap().selectable(true));
+                        });
+                });
+        }
         if ui.input(|i| i.pointer.any_released()) {
             self.drag_account = None;
         }
         st.patch(&before, &d);
+        before.wipe_secrets();
+        d.wipe_secrets();
         for action in actions {
             action(&st);
         }
@@ -305,6 +352,13 @@ impl Desktop {
                 d.page,
                 a,
             );
+        }
+        let r=Rect::from_min_size(pos2(rail.left()+14.,rail.bottom()-185.),vec2(208.,40.));
+        let response=ui.interact(r,egui::Id::new("lock_vault"),Sense::click());
+        response.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,tr("Tresor sperren")));
+        elide(ui,r.shrink2(vec2(12.,0.)),tr("Tresor sperren"),14.,false,t.nav_text,Align2::LEFT_CENTER);
+        if response.clicked() {
+            a.push(Box::new(|_|crate::session::request_lock()));
         }
     }
 }
@@ -471,6 +525,7 @@ impl eframe::App for Desktop {
     }
 }
 pub fn run(app: AppWindow) -> eframe::Result {
+    crate::session::start_monitor();
     let img = image::load_from_memory(include_bytes!("../../../macos/bankingcraft-icon.png"))
         .expect("icon")
         .to_rgba8();

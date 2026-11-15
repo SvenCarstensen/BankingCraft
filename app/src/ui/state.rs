@@ -230,7 +230,6 @@ pub struct Data {
     pub accesses: ModelRc<AccessRow>,
     pub af_open: bool,
     pub af_kind: i32,
-    pub af_statement_format: i32,
     pub af_name: SharedString,
     pub af_blz: SharedString,
     pub af_user: SharedString,
@@ -383,7 +382,6 @@ impl Default for Data {
             accesses: Default::default(),
             af_open: Default::default(),
             af_kind: Default::default(),
-            af_statement_format: Default::default(),
             af_name: Default::default(),
             af_blz: Default::default(),
             af_user: Default::default(),
@@ -529,6 +527,16 @@ pub struct Callbacks {
     confirm_ok: Callback<dyn Fn()>,
     confirm_cancel: Callback<dyn Fn()>,
     toast_close: Callback<dyn Fn()>,
+}
+impl Data {
+    pub fn wipe_secrets(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.pin_value);
+        zeroize::Zeroize::zeroize(&mut self.tan_value);
+        zeroize::Zeroize::zeroize(&mut self.old_password);
+        zeroize::Zeroize::zeroize(&mut self.new_password);
+        zeroize::Zeroize::zeroize(&mut self.af_paypal_password);
+        zeroize::Zeroize::zeroize(&mut self.af_paypal_signature);
+    }
 }
 #[derive(Clone, Default)]
 pub struct AppState {
@@ -785,9 +793,6 @@ impl AppState {
         if before.af_kind != after.af_kind {
             data.af_kind = after.af_kind;
         }
-        if before.af_statement_format != after.af_statement_format {
-            data.af_statement_format = after.af_statement_format;
-        }
         if before.af_name != after.af_name {
             data.af_name = after.af_name.clone();
         }
@@ -798,9 +803,11 @@ impl AppState {
             data.af_user = after.af_user.clone();
         }
         if before.af_paypal_password != after.af_paypal_password {
+            zeroize::Zeroize::zeroize(&mut data.af_paypal_password);
             data.af_paypal_password = after.af_paypal_password.clone();
         }
         if before.af_paypal_signature != after.af_paypal_signature {
+            zeroize::Zeroize::zeroize(&mut data.af_paypal_signature);
             data.af_paypal_signature = after.af_paypal_signature.clone();
         }
         if before.af_paypal_sandbox != after.af_paypal_sandbox {
@@ -856,9 +863,11 @@ impl AppState {
             data.data_path = after.data_path.clone();
         }
         if before.old_password != after.old_password {
+            zeroize::Zeroize::zeroize(&mut data.old_password);
             data.old_password = after.old_password.clone();
         }
         if before.new_password != after.new_password {
+            zeroize::Zeroize::zeroize(&mut data.new_password);
             data.new_password = after.new_password.clone();
         }
         if before.show_pin != after.show_pin {
@@ -868,6 +877,7 @@ impl AppState {
             data.pin_title = after.pin_title.clone();
         }
         if before.pin_value != after.pin_value {
+            zeroize::Zeroize::zeroize(&mut data.pin_value);
             data.pin_value = after.pin_value.clone();
         }
         if before.pin_heading != after.pin_heading {
@@ -904,6 +914,7 @@ impl AppState {
             data.tan_kind = after.tan_kind;
         }
         if before.tan_value != after.tan_value {
+            zeroize::Zeroize::zeroize(&mut data.tan_value);
             data.tan_value = after.tan_value.clone();
         }
         if before.tan_image != after.tan_image {
@@ -1471,12 +1482,6 @@ impl AppState {
     pub fn get_af_kind(&self) -> i32 {
         self.data.borrow().af_kind
     }
-    pub fn get_af_statement_format(&self) -> i32 {
-        self.data.borrow().af_statement_format
-    }
-    pub fn set_af_statement_format(&self, value: i32) {
-        self.data.borrow_mut().af_statement_format = value;
-    }
     pub fn set_af_kind(&self, value: i32) {
         self.data.borrow_mut().af_kind = value;
     }
@@ -1502,13 +1507,17 @@ impl AppState {
         self.data.borrow().af_paypal_password.clone()
     }
     pub fn set_af_paypal_password(&self, value: SharedString) {
-        self.data.borrow_mut().af_paypal_password = value;
+        let mut data = self.data.borrow_mut();
+        zeroize::Zeroize::zeroize(&mut data.af_paypal_password);
+        data.af_paypal_password = value;
     }
     pub fn get_af_paypal_signature(&self) -> SharedString {
         self.data.borrow().af_paypal_signature.clone()
     }
     pub fn set_af_paypal_signature(&self, value: SharedString) {
-        self.data.borrow_mut().af_paypal_signature = value;
+        let mut data = self.data.borrow_mut();
+        zeroize::Zeroize::zeroize(&mut data.af_paypal_signature);
+        data.af_paypal_signature = value;
     }
     pub fn get_af_paypal_sandbox(&self) -> bool {
         self.data.borrow().af_paypal_sandbox
@@ -1617,13 +1626,17 @@ impl AppState {
         self.data.borrow().old_password.clone()
     }
     pub fn set_old_password(&self, value: SharedString) {
-        self.data.borrow_mut().old_password = value;
+        let mut data = self.data.borrow_mut();
+        zeroize::Zeroize::zeroize(&mut data.old_password);
+        data.old_password = value;
     }
     pub fn get_new_password(&self) -> SharedString {
         self.data.borrow().new_password.clone()
     }
     pub fn set_new_password(&self, value: SharedString) {
-        self.data.borrow_mut().new_password = value;
+        let mut data = self.data.borrow_mut();
+        zeroize::Zeroize::zeroize(&mut data.new_password);
+        data.new_password = value;
     }
     pub fn get_show_pin(&self) -> bool {
         self.data.borrow().show_pin
@@ -1641,7 +1654,9 @@ impl AppState {
         self.data.borrow().pin_value.clone()
     }
     pub fn set_pin_value(&self, value: SharedString) {
-        self.data.borrow_mut().pin_value = value;
+        let mut data = self.data.borrow_mut();
+        zeroize::Zeroize::zeroize(&mut data.pin_value);
+        data.pin_value = value;
     }
     pub fn get_pin_heading(&self) -> SharedString {
         let data = self.data.borrow();
@@ -1718,7 +1733,9 @@ impl AppState {
         self.data.borrow().tan_value.clone()
     }
     pub fn set_tan_value(&self, value: SharedString) {
-        self.data.borrow_mut().tan_value = value;
+        let mut data = self.data.borrow_mut();
+        zeroize::Zeroize::zeroize(&mut data.tan_value);
+        data.tan_value = value;
     }
     pub fn get_tan_image(&self) -> Image {
         self.data.borrow().tan_image.clone()

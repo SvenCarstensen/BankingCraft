@@ -1,6 +1,7 @@
 //! Embedded directory of German banks with their FinTS endpoints, searchable by
 //! name, city, BLZ or BIC.
 
+pub(crate) mod profile;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
@@ -111,7 +112,7 @@ pub fn search(query: &str, chip_card: bool, limit: usize) -> Vec<&'static Bank> 
 
 /// Bank specific hints for the login name.
 pub fn login_hint(b: &Bank) -> Option<&'static str> {
-    use fints::bank_profile::BankProfile;
+    use crate::banks::profile::BankProfile;
     match b.blz {
         "36020030" => return Some(i18n::tr("NATIONAL-BANK: Nach der IT-Umstellung den neuen NetKey und die neue PIN verwenden. Alte RDH-Schlüssel müssen bei der Bank neu eingerichtet werden.")),
         "20120100" | "10030500" | "25060180" | "29030400" | "60020100" => return Some(i18n::tr("Warburg: Seit Mai 2026 die zentrale BLZ 20120100, den neuen Warburg NetKey und die neue PIN verwenden. Alte Filialzugänge und HBCI-Signaturen müssen neu eingerichtet werden.")),
@@ -123,7 +124,7 @@ pub fn login_hint(b: &Bank) -> Option<&'static str> {
         BankProfile::DeutscheBank => "Deutsche Bank: Deutsche Bank ID oder Filial- und Kontonummer, dazu Onlinebanking-Passwort. Nach dem Banking-Upgrade neue Zugangsdaten verwenden; Freigabe per photoTAN oder BestSign.",
         BankProfile::Ing => "ING: Benutzername oder Zugangsnummer und Onlinebanking-Passwort; Kunden-ID leer lassen. Nur Lesezugriff, Girokonto-Umsätze bis 90 Tage. Alle 90 Tage im ING-Onlinebanking anmelden.",
         BankProfile::Dkb => "DKB: Anmeldename wie im Onlinebanking; Kunden-ID leer lassen. Freigabe über DKB-App, chipTAN manuell oder chipTAN QR.",
-        BankProfile::Comdirect => "comdirect: 8-stellige Zugangsnummer und Onlinebanking-PIN. Umsatzformat automatisch wählen; MT940 nur bei einem älteren Zugang mit entsprechender Bankfreigabe bevorzugen.",
+        BankProfile::Comdirect => "comdirect: 8-stellige Zugangsnummer und Onlinebanking-PIN.",
         BankProfile::Commerzbank => "Commerzbank: Teilnehmernummer oder Benutzername. FinTS mit photoTAN muss separat bei der Bank freigeschaltet sein. Umsätze werden bevorzugt als CAMT abgerufen.",
         BankProfile::Sparkasse => "Sparkasse: Anmeldename oder Legitimations-ID und Onlinebanking-PIN. Die Bank liefert die verfügbaren pushTAN- und chipTAN-Verfahren.",
         BankProfile::Atruvia if b.name.contains("Sparda") => "Sparda: Aktuellen Sparda-NetKey oder Alias und die neue Online-PIN verwenden. Nach einer IT-Umstellung zuerst im Onlinebanking anmelden und das Freigabeverfahren aktivieren.",
@@ -141,9 +142,9 @@ pub fn login_hint(b: &Bank) -> Option<&'static str> {
 /// HIUPD often has an IBAN but no BIC; some banks omit HKSPA entirely. Use the
 /// exact German account BLZ from a checksum-valid IBAN, never the login's BIC or
 /// a name match. Bank-supplied data always take precedence.
-pub fn complete_account(account: &mut fints::Account) {
+pub fn complete_account(account: &mut banking::Account) {
     if !account.iban.starts_with("DE")
-        || account.iban.len() != 22 || !fints::pain::iban_valid(&account.iban) { return; }
+        || account.iban.len() != 22 || !banking::validation::iban_valid(&account.iban) { return; }
     let Some(blz) = account.iban.get(4..12) else { return };
     if !account.blz.is_empty() && account.blz != blz { return; }
     account.blz = blz.into();
@@ -183,13 +184,6 @@ mod tests {
     }
 
     #[test]
-    fn old_vault_configuration_defaults_to_automatic_statement_format() {
-        let cfg = fints::Config { statement_format: fints::bank_profile::StatementFormat::Mt940, ..Default::default() };
-        let mut old = serde_json::to_value(cfg).unwrap(); old.as_object_mut().unwrap().remove("statement_format");
-        assert_eq!(serde_json::from_value::<fints::Config>(old).unwrap().statement_format, fints::bank_profile::StatementFormat::Auto);
-    }
-
-    #[test]
     fn verified_sparda_west_branches_use_the_new_server() {
         for blz in ["33060592", "36060591", "37060590", "40060560"] {
             let bank = by_blz(blz).unwrap();
@@ -206,14 +200,14 @@ mod tests {
         for (blz, bic) in [("12030000", "BYLADEM1001"), ("30520037", "RCIDDE3NPAY"), ("50050201", "HELADEF1822")] {
             let digits = format!("{blz}0000000001131400");
             let rem = digits.bytes().fold(0u32, |acc, b| (acc * 10 + u32::from(b - b'0')) % 97);
-            let mut account = fints::Account { iban: format!("DE{:02}{blz}0000000001", 98 - rem), ..Default::default() };
+            let mut account = banking::Account { iban: format!("DE{:02}{blz}0000000001", 98 - rem), ..Default::default() };
             complete_account(&mut account);
             assert_eq!(account.bic, bic); assert_eq!(account.blz, blz);
             account.bic = "BANKSUPPLIED".into(); complete_account(&mut account); assert_eq!(account.bic, "BANKSUPPLIED");
             account.bic.clear(); account.blz = "99999999".into(); complete_account(&mut account); assert!(account.bic.is_empty());
         }
         for iban in ["DE00120300000000000001", "GB82WEST12345698765432", "DE😃", ""] {
-            let mut account = fints::Account { iban: iban.into(), ..Default::default() };
+            let mut account = banking::Account { iban: iban.into(), ..Default::default() };
             complete_account(&mut account); assert!(account.bic.is_empty());
         }
     }

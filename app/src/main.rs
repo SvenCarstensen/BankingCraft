@@ -23,6 +23,7 @@ mod payments_ui;
 mod transactions_ui;
 mod groups;
 mod private_file;
+mod session;
 mod store;
 mod view;
 mod window_state;
@@ -33,7 +34,7 @@ mod showcase;
 
 use bridge::{Answer, Bridge};
 use chrono::Local;
-use fints::{Interval, SepaTransfer, StandingOrder};
+use banking::{Interval, SepaTransfer, StandingOrder};
 use jobs::Ctx;
 use crate::ui::{Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
@@ -63,13 +64,15 @@ pub fn refresh_view(app: &AppWindow) {
 pub fn toast(app: &AppWindow, text: &str, error: bool) {
     let st = app.global::<AppState>();
     st.set_toast(Toast { visible: true, text: text.into(), error });
+    // Bank failures must remain readable until dismissed (or the vault locks).
+    if error { return; }
     let weak = app.as_weak();
     let shown = text.to_string();
-    let secs = if error { 12 } else { 6 } + text.len() as u64 / 60;
+    let secs = 6 + text.len() as u64 / 60;
     crate::ui::Timer::single_shot(std::time::Duration::from_secs(secs), move || {
         if let Some(app) = weak.upgrade() {
             let st = app.global::<AppState>();
-            if st.get_toast().text == shown.as_str() {
+            if !st.get_toast().error && st.get_toast().text == shown.as_str() {
                 st.set_toast(Toast::default());
             }
         }
@@ -101,7 +104,7 @@ fn confirm_blocking(app: &AppWindow, title: &str, text: &str, bridge: bridge::Br
 }
 
 fn refresh_readers(app: &AppWindow) {
-    let readers = cardreader::list_readers().unwrap_or_default();
+    let readers = aqbanking::list_readers().unwrap_or_default();
     let st = app.global::<AppState>();
     let names: Vec<SharedString> = readers.iter().map(|r| SharedString::from(r.name.as_str())).collect();
     st.set_cyberjack_found(readers.iter().any(|r| r.cyberjack));
@@ -133,6 +136,9 @@ fn after_unlock(app: &AppWindow, mut vault: Vault, file: VaultFile) {
     st.set_product_id(vault.product_id.clone());
     st.set_product_version(if vault.product_version.is_empty() { env!("CARGO_PKG_VERSION").into() } else { vault.product_version.clone() });
     let c = ctx();
+    c.bridge.generation.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    c.bridge.locked.store(false, std::sync::atomic::Ordering::Release);
+    c.bridge.cancelled.store(false, std::sync::atomic::Ordering::Release);
     *c.vault.lock().unwrap() = vault;
     *c.file.lock().unwrap() = Some(file);
     st.set_unlocked(true);
@@ -157,8 +163,10 @@ fn edit_vault(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<(), Strin
     }
 }
 
+mod diagnostics;
+
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    diagnostics::init();
     let app = AppWindow::new().expect("UI");
     appearance::install(&app);
     localization::install(&app);
@@ -329,7 +337,7 @@ fn main() {
             if clean.len() < 5 {
                 st.set_tf_iban_hint(SharedString::default());
                 st.set_tf_iban_error(false);
-            } else if fints::pain::iban_valid(&clean) {
+            } else if banking::validation::iban_valid(&clean) {
                 st.set_tf_iban_hint(i18n::tr("IBAN gültig").into());
                 st.set_tf_iban_error(false);
             } else {
@@ -428,7 +436,7 @@ fn main() {
                 raw_pain: Vec::new(),
                 descriptor: String::new(),
             };
-            if let Err(e) = fints::pain::validate_standing_schedule(&so) {
+            if let Err(e) = banking::validation::validate_standing_schedule(&so) {
                 toast(&app, &e.to_string(), true);
                 return;
             }
@@ -477,7 +485,6 @@ fn main() {
             st.set_af_paypal_password(Default::default());
             st.set_af_paypal_signature(Default::default());
             st.set_af_paypal_sandbox(false);
-            st.set_af_statement_format(0);
             st.set_af_url(SharedString::default());
             st.set_af_record("1".into());
             st.set_bank_query(SharedString::default());
@@ -539,13 +546,18 @@ fn main() {
                 return;
             };
             let record: u8 = st.get_af_record().trim().parse().unwrap_or(1);
+            let c = ctx();
+            if c.bridge.locked.load(std::sync::atomic::Ordering::Acquire) || c.running.swap(true, std::sync::atomic::Ordering::AcqRel) { return; }
+            c.bridge.cancelled.store(false, std::sync::atomic::Ordering::Release);
             let weak = app.as_weak();
             st.set_busy(true);
             st.set_busy_text(i18n::tr("Lese Bankdaten von der Chipkarte …").into());
             if st.get_af_kind() == 2 {
                 std::thread::spawn(move || {
-                    let r = jobs::read_rdh_card(&ctx(), &reader, record);
+                    let r = jobs::read_rdh_card(&c, &reader, record);
                     let _ = weak.upgrade_in_event_loop(move |app| {
+                        c.running.store(false, std::sync::atomic::Ordering::Release);
+                        if c.bridge.locked.load(std::sync::atomic::Ordering::Acquire) { session::finish_lock(&app); return; }
                         let st = app.global::<AppState>();
                         st.set_busy(false);
                         match r {
@@ -577,8 +589,10 @@ fn main() {
                 return;
             }
             std::thread::spawn(move || {
-                let r = jobs::read_card(&reader, record);
+                let r = jobs::read_card(&c, &reader, record);
                 let _ = weak.upgrade_in_event_loop(move |app| {
+                    c.running.store(false, std::sync::atomic::Ordering::Release);
+                    if c.bridge.locked.load(std::sync::atomic::Ordering::Acquire) { session::finish_lock(&app); return; }
                     let st = app.global::<AppState>();
                     st.set_busy(false);
                     match r {
@@ -588,9 +602,9 @@ fn main() {
                             let host = if b.host.trim().is_empty() { banks::by_blz(&b.blz).map(|x| x.host.to_string()).unwrap_or_default() } else { b.host.clone() };
                             st.set_af_url(host);
                             if st.get_af_name().is_empty() {
-                                st.set_af_name(i18n::tr_format!("{} (Chipkarte)", b.short_name));
+                                st.set_af_name(i18n::tr_format!("{} (Chipkarte)", b.bank_name));
                             }
-                            toast(&app, &i18n::tr_format!("Karte gelesen: {} · BLZ {}", b.short_name, b.blz), false);
+                            toast(&app, &i18n::tr_format!("Karte gelesen: {} · BLZ {}", b.bank_name, b.blz), false);
                         }
                         Err(e) => toast(&app, &e, true),
                     }
@@ -630,7 +644,7 @@ fn main() {
                 toast(&app, i18n::tr("Bitte die Benutzerkennung angeben."), true);
                 return;
             }
-            if !chip && fints::transport::validate_https_url(&url).is_err() {
+            if !chip && banking::validation::validate_https_url(&url).is_err() {
                 toast(&app, i18n::tr("Bitte die FinTS-URL Ihrer Bank (https://…) angeben."), true);
                 return;
             }
@@ -657,19 +671,15 @@ fn main() {
                     id,
                     name,
                     kind,
-                    config: fints::Config {
+                    config: banking::Config {
                         blz,
                         user_id: user,
                         customer_id: st.get_af_customer().trim().to_string(),
-                        statement_format: match st.get_af_statement_format() {
-                            1 => fints::bank_profile::StatementFormat::Camt,
-                            2 => fints::bank_profile::StatementFormat::Mt940,
-                            _ => fints::bank_profile::StatementFormat::Auto,
-                        },
                         url,
-                        ..Default::default()
+                        product_id: String::new(),
+                        product_version: String::new(),
                     },
-                    state: fints::State::default(),
+                    state: banking::State::default(),
                     saved_pin: None,
                 });
                 id
@@ -723,19 +733,16 @@ fn main() {
         st.on_reader_diagnose(move || {
             let app = weak.unwrap();
             let st = app.global::<AppState>();
-            let reader = selected_reader(&app, st.get_tan_reader());
-            st.set_busy(true);
-            st.set_busy_text(i18n::tr("Prüfe Kartenleser …").into());
-            let weak = app.as_weak();
-            std::thread::spawn(move || {
-                let report = cardreader::diagnose(reader.as_deref());
-                let _ = weak.upgrade_in_event_loop(move |app| {
-                    let st = app.global::<AppState>();
-                    st.set_busy(false);
-                    st.set_reader_report(ModelRc::new(VecModel::from(report.into_iter().collect::<Vec<_>>())));
-                    refresh_readers(&app);
-                });
-            });
+            // Inventory only: card protocols and cryptography belong to
+            // Libchipcard; never run the former custom APDU diagnostic here.
+            let report = match aqbanking::list_readers() {
+                Ok(readers) if readers.is_empty() => vec!["Kein PC/SC-Kartenleser gefunden.".into()],
+                Ok(readers) => readers.into_iter().map(|r| format!("{} · Karte {}", r.name,
+                    if r.card_present { "eingesteckt" } else { "nicht eingesteckt" })).collect(),
+                Err(_) => vec!["PC/SC-Kartenleser konnten nicht abgefragt werden.".into()],
+            };
+            st.set_reader_report(ModelRc::new(VecModel::from(report)));
+            refresh_readers(&app);
         });
     }
 
@@ -900,12 +907,15 @@ fn main() {
             let reader = selected_reader(&app, st.get_tan_reader());
             b.pinpad(true, i18n::tr("Bitte prüfen Sie Empfänger und Betrag im Display des Kartenlesers und bestätigen Sie dort mit OK."));
             let b2 = b.clone();
+            let epoch = b.generation.load(std::sync::atomic::Ordering::Acquire);
+            let prompt = b.prompt_id.load(std::sync::atomic::Ordering::Acquire);
             let weak = app.as_weak();
             std::thread::spawn(move || {
-                let r = cardreader::chiptan_usb(reader.as_deref(), &payload);
-                b2.pinpad(false, "");
+                let r = aqbanking::chiptan_usb(reader.as_deref(), &payload, &b2);
                 let _ = weak.upgrade_in_event_loop(move |app| {
                     let st = app.global::<AppState>();
+                    if b2.locked.load(std::sync::atomic::Ordering::Acquire) || b2.generation.load(std::sync::atomic::Ordering::Acquire) != epoch || b2.prompt_id.load(std::sync::atomic::Ordering::Acquire) != prompt { return; }
+                    st.set_show_pinpad(false);
                     match r {
                         Ok(tan) => {
                             close_tan(&st);
@@ -1014,7 +1024,7 @@ fn transfer_from_form(app: &AppWindow) -> Result<(SepaTransfer, bool), String> {
     if name.is_empty() {
         return Err(i18n::tr("Bitte den Empfänger angeben.").into());
     }
-    if !fints::pain::iban_valid(&iban) {
+    if !banking::validation::iban_valid(&iban) {
         return Err(i18n::tr("Die IBAN ist ungültig.").into());
     }
     if amount <= rust_decimal::Decimal::ZERO {

@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn group_drops_validate_before_editing_and_preserve_unrelated_accounts() {
         let mut v = Vault::default();
-        let ids = v.merge_accounts(1, (0..4).map(|i| fints::Account { account_number: i.to_string(), ..Default::default() }).collect());
+        let ids = v.merge_accounts(1, (0..4).map(|i| banking::Account { account_number: i.to_string(), ..Default::default() }).collect());
         let group = v.create_group("Privat").unwrap();
         v.assign_group(ids[0], Some(group)).unwrap();
         v.assign_group(ids[1], Some(group)).unwrap();
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn moving_accounts_preserves_groups_and_order_after_refresh_and_reload() {
         let mut v = Vault::default();
-        let ids = v.merge_accounts(1, (0..3).map(|i| fints::Account { account_number: i.to_string(), ..Default::default() }).collect());
+        let ids = v.merge_accounts(1, (0..3).map(|i| banking::Account { account_number: i.to_string(), ..Default::default() }).collect());
         let group = v.create_group("Privat").unwrap();
         v.assign_group(ids[0], Some(group)).unwrap();
         v.move_account(ids[0], ids[2], true).unwrap();
@@ -113,7 +113,7 @@ mod tests {
         v.move_account(ids[0], ids[1], false).unwrap();
         assert_eq!(v.accounts.iter().map(|a| a.id).collect::<Vec<_>>(), ids);
         v.move_account(ids[2], ids[0], false).unwrap();
-        v.merge_accounts(1, vec![fints::Account { account_number: "0".into(), ..Default::default() }]);
+        v.merge_accounts(1, vec![banking::Account { account_number: "0".into(), ..Default::default() }]);
         let reloaded: Vault = serde_json::from_slice(&serde_json::to_vec(&v).unwrap()).unwrap();
         assert_eq!(reloaded.accounts.iter().map(|a| a.id).collect::<Vec<_>>(), vec![ids[2],ids[0],ids[1]]);
         assert_eq!(reloaded.groups[0].account_ids, vec![ids[0]]);
@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn groups_preserve_accounts_and_survive_serialization() {
         let mut v = Vault::default();
-        let account = v.merge_accounts(1, vec![fints::Account { iban: "DE89370400440532013000".into(), ..Default::default() }])[0];
+        let account = v.merge_accounts(1, vec![banking::Account { iban: "DE89370400440532013000".into(), ..Default::default() }])[0];
         let private = v.create_group("Privat").unwrap();
         let bank = v.create_group("VR Bank").unwrap();
         assert!(v.create_group(" privat ").is_err());

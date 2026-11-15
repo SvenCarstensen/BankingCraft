@@ -1,4 +1,14 @@
 {
+  "{}: Kontodaten aktualisieren …": ["{}: Updating account data …", "{} : Mise à jour des données de compte…", "{}: Actualizando datos de la cuenta…"],
+  "{}: Saldo abrufen …": ["{}: Retrieving balance …", "{} : Récupération du solde…", "{}: Consultando saldo…"],
+  "{}: Umsätze abrufen …": ["{}: Retrieving transactions …", "{} : Récupération des opérations…", "{}: Consultando movimientos…"],
+  "{}: Keine Kontodaten aktualisiert.": ["{}: No account data updated.", "{} : Aucune donnée de compte mise à jour.", "{}: No se han actualizado datos de cuentas."],
+  "{}: Konto aktualisiert, {} neue Umsätze.": ["{}: Account updated, {} new transactions.", "{} : Compte mis à jour, {} nouvelles opérations.", "{}: Cuenta actualizada, {} movimientos nuevos."],
+  "{}: {} Konten aktualisiert, {} neue Umsätze.": ["{}: {} accounts updated, {} new transactions.", "{} : {} comptes mis à jour, {} nouvelles opérations.", "{}: {} cuentas actualizadas, {} movimientos nuevos."],
+  "Umsätze {}: In den aktuellen Kontodaten ist kein unterstützter Umsatzabruf verfügbar.": ["Transactions {}: The current account data provide no supported transaction retrieval.", "Opérations {} : Les données actuelles du compte ne permettent aucun téléchargement pris en charge.", "Movimientos {}: Los datos actuales de la cuenta no ofrecen una consulta de movimientos compatible."],
+  "Details anzeigen": ["Show details", "Afficher les détails", "Mostrar detalles"],
+  "Fehlermeldung": ["Error message", "Message d’erreur", "Mensaje de error"],
+  "Fehlermeldung kopieren": ["Copy error message", "Copier le message d’erreur", "Copiar el mensaje de error"],
   "Demokonto mit Beispielumsätzen hinzufügen": [
     "Add a demo account with sample transactions",
     "Ajouter un compte de démonstration avec des opérations fictives",
@@ -3784,11 +3794,6 @@
     "DKB : identifiant de banque en ligne ; laisser l’ID client vide. Validation par l’application DKB, chipTAN manuel ou chipTAN QR.",
     "DKB: usuario de banca en línea; deje vacío el ID de cliente. Autorice con la app DKB, chipTAN manual o chipTAN QR."
   ],
-  "comdirect: 8-stellige Zugangsnummer und Onlinebanking-PIN. Umsatzformat automatisch wählen; MT940 nur bei einem älteren Zugang mit entsprechender Bankfreigabe bevorzugen.": [
-    "comdirect: 8-digit access number and online banking PIN. Select the transaction format automatically; prefer MT940 only for a legacy connection where the bank still offers it.",
-    "comdirect : numéro d’accès à 8 chiffres et PIN bancaire. Choix automatique du format ; préférer MT940 uniquement pour un ancien accès si la banque le propose encore.",
-    "comdirect: número de acceso de 8 dígitos y PIN bancario. Seleccione el formato automáticamente; prefiera MT940 solo para conexiones antiguas si el banco aún lo ofrece."
-  ],
   "Commerzbank: Teilnehmernummer oder Benutzername. FinTS mit photoTAN muss separat bei der Bank freigeschaltet sein. Umsätze werden bevorzugt als CAMT abgerufen.": [
     "Commerzbank: participant number or username. FinTS with photoTAN must be enabled separately by the bank. Transactions are preferably retrieved as CAMT.",
     "Commerzbank : numéro de participant ou identifiant. La banque doit activer séparément FinTS avec photoTAN. Les opérations sont récupérées de préférence en CAMT.",
@@ -3973,5 +3978,10 @@
     "Analytics show EUR transactions only. Other currencies are listed separately in Transactions.",
     "Les analyses portent uniquement sur les opérations en EUR. Les autres devises sont séparées dans la liste des opérations.",
     "Los análisis solo incluyen movimientos en EUR. Las demás divisas se muestran por separado en la lista de movimientos."
+  ],
+  "comdirect: 8-stellige Zugangsnummer und Onlinebanking-PIN.": [
+    "comdirect: 8-digit access number and online banking PIN.",
+    "comdirect : numéro d’accès à 8 chiffres et code PIN bancaire.",
+    "comdirect: número de acceso de 8 dígitos y PIN bancario."
   ]
 }

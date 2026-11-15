@@ -1,0 +1,52 @@
+name: Native banking runtime
+description: Build and verify pinned AqBanking, Gwenhywfar and Libchipcard
+runs:
+  using: composite
+  steps:
+    - name: Install Linux build dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config gettext libgnutls28-dev libgcrypt20-dev libgmp-dev libxml2-dev libxmlsec1-dev libpcsclite-dev patchelf
+    - name: Install macOS build dependencies
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install pkg-config gettext gnutls libgcrypt gmp libxml2 libxmlsec1
+    - name: Install Windows native toolchain
+      if: runner.os == 'Windows'
+      uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+      with:
+        msystem: MINGW64
+        update: true
+        path-type: inherit
+        install: >-
+          make
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-python
+          mingw-w64-x86_64-pkgconf
+          mingw-w64-x86_64-gettext-tools
+          mingw-w64-x86_64-gnutls
+          mingw-w64-x86_64-libgcrypt
+          mingw-w64-x86_64-gmp
+          mingw-w64-x86_64-libxml2
+          mingw-w64-x86_64-xmlsec
+    - name: Build and test native runtime (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        python3 scripts/build-native.py
+        python3 scripts/test-native.py
+        python3 scripts/test-native-adapter.py
+        python3 scripts/package-native.py .native/review
+        python3 scripts/audit-native.py .native/review/native
+    - name: Build and test native runtime (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        cygpath -m /mingw64/bin >> "$GITHUB_PATH"
+        echo "MINGW_PREFIX=$(cygpath -m /mingw64)" >> "$GITHUB_ENV"
+        python scripts/build-native.py
+        python scripts/test-native.py
+        python scripts/package-native.py .native/review
+        python scripts/audit-native.py .native/review/native

@@ -128,7 +128,7 @@ mod rendering_tests {
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let mut vault = Vault::default();
-        let ids = vault.merge_accounts(1, vec![fints::Account {
+        let ids = vault.merge_accounts(1, vec![banking::Account {
             account_number: "123".into(), product: "Mein Konto".into(),
             iban: "DE89370400440532013000".into(), ..Default::default()
         }]);

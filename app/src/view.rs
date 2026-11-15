@@ -4,7 +4,7 @@ use crate::categorize::{categorize, color_of, CATEGORIES};
 use crate::store::{AccessKind, StoredTx, Vault};
 use crate::{AccessRow, AccountRow, AccountGroupRow, GroupBalanceRow, AppState, AppWindow, BarStat, MonthStat, StandingRow, TxDetail, TxRow};
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
-use fints::{Interval, StandingOrder};
+use banking::{Interval, StandingOrder};
 use rust_decimal::Decimal;
 use crate::ui::{Color, Model, ModelRc, SharedString, VecModel};
 use std::collections::{BTreeMap, HashSet};
@@ -90,7 +90,7 @@ fn account_kind(kind: u32) -> &'static str {
     }
 }
 
-pub fn bank_account_name(account: &fints::Account) -> &str {
+pub fn bank_account_name(account: &banking::Account) -> &str {
     if account.product.is_empty() { account_kind(account.kind) } else { &account.product }
 }
 
@@ -129,7 +129,7 @@ fn balance_currency(currency: &str) -> &str {
 
 /// Display balance only: the bank's booked balance remains the accounting source.
 /// Bank-provided `available` can include a credit facility and is not this value.
-fn balance_including_pending(v: &Vault, account_id: u32, balance: &fints::Balance) -> Decimal {
+fn balance_including_pending(v: &Vault, account_id: u32, balance: &banking::Balance) -> Decimal {
     if crate::paypal::is_paypal(v, account_id) { return balance.available.unwrap_or_default(); }
     balance.booked + v.transactions.iter()
         .filter(|t| t.account_id == account_id && t.tx.pending
@@ -297,12 +297,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
                 AccessKind::RdhCard { .. } => i18n::tr("RSA-Signatur mit Chipkarte (RDH)").to_string(),
                 AccessKind::Demo => i18n::tr("chipTAN (Demo)").to_string(),
                 AccessKind::PayPal { .. } => i18n::tr("API-Signatur · Nur Lesezugriff").into(),
-                AccessKind::PinTan => a
-                    .state
-                    .tan_method
-                    .as_ref()
-                    .map(|sf| a.state.bpd.tan_methods.iter().find(|m| &m.security_function == sf).map(|m| m.name.clone()).unwrap_or(sf.clone()))
-                    .unwrap_or_else(|| i18n::tr("noch nicht gewählt").into()),
+                AccessKind::PinTan => "AqBanking".into(),
             };
             AccessRow {
                 id: a.id as i32,
@@ -687,8 +682,8 @@ mod amount_tests {
         let mut vault = Vault::default();
         let mut rows = Vec::new();
         for (index, balance) in [Some(("100.10", "EUR")), Some(("-150.35", "EUR")), Some(("12.34", "USD")), None].into_iter().enumerate() {
-            let id = vault.merge_accounts(1, vec![fints::Account { account_number: index.to_string(), ..Default::default() }])[0];
-            vault.accounts.iter_mut().find(|a| a.id == id).unwrap().balance = balance.map(|(amount, currency)| fints::Balance {
+            let id = vault.merge_accounts(1, vec![banking::Account { account_number: index.to_string(), ..Default::default() }])[0];
+            vault.accounts.iter_mut().find(|a| a.id == id).unwrap().balance = balance.map(|(amount, currency)| banking::Balance {
                 booked: amount.parse().unwrap(), available: Some(Decimal::from(999)), currency: currency.into(),
                 date: NaiveDate::from_ymd_opt(2026, 11, 12).unwrap(),
             });
@@ -711,7 +706,7 @@ mod amount_tests {
     #[test]
     fn unavailable_group_balances_are_distinct_from_zero() {
         let mut vault = Vault::default();
-        let id = vault.merge_accounts(1, vec![fints::Account::default()])[0];
+        let id = vault.merge_accounts(1, vec![banking::Account::default()])[0];
         let rows = vec![AccountRow { id: id as i32, ..Default::default() }];
         let mut pending = crate::business_tests::tx(-2000, "2026-11-12");
         pending.pending = true;
@@ -719,7 +714,7 @@ mod amount_tests {
         let group = account_group(&vault, 9, "Test", rows.clone());
         assert_eq!(group.balances.row_count(), 0);
         assert_eq!(group.balance_note, "Noch keine Salden abgerufen");
-        vault.accounts[0].balance = Some(fints::Balance {
+        vault.accounts[0].balance = Some(banking::Balance {
             booked: Decimal::ZERO, available: None, currency: "EUR".into(),
             date: NaiveDate::from_ymd_opt(2026, 11, 12).unwrap(),
         });
@@ -733,7 +728,7 @@ mod amount_tests {
     fn pending_balance_uses_only_matching_account_and_currency_preserving_multiplicity() {
         use crate::business_tests::{date, tx};
         let mut vault = Vault::default();
-        let balance = fints::Balance { booked: Decimal::new(-125050, 2), available: Some(Decimal::from(5000)),
+        let balance = banking::Balance { booked: Decimal::new(-125050, 2), available: Some(Decimal::from(5000)),
             currency: "EUR".into(), date: date("2026-11-12") };
         let mut debit = tx(-1075, "2026-11-13"); debit.pending = true;
         let mut credit = tx(3000, "2026-11-13"); credit.pending = true;
@@ -743,7 +738,7 @@ mod amount_tests {
         vault.merge_transactions(2, vec![debit]);
         assert_eq!(balance_including_pending(&vault, 1, &balance), Decimal::new(-125275, 2));
         assert_eq!(balance_including_pending(&vault, 3, &balance), balance.booked);
-        assert_eq!(balance_including_pending(&vault, 1, &fints::Balance { currency: String::new(), ..balance.clone() }), Decimal::new(-125275, 2));
+        assert_eq!(balance_including_pending(&vault, 1, &banking::Balance { currency: String::new(), ..balance.clone() }), Decimal::new(-125275, 2));
         assert_eq!(balance.booked, Decimal::new(-125050, 2));
     }
 
@@ -753,14 +748,14 @@ mod amount_tests {
         let app = AppWindow::new().unwrap();
         let st = app.global::<AppState>();
         let mut vault = Vault::default();
-        let id = vault.merge_accounts(1, vec![fints::Account::default()])[0];
+        let id = vault.merge_accounts(1, vec![banking::Account::default()])[0];
         let mut vs = ViewState::default();
         let mut pending = tx(-1234, "2026-11-13"); pending.pending = true;
         vault.merge_transactions(id, vec![pending.clone()]);
         refresh_all(&app, &vault, &mut vs);
         assert_eq!(st.get_accounts().row_data(0).unwrap().balance, "–");
         assert_eq!(st.get_total_balance(), "–");
-        vault.accounts[0].balance = Some(fints::Balance { booked: Decimal::from(10), available: Some(Decimal::from(1000)),
+        vault.accounts[0].balance = Some(banking::Balance { booked: Decimal::from(10), available: Some(Decimal::from(1000)),
             currency: "EUR".into(), date: date("2026-11-12") });
         refresh_all(&app, &vault, &mut vs);
         let row = st.get_accounts().row_data(0).unwrap();
@@ -773,8 +768,8 @@ mod amount_tests {
         refresh_all(&app, &vault, &mut vs);
         assert_eq!(st.get_total_balance(), "−2,34 €");
         assert_eq!(st.get_total_booked_balance(), "−2,34 €");
-        let other = vault.merge_accounts(1, vec![fints::Account { account_number: "other".into(), ..Default::default() }])[0];
-        vault.accounts.iter_mut().find(|a| a.id == other).unwrap().balance = Some(fints::Balance {
+        let other = vault.merge_accounts(1, vec![banking::Account { account_number: "other".into(), ..Default::default() }])[0];
+        vault.accounts.iter_mut().find(|a| a.id == other).unwrap().balance = Some(banking::Balance {
             booked: Decimal::from(20), available: None, currency: "USD".into(), date: date("2026-11-13") });
         refresh_all(&app, &vault, &mut vs);
         assert_eq!(st.get_total_balance(), "−2,34 €\n20,00 USD");

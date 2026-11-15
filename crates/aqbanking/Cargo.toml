@@ -1,0 +1,15 @@
+[package]
+name = "bankingcraft-aqbanking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pcsc = "2.9"
+banking = { package = "bankingcraft-models", path = "../banking-models" }
+chrono.workspace = true
+rust_decimal.workspace = true
+sha2 = "0.10"
+zeroize = "1"
+tempfile = "3"
+url = "2"

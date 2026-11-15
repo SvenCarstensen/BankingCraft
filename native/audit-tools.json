@@ -1,0 +1,44 @@
+{
+  "syft": {
+    "version": "1.57.1",
+    "assets": {
+      "darwin_arm64": {
+        "url": "https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_darwin_arm64.tar.gz",
+        "sha256": "e0a74a5d2688d1254b4e17b71f068a83215e3625f846265bf6614c7ba06f3a96"
+      },
+      "darwin_amd64": {
+        "url": "https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_darwin_amd64.tar.gz",
+        "sha256": "2355758c1142982a67b309604c5d75effdbe638a57c771979ea8fd1a16656abc"
+      },
+      "linux_amd64": {
+        "url": "https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_linux_amd64.tar.gz",
+        "sha256": "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c"
+      },
+      "windows_amd64": {
+        "url": "https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_windows_amd64.zip",
+        "sha256": "3a01fe865076bb548352195b77e88fa4649277861ea458efe165c3a810b6dcc7"
+      }
+    }
+  },
+  "grype": {
+    "version": "0.121.3",
+    "assets": {
+      "darwin_arm64": {
+        "url": "https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_darwin_arm64.tar.gz",
+        "sha256": "54336f2cd8cdee8b3d8ea83462561ff7fa9293498054c7c53a193db44bfea4c8"
+      },
+      "darwin_amd64": {
+        "url": "https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_darwin_amd64.tar.gz",
+        "sha256": "65bfb1b3b30d32e9dab156a60003c7146e619f649992be227bf09c9ccbf44f7e"
+      },
+      "linux_amd64": {
+        "url": "https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_linux_amd64.tar.gz",
+        "sha256": "e9da18cc1429e786722e32161288103600efffd8e483c90761f90485bd1bec85"
+      },
+      "windows_amd64": {
+        "url": "https://github.com/anchore/grype/releases/download/v0.121.3/grype_0.121.3_windows_amd64.zip",
+        "sha256": "3007a5afea25c60030a49d6c24d4e5abb6c94c0dbeed7ea303eb26df8e900c18"
+      }
+    }
+  }
+}

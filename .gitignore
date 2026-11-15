@@ -1,4 +1,5 @@
 target/
+.native/
 *.kontor
 *.tmp
 .DS_Store

@@ -1,7 +1,7 @@
 //! Durable outgoing orders and a separate recipient address book for each account.
 use crate::store::Vault;
 use chrono::{Local, NaiveDateTime};
-use fints::SepaTransfer;
+use banking::SepaTransfer;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ impl Vault {
         t.creditor_name = t.creditor_name.trim().into();
         t.creditor_iban = normalize_iban(&t.creditor_iban);
         t.creditor_bic = t.creditor_bic.trim().to_uppercase();
-        fints::pain::validate_transfer(&t).map_err(|e| e.to_string())?;
+        banking::validation::validate_transfer(&t).map_err(|e| e.to_string())?;
         if scheduled {
             if t.instant || t.execution_date.is_none_or(|d| d <= Local::now().date_naive()) {
                 return Err(i18n::tr("Eine Terminüberweisung muss in der Zukunft liegen.").into());
@@ -61,7 +61,7 @@ impl Vault {
 
     pub fn queue_transfer(&mut self, account_id: u32, t: SepaTransfer, scheduled: bool, save_recipient: bool) -> Result<u32, String> {
         let mut transfer = self.prepare_transfer(account_id, t, scheduled)?;
-        if transfer.end_to_end_id.is_empty() { transfer.end_to_end_id = fints::pain::msg_id(); }
+        if transfer.end_to_end_id.is_empty() { transfer.end_to_end_id = banking::validation::msg_id(); }
         if save_recipient {
             self.save_recipient(account_id, &transfer.creditor_name, &transfer.creditor_iban, &transfer.creditor_bic)?;
         }
@@ -90,12 +90,12 @@ impl Vault {
     pub fn save_recipient(&mut self, account_id: u32, name: &str, iban: &str, bic: &str) -> Result<u32, String> {
         self.account(account_id).ok_or(i18n::tr("Konto nicht gefunden"))?;
         let name = name.trim();
-        let sepa_name = fints::pain::sepa_charset(name);
+        let sepa_name = banking::validation::sepa_charset(name);
         if sepa_name.trim().is_empty() || sepa_name.chars().count() > 70 {
             return Err(i18n::tr("Auftraggeber und Empfänger benötigen einen Namen mit höchstens 70 SEPA-Zeichen").into());
         }
         let iban = normalize_iban(iban);
-        if !fints::pain::iban_valid(&iban) { return Err(i18n::tr("Die IBAN ist ungültig.").into()); }
+        if !banking::validation::iban_valid(&iban) { return Err(i18n::tr("Die IBAN ist ungültig.").into()); }
         let bic = bic.trim().to_uppercase();
         if let Some(r) = self.recipients.iter_mut().find(|r| r.account_id == account_id && r.iban == iban) {
             r.name = name.into();

@@ -1,5 +1,30 @@
 # Testing
 
+## AqBanking migration and removal — November 15, 2026
+
+The current runtime uses AqBanking and Libchipcard. The old `fints` and `cardreader`
+implementations, protocol simulator tests, custom cryptography and bank-response
+parsers have been removed. Shared models/local validation live in
+`crates/banking-models`; scoped-refresh tests use a backend double. Export tests
+inspect XML directly. Older test counts and bank/hardware successes below are
+historical and do not validate the native integration.
+
+See [native banking](native-banking.md) for build/test commands and
+[security hardening](security-hardening.md) for internal evidence and open external
+review. Automated checks are offline/synthetic. Separate authorized live checks on
+macOS completed Postbank PIN/TAN account, balance and transaction retrieval, including
+credit-card transactions. The user also confirmed the account/operation progress
+display. No real payment or physical card workflow was exercised.
+
+The final local workspace run passed 151 tests, with 8 ignored by the default runner;
+Clippy with warnings as errors and the macOS release build passed. Native offline
+and ASan/UBSan regressions cover repeated snapshot groups, setup/TAN-medium repair,
+account capabilities, credit-card job selection, CAMT entry amounts and currencies,
+unused empty balances and malformed amounts. A UI-backed synthetic refresh test
+checks the account/balance/transaction status sequence for full and scoped refreshes,
+including native progress suppression and shared cancellation.
+
+
 Run from the repository root:
 
 ```sh
@@ -13,7 +38,7 @@ contact a bank or require a card reader. Tests use fictional accounts, temporary
 encrypted vaults and simulated FinTS/PayPal transports. Unexpected network calls
 fail the relevant flow test.
 
-## Current verification — November 14, 2026
+## Historical verification — November 14, 2026
 
 - Bank-directory regression tests retain newer Sparda, Marcard, Warburg, Renault
   and IKB URLs while checking the verified Commerzbank/NATIONAL-BANK host updates.

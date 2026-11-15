@@ -1,6 +1,5 @@
-//! Scoped refresh regression tests: synthetic accounts and a transport without sockets.
+//! Scoped refresh regression tests: synthetic accounts and a backend double without sockets.
 use super::*;
-use fints::{security::{Auth, Envelope, Opener, build_message, open_message}, syntax::{SegmentBuilder, Val}};
 
 fn context() -> Ctx {
     Ctx { vault: Arc::new(Mutex::new(Vault::default())), file: Arc::new(Mutex::new(None)),
@@ -24,42 +23,239 @@ fn selected_demo_refresh_leaves_other_accounts_orders_untouched() {
     assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
 }
 
-struct Ui;
-impl fints::Interaction for Ui {
-    fn pin(&self, _: &str) -> Option<String> { Some("synthetic-pin".into()) }
-    fn choose_tan_method(&self, _: &[TanMethod]) -> Option<String> { panic!("no TAN selection") }
-    fn choose_tan_medium(&self, _: &[String]) -> Option<String> { panic!("no TAN medium") }
-    fn tan(&self, _: &TanChallenge) -> fints::TanAnswer { panic!("no payments or approval") }
-    fn progress(&self, _: &str) {}
+struct Bank { numbers: Vec<String>, requests: Arc<Mutex<Vec<String>>> }
+
+#[test]
+fn refresh_progress_tracks_account_and_operation_despite_native_messages() {
+    use banking::Interaction;
+    struct ProgressBank {
+        bank: Bank,
+        accounts: Vec<Account>,
+        bridge: Bridge,
+        app: crate::AppWindow,
+        observed: Arc<Mutex<Vec<String>>>,
+    }
+    impl ProgressBank {
+        fn observe(&self) {
+            // Real native jobs emit many progress callbacks during each call.
+            self.bridge.progress("Receiving data");
+            self.bridge.progress("Using GnuTLS default ciphers.");
+            self.app.pump(&egui::Context::default());
+            self.observed.lock().unwrap().push(self.app.global::<AppState>().get_busy_text().to_string());
+        }
+    }
+    impl RefreshClient for ProgressBank {
+        fn accounts(&mut self) -> banking::Result<Vec<Account>> { self.observe(); Ok(self.accounts.clone()) }
+        fn current_accounts(&mut self, accounts: Vec<Account>) -> banking::Result<Vec<Account>> { self.observe(); Ok(accounts) }
+        fn balance(&mut self, a: &Account) -> banking::Result<Option<banking::Balance>> { self.observe(); self.bank.balance(a) }
+        fn transaction_report(&mut self, a: &Account, f: chrono::NaiveDate, t: Option<chrono::NaiveDate>) -> banking::Result<banking::TransactionReport> {
+            self.observe(); self.bank.transaction_report(a, f, t)
+        }
+        fn finish(self) -> banking::State { self.bank.finish() }
+    }
+    i18n::with_language(i18n::Language::German, || {
+        for scoped in [false, true] {
+            let app=crate::AppWindow::new().unwrap();
+            let mut ctx=context(); ctx.bridge=Bridge::new(app.as_weak());
+            let (access,selected)={
+                let mut v=ctx.vault.lock().unwrap(); demo::add_demo(&mut v);
+                v.accesses[0].name="Testbank".into();
+                let access=v.accesses[0].clone();
+                let selected=v.accounts.iter_mut().filter(|a| a.access_id==access.id).take(2).enumerate().map(|(i,a)| {
+                    a.display_name=if i==0 {"Giro privat"} else {""}.into();
+                    a.account.product="Sparkonto".into(); a.account.kind=1;
+                    a.account.allowed=vec!["HKSAL".into(),"HKKAZ".into()];
+                    (a.account.clone(),a.id)
+                }).collect::<Vec<_>>();
+                (access,selected)
+            };
+            assert_eq!(selected.len(),2);
+            let observed=Arc::new(Mutex::new(Vec::new()));
+            let bridge=ctx.bridge.with_application_progress();
+            let bank=Bank {numbers:selected.iter().map(|(a,_)|a.account_number.clone()).collect(),requests:Default::default()};
+            let client=ProgressBank {bank,accounts:selected.iter().map(|(a,_)|a.clone()).collect(),bridge:bridge.clone(),app:app.clone(),observed:observed.clone()};
+            sync_with_client(&ctx,&access,scoped.then_some(selected),client).unwrap();
+            assert_eq!(*observed.lock().unwrap(),[
+                "Testbank: Kontodaten aktualisieren …",
+                "Giro privat · Testbank: Saldo abrufen …",
+                "Giro privat · Testbank: Umsätze abrufen …",
+                "Sparkonto · Testbank: Saldo abrufen …",
+                "Sparkonto · Testbank: Umsätze abrufen …",
+            ]);
+            // Suppression belongs only to this client, not to later jobs.
+            ctx.bridge.progress("Other job"); app.pump(&egui::Context::default());
+            assert_eq!(app.global::<AppState>().get_busy_text(),"Other job");
+            ctx.bridge.cancelled.store(true,Ordering::Release);
+            assert!(bridge.cancelled());
+        }
+    });
 }
 
-struct Bank { numbers: Vec<String>, requests: Arc<Mutex<Vec<String>>> }
-impl fints::transport::Transport for Bank {
-    fn send(&mut self, raw: &[u8]) -> fints::Result<Vec<u8>> {
-        let request = open_message(raw, Opener::Plain)?;
-        let message_number = request.iter().find(|s| s.code == "HNHBK").unwrap().text_or_empty(4, 0).parse().unwrap();
-        let mut response = vec![SegmentBuilder::new("HIRMG", 2).deg(vec!["0010".into(), Val::Empty, "OK".into()])];
-        for segment in request.iter().filter(|s| s.code.starts_with("HK")) {
-            self.requests.lock().unwrap().push(if matches!(segment.code.as_str(), "HKSAL" | "HKKAZ") {
-                format!("{}:{}", segment.code, segment.text_or_empty(1, 0))
-            } else { segment.code.clone() });
-            match segment.code.as_str() {
-                "HKIDN" | "HKVVB" | "HKEND" => {},
-                "HKSAL" | "HKKAZ" => {
-                    let number = segment.text_or_empty(1, 0);
-                    assert!(self.numbers.contains(&number), "request must address only selected accounts");
-                    if segment.code == "HKSAL" {
-                        response.push(SegmentBuilder::new("HISAL", 5).de(number).de("Selected")
-                            .de("EUR").deg(vec!["C".into(), "123,00".into(), "EUR".into(), "20261113".into()]));
-                    } else {
-                        response.push(SegmentBuilder::new("HIKAZ", 5).bin(
-                            b":20:SCOPED\n:25:12345678/4711099\n:28C:1/1\n:60F:C261112EUR121,77\n:61:2611131113C1,23NTRFSCOPED\n:86:Synthetic scoped refresh\n:62F:C261113EUR123,00\n".to_vec()));
-                    }
-                },
-                code => panic!("single-account refresh must not discover accounts or submit orders: {code}"),
-            }
+impl RefreshClient for Bank {
+    fn accounts(&mut self) -> banking::Result<Vec<Account>> { panic!("scoped refresh must not discover accounts") }
+    fn balance(&mut self, account:&Account)->banking::Result<Option<banking::Balance>> {
+        assert!(self.numbers.contains(&account.account_number));
+        self.requests.lock().unwrap().push(format!("balance:{}",account.account_number));
+        Ok(Some(banking::Balance {booked:123.into(),available:None,currency:"EUR".into(),date:chrono::NaiveDate::from_ymd_opt(2026,11,13).unwrap()}))
+    }
+    fn transaction_report(&mut self,account:&Account,_:chrono::NaiveDate,_:Option<chrono::NaiveDate>)->banking::Result<banking::TransactionReport> {
+        assert!(self.numbers.contains(&account.account_number));
+        self.requests.lock().unwrap().push(format!("transactions:{}",account.account_number));
+        let date=chrono::NaiveDate::from_ymd_opt(2026,11,13).unwrap();
+        let mut transaction=banking::Transaction {booking_date:date,value_date:date,amount:rust_decimal::Decimal::new(123,2),
+            currency:"EUR".into(),purpose:"Synthetic scoped refresh".into(),..Default::default()};
+        transaction.compute_fingerprint();
+        Ok(banking::TransactionReport {transactions:vec![transaction],..Default::default()})
+    }
+    fn finish(self)->banking::State {Default::default()}
+}
+
+struct FailedAccess {
+    bank: Bank,
+    failure: Option<Error>,
+    fail_balance: bool,
+}
+
+struct CurrentCapabilities {
+    bank: Bank,
+    current: Vec<Account>,
+}
+impl RefreshClient for CurrentCapabilities {
+    fn accounts(&mut self) -> banking::Result<Vec<Account>> {
+        self.bank.requests.lock().unwrap().push("discovery".into());
+        Ok(self.current.clone())
+    }
+    fn current_accounts(&mut self, old: Vec<Account>) -> banking::Result<Vec<Account>> {
+        self.bank.requests.lock().unwrap().push("capabilities".into());
+        assert_eq!(old.len(),self.current.len());
+        Ok(self.current.clone())
+    }
+    fn balance(&mut self,a:&Account)->banking::Result<Option<banking::Balance>> { self.bank.balance(a) }
+    fn transaction_report(&mut self,a:&Account,f:chrono::NaiveDate,t:Option<chrono::NaiveDate>)->banking::Result<banking::TransactionReport> {
+        assert!(a.kind!=50,"unsupported card job must not be sent");
+        self.bank.transaction_report(a,f,t)
+    }
+    fn finish(self)->banking::State { self.bank.finish() }
+}
+
+#[test]
+fn refresh_uses_current_card_capabilities_preserves_history_and_counts_only_updated_accounts() {
+    for scoped in [false,true] {
+        for balance_supported in [false,true] {
+            let ctx=context();
+            let (access,selected,before)={
+                let mut v=ctx.vault.lock().unwrap(); demo::add_demo(&mut v);
+                v.accesses[0].kind=AccessKind::PinTan;
+                let access=v.accesses[0].clone();
+                let selected=v.accounts.iter_mut().filter(|a| a.access_id==access.id).take(2).map(|a| {
+                    a.account.kind=1; a.account.allowed=vec!["HKSAL".into(),"HKKAZ".into()];
+                    a.last_sync=None; (a.account.clone(),a.id)
+                }).collect::<Vec<_>>();
+                (access,selected,v.clone())
+            };
+            assert_eq!(selected.len(),2);
+            let requests=Arc::new(Mutex::new(Vec::new()));
+            let mut current=selected.iter().map(|(a,_)|a.clone()).collect::<Vec<_>>();
+            current[0].kind=50;
+            current[0].allowed=vec![if balance_supported {"HKSAL"} else {"AQBANKING_NO_SUPPORTED_JOBS"}.into()];
+            let bank=Bank {numbers:current.iter().map(|a|a.account_number.clone()).collect(),requests:requests.clone()};
+            let message=sync_with_client(&ctx,&access,scoped.then(||selected.clone()),CurrentCapabilities {bank,current}).unwrap();
+            let mut expected=vec![if scoped {"capabilities"} else {"discovery"}.into()];
+            if balance_supported { expected.push(format!("balance:{}",selected[0].0.account_number)); }
+            expected.extend([format!("balance:{}",selected[1].0.account_number),format!("transactions:{}",selected[1].0.account_number)]);
+            assert_eq!(*requests.lock().unwrap(),expected);
+            assert!(message.contains("kein unterstützter Umsatzabruf"));
+            assert!(message.contains(&format!("{} Konten aktualisiert",if balance_supported {2} else {1})));
+            let after=ctx.vault.lock().unwrap(); let card=selected[0].1;
+            assert!(!after.account(card).unwrap().account.allows("HKKAZ"));
+            let before_tx=before.transactions.iter().filter(|t|t.account_id==card).collect::<Vec<_>>();
+            let after_tx=after.transactions.iter().filter(|t|t.account_id==card).collect::<Vec<_>>();
+            assert_eq!(serde_json::to_vec(&before_tx).unwrap(),serde_json::to_vec(&after_tx).unwrap());
+            if !balance_supported { assert!(after.account(card).unwrap().last_sync.is_none()); }
         }
-        build_message(&Envelope { dialog_id: "TEST", message_number, blz: "12345678", user_id: "synthetic", system_id: "TEST" }, Auth::None, response)
+    }
+}
+
+#[test]
+fn unavailable_statements_are_explicit_and_do_not_clear_history_or_hide_bank_failures() {
+    for unavailable in [false,true] {
+        let ctx=context();
+        let (access,selected,before)={
+            let mut v=ctx.vault.lock().unwrap(); demo::add_demo(&mut v);
+            v.accesses[0].kind=AccessKind::PinTan;
+            let access=v.accesses[0].clone();
+            let a=v.accounts.iter_mut().find(|a|a.access_id==access.id).unwrap();
+            a.account.kind=50; a.account.allowed=vec!["HKSAL".into(),"HKKAZ".into()]; a.last_sync=None;
+            let selected=vec![(a.account.clone(),a.id)];
+            (access,selected,v.clone())
+        };
+        let requests=Arc::new(Mutex::new(Vec::new()));
+        let bank=Bank {numbers:vec![selected[0].0.account_number.clone()],requests};
+        let failure=if unavailable {Error::NotSupported("Synthetic unavailable statement job".into())}
+            else {Error::Bank {code:"9010".into(),text:"Synthetic bank rejection".into()}};
+        let result=sync_with_client(&ctx,&access,Some(selected.clone()),FailedAccess {bank,failure:Some(failure),fail_balance:false});
+        if unavailable { assert!(result.unwrap().contains("Synthetic unavailable statement job")); }
+        else { assert!(result.unwrap_err().contains("Synthetic bank rejection")); }
+        let after=ctx.vault.lock().unwrap();
+        assert_eq!(serde_json::to_vec(&after.transactions).unwrap(),serde_json::to_vec(&before.transactions).unwrap());
+        assert!(after.account(selected[0].1).unwrap().last_sync.is_none());
+        assert_eq!(after.account(selected[0].1).unwrap().balance.as_ref().unwrap().booked,rust_decimal::Decimal::from(123));
+    }
+}
+impl RefreshClient for FailedAccess {
+    fn accounts(&mut self) -> banking::Result<Vec<Account>> { panic!("scoped refresh") }
+    fn balance(&mut self, account:&Account)->banking::Result<Option<banking::Balance>> {
+        if self.fail_balance {
+            self.bank.requests.lock().unwrap().push(format!("balance:{}",account.account_number));
+            Err(self.failure.take().expect("failed access must not be retried"))
+        } else { self.bank.balance(account) }
+    }
+    fn transaction_report(&mut self,account:&Account,_:chrono::NaiveDate,_:Option<chrono::NaiveDate>)->banking::Result<banking::TransactionReport> {
+        self.bank.requests.lock().unwrap().push(format!("transactions:{}",account.account_number));
+        Err(self.failure.take().expect("failed access must not be retried"))
+    }
+    fn finish(self)->banking::State {
+        banking::State { aqbanking:Some(banking::AqBankingState {version:1,binding:"synthetic".into(),
+            snapshot:b"updated native state after failure".to_vec(),accounts:Vec::new()}) }
+    }
+}
+
+#[test]
+fn broken_access_stops_after_first_failure_and_preserves_partial_results_and_native_state() {
+    for fail_balance in [true,false] {
+        for failure in [Error::Access {code:"3".into(),text:"Synthetic setup failure".into()},
+            Error::Transport("synthetic".into()),Error::Security("synthetic".into()),
+            Error::Bank{code:"9930".into(),text:"Synthetic rejected PIN".into()},Error::Cancelled] {
+            let ctx=context();
+            let (access,selected,before)={
+                let mut vault=ctx.vault.lock().unwrap(); demo::add_demo(&mut vault);
+                vault.accesses[0].kind=AccessKind::PinTan;
+                let access=vault.accesses[0].clone();
+                let selected=vault.accounts.iter_mut().filter(|a| a.access_id==access.id).take(2).map(|a| {
+                    a.account.kind=1; a.account.allowed=vec!["HKSAL".into(),"HKKAZ".into()];
+                    a.last_sync=None; (a.account.clone(),a.id)
+                }).collect::<Vec<_>>();
+                assert_eq!(selected.len(),2);
+                (access,selected,vault.clone())
+            };
+            let requests=Arc::new(Mutex::new(Vec::new()));
+            let bank=Bank {numbers:selected.iter().map(|(a,_)| a.account_number.clone()).collect(),requests:requests.clone()};
+            let client=FailedAccess {bank,failure:Some(failure),fail_balance};
+            let message=sync_with_client(&ctx,&access,Some(selected.clone()),client).unwrap_err();
+            assert!(!message.contains("Konten geprüft"));
+            let number=&selected[0].0.account_number;
+            let mut expected=vec![format!("balance:{number}")];
+            if !fail_balance {expected.push(format!("transactions:{number}"));}
+            assert_eq!(*requests.lock().unwrap(),expected);
+            let after=ctx.vault.lock().unwrap();
+            assert_eq!(after.access(access.id).unwrap().state.aqbanking.as_ref().unwrap().snapshot,b"updated native state after failure");
+            assert_eq!(serde_json::to_vec(&after.transactions).unwrap(),serde_json::to_vec(&before.transactions).unwrap());
+            assert_eq!(serde_json::to_vec(&after.payment_orders).unwrap(),serde_json::to_vec(&before.payment_orders).unwrap());
+            assert!(after.account(selected[0].1).unwrap().last_sync.is_none());
+            if !fail_balance {assert_eq!(after.account(selected[0].1).unwrap().balance.as_ref().unwrap().booked,rust_decimal::Decimal::from(123));}
+            let untouched=selected[1].1;
+            assert_eq!(serde_json::to_vec(after.account(untouched).unwrap()).unwrap(),serde_json::to_vec(before.account(untouched).unwrap()).unwrap());
+        }
     }
 }
 
@@ -69,7 +265,7 @@ fn selected_refresh_requests_only_its_balance_and_transactions_and_never_sends_p
 }
 
 #[test]
-fn group_refresh_uses_one_dialog_for_its_accounts_and_leaves_other_accounts_and_payments_untouched() {
+fn group_refresh_uses_one_client_for_its_accounts_and_leaves_other_accounts_and_payments_untouched() {
     verify_scope(true);
 }
 
@@ -115,21 +311,12 @@ fn verify_scope(group: bool) {
     let ids: Vec<_> = selected.iter().map(|(_, id)| *id).collect();
     let numbers: Vec<_> = selected.iter().map(|(a, _)| a.account_number.clone()).collect();
     let before = ctx.vault.lock().unwrap().clone();
-    let mut state = fints::State { system_id: "TEST".into(), ..Default::default() };
-    state.bpd.tan_methods.push(TanMethod { security_function: "999".into(), name: "Test".into(), technical_id: String::new(),
-        dk_id: String::new(), tan_process: "1".into(), decoupled: false, needs_medium: false, max_tan_length: 0,
-        hhduc_response_required: false, decoupled_poll_wait_first: 0, decoupled_poll_wait_next: 0 });
-    state.bpd.versions.insert("HKSAL".into(), vec![5]);
-    state.bpd.versions.insert("HKKAZ".into(), vec![5]);
-    let mut client = Client::new(fints::Config { url: "https://bank.invalid".into(), blz: "12345678".into(), ..Default::default() },
-        state, Medium::PinTan, &Ui).unwrap();
     let requests = Arc::new(Mutex::new(Vec::new()));
-    client.set_transport(Box::new(Bank { numbers: numbers.clone(), requests: requests.clone() }));
+    let client = Bank { numbers:numbers.clone(), requests:requests.clone() };
     let message = sync_with_client(&ctx, &access, Some(selected), client).unwrap();
     if !group { assert!(message.contains("Selected test account")); }
-    let mut expected: Vec<String> = vec!["HKIDN".into(), "HKVVB".into()];
-    for number in numbers { expected.extend([format!("HKSAL:{number}"), format!("HKKAZ:{number}")]); }
-    expected.push("HKEND".into());
+    let mut expected = Vec::new();
+    for number in numbers { expected.extend([format!("balance:{number}"), format!("transactions:{number}")]); }
     assert_eq!(*requests.lock().unwrap(), expected);
     let after = ctx.vault.lock().unwrap();
     for id in &ids {

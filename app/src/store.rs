@@ -4,7 +4,7 @@
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use chrono::NaiveDateTime;
-use fints::{Account, Balance, StandingOrder, Transaction};
+use banking::{Account, Balance, StandingOrder, Transaction};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -29,8 +29,8 @@ pub struct BankAccess {
     pub id: u32,
     pub name: String,
     pub kind: AccessKind,
-    pub config: fints::Config,
-    pub state: fints::State,
+    pub config: banking::Config,
+    pub state: banking::State,
     /// PIN saved on request – encrypted separately (see [`VaultFile::seal_secret`]).
     #[serde(default)]
     pub saved_pin: Option<SealedSecret>,
@@ -165,11 +165,31 @@ impl Vault {
     /// Merge fetched transactions: booked ones are de-duplicated by fingerprint,
     /// pending ones replace the previous pending set of that account.
     pub fn merge_transactions(&mut self, account_id: u32, txs: Vec<Transaction>) -> usize {
+        self.merge_transactions_by(account_id,txs,|tx|tx.fingerprint.clone())
+    }
+
+    /// Different statement parsers represent decimal scale and line wrapping
+    /// differently. Match exact normalized fields with multiplicity; preserve
+    /// stored text/categories and never use approximate amount/date matching.
+    pub fn merge_aqbanking_transactions(&mut self, account_id:u32, txs:Vec<Transaction>) -> usize {
+        self.merge_transactions_by(account_id,txs,|tx| {
+            let mut normalized=tx.clone();
+            normalized.amount=normalized.amount.normalize();
+            normalized.purpose=normalized.purpose.split_whitespace().collect::<Vec<_>>().join(" ");
+            normalized.counterparty_iban=normalized.counterparty_iban.split_whitespace().collect::<String>().to_uppercase();
+            normalized.end_to_end_id=normalized.end_to_end_id.trim().to_owned();
+            if normalized.end_to_end_id.eq_ignore_ascii_case("NOTPROVIDED") { normalized.end_to_end_id.clear(); }
+            normalized.compute_fingerprint();
+            format!("{}:{}:{}",normalized.fingerprint,normalized.currency.to_uppercase(),normalized.date_unknown)
+        })
+    }
+
+    fn merge_transactions_by(&mut self, account_id:u32, txs:Vec<Transaction>, key:impl Fn(&Transaction)->String) -> usize {
         self.transactions.retain(|t| !(t.account_id == account_id && t.tx.pending));
         let mut added = 0;
         let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for t in self.transactions.iter().filter(|t| t.account_id == account_id) {
-            *seen.entry(t.tx.fingerprint.clone()).or_default() += 1;
+            *seen.entry(key(&t.tx)).or_default() += 1;
         }
         // identical bookings on the same day are legitimate: compare counts per batch
         let mut batch: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -178,9 +198,10 @@ impl Vault {
                 self.transactions.push(StoredTx { account_id, tx, category: None });
                 continue;
             }
-            let n = batch.entry(tx.fingerprint.clone()).or_default();
+            let fingerprint=key(&tx);
+            let n = batch.entry(fingerprint.clone()).or_default();
             *n += 1;
-            if seen.get(&tx.fingerprint).copied().unwrap_or(0) < *n {
+            if seen.get(&fingerprint).copied().unwrap_or(0) < *n {
                 added += 1;
                 self.transactions.push(StoredTx { account_id, tx, category: None });
             }
@@ -201,6 +222,8 @@ pub struct VaultFile {
     path: PathBuf,
     salt: [u8; 16],
     key: Zeroizing<[u8; 32]>,
+    // A separate inode survives atomic replacement of the encrypted vault.
+    session_lock: Option<std::sync::Arc<std::fs::File>>,
 }
 
 fn derive(password: &str, salt: &[u8; 16]) -> Result<Zeroizing<[u8; 32]>, String> {
@@ -228,7 +251,60 @@ impl VaultFile {
         let mut salt = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut salt);
         let key = derive(password, &salt)?;
-        Ok(Self { path, salt, key })
+        Ok(Self { path, salt, key, session_lock: None })
+    }
+
+    /// Acquire the session lock before reading: another process may otherwise
+    /// replace the vault between decrypting it and acquiring ownership.
+    pub fn open_session(path: PathBuf, password: &str) -> Result<(Self, Vault), String> {
+        let path = path.canonicalize().map_err(|e| i18n::tr_format!("Tresor nicht lesbar: {e}"))?;
+        let guard = Self::lock_session(&path)?;
+        let (mut file, vault) = Self::open(path, password)?;
+        file.session_lock = Some(guard);
+        Ok((file, vault))
+    }
+
+    pub fn reopen_session(&self, password: &str) -> Result<(Self, Vault), String> {
+        let (mut file, vault) = Self::open(self.path.clone(), password)?;
+        file.session_lock = self.session_lock.clone();
+        Ok((file, vault))
+    }
+
+    fn lock_session(path: &Path) -> Result<std::sync::Arc<std::fs::File>, String> {
+        let parent = path.parent().ok_or("Tresorpfad ohne Verzeichnis")?;
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let parent = parent.canonicalize().map_err(|e| e.to_string())?;
+        let mut name = path.file_name().ok_or("Ungültiger Tresorpfad")?.to_os_string();
+        name.push(".lock");
+        let lock_path = parent.join(name);
+        if std::fs::symlink_metadata(&lock_path).is_ok_and(|m| !m.is_file()) {
+            return Err("Ungültige Tresorsperrdatei".into());
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)] {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        #[cfg(windows)] {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
+        }
+        let guard = options.open(lock_path).map_err(|e| e.to_string())?;
+        let metadata=guard.metadata().map_err(|e|e.to_string())?;
+        if !metadata.is_file() { return Err("Ungültige Tresorsperrdatei".into()); }
+        #[cfg(unix)] {
+            use std::os::unix::fs::MetadataExt;
+            if metadata.nlink()!=1 { return Err("Verknüpfte Tresorsperrdatei wird nicht verwendet".into()); }
+        }
+        #[cfg(windows)] {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 { return Err("Verknüpfte Tresorsperrdatei wird nicht verwendet".into()); }
+        }
+        guard.try_lock().map_err(|_| "Dieser Tresor wird bereits von einer anderen BankingCraft-Instanz verwendet.".to_string())?;
+        // Do not unlink lock files: removing a locked inode permits a second
+        // process to acquire a new inode for the same vault.
+        Ok(std::sync::Arc::new(guard))
     }
 
     pub fn open(path: PathBuf, password: &str) -> Result<(Self, Vault), String> {
@@ -254,7 +330,7 @@ impl VaultFile {
                 .map_err(|_| i18n::tr("Falsches Passwort").to_string())?,
         );
         let vault: Vault = serde_json::from_slice(&plain).map_err(|e| i18n::tr_format!("Tresor beschädigt: {e}"))?;
-        Ok((Self { path, salt, key }, vault))
+        Ok((Self { path, salt, key, session_lock: None }, vault))
     }
 
     fn encode(&self, vault: &Vault) -> Result<Vec<u8>, String> {
@@ -273,7 +349,9 @@ impl VaultFile {
 
     /// Create a complete encrypted vault without ever replacing an existing file.
     pub fn create_new(path: PathBuf, password: &str, vault: &Vault) -> Result<Self, String> {
+        let guard = Self::lock_session(&path)?;
         let mut file = Self::create(path, password)?;
+        file.session_lock = Some(guard);
         if let Some(dir) = file.path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
@@ -317,7 +395,7 @@ impl VaultFile {
         }
         let mut salt = [0u8; 16];
         rand::thread_rng().fill_bytes(&mut salt);
-        let candidate = Self { path: self.path.clone(), salt, key: derive(new, &salt)? };
+        let candidate = Self { path: self.path.clone(), salt, key: derive(new, &salt)?, session_lock: self.session_lock.clone() };
         let mut updated = vault.clone();
         for access in &mut updated.accesses {
             if let AccessKind::PayPal { credentials, .. } = &mut access.kind {
@@ -375,6 +453,54 @@ impl VaultFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "subprocess helper, invoked by exclusive_session_survives_password_change"]
+    fn session_lock_child() {
+        let path=std::env::var_os("BANKINGCRAFT_LOCK_TEST_PATH").expect("test path");
+        let expected=std::env::var("BANKINGCRAFT_LOCK_TEST_ALLOWED").unwrap()=="1";
+        assert_eq!(VaultFile::lock_session(Path::new(&path)).is_ok(),expected);
+    }
+
+    #[test]
+    fn exclusive_session_survives_password_change() {
+        let dir=std::env::temp_dir().join(format!("bankingcraft-lock-{:016x}",rand::random::<u64>()));
+        std::fs::create_dir(&dir).unwrap();
+        let path=dir.join("vault.kontor");
+        let mut vault=Vault::default();
+        let mut file=VaultFile::create_new(path.clone(),"synthetic-old",&vault).unwrap();
+        let verify=|allowed:bool| {
+            let output=std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact","store::tests::session_lock_child","--ignored"])
+                .env("BANKINGCRAFT_LOCK_TEST_PATH",&path)
+                .env("BANKINGCRAFT_LOCK_TEST_ALLOWED",if allowed {"1"} else {"0"}).output().unwrap();
+            assert!(output.status.success(),"child lock assertion failed");
+        };
+        verify(false);
+        file.change_password("synthetic-old","synthetic-new",&mut vault).unwrap();
+        verify(false);
+        let (reopened,_)=file.reopen_session("synthetic-new").unwrap();
+        drop(file); verify(false); drop(reopened); verify(true);
+        #[cfg(unix)] {
+            let lock=dir.join("vault.kontor.lock");
+            std::fs::remove_file(&lock).unwrap();
+            std::os::unix::fs::symlink(&path,&lock).unwrap();
+            assert!(VaultFile::lock_session(&path).is_err());
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn native_parser_migration_preserves_duplicate_counts_and_categories() {
+        let mut old=crate::business_tests::tx(123,"2026-11-01");
+        old.amount="1.2300".parse().unwrap(); old.purpose="Invoice\n  123".into(); old.end_to_end_id="NOTPROVIDED".into(); old.compute_fingerprint();
+        let mut new=old.clone();new.amount="1.23".parse().unwrap();new.purpose="Invoice 123".into();new.end_to_end_id.clear();new.compute_fingerprint();
+        let mut vault=Vault::default();vault.merge_transactions(1,vec![old.clone(),old]);
+        vault.transactions[0].category=Some("Keep".into());
+        assert_eq!(vault.merge_aqbanking_transactions(1,vec![new.clone(),new.clone()]),0);
+        assert_eq!(vault.transactions[0].category.as_deref(),Some("Keep"));
+        assert_eq!(vault.merge_aqbanking_transactions(1,vec![new.clone(),new.clone(),new]),1);
+    }
 
     #[test]
     fn password_change_is_transactional_and_preserves_saved_pin() {

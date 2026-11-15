@@ -1,0 +1,18 @@
+[package]
+name = "bankingcraft-models"
+description = "Shared BankingCraft data models and local form validation; no banking or card protocol implementation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+i18n = { package = "bankingcraft-i18n", path = "../i18n" }
+chrono.workspace = true
+serde.workspace = true
+rust_decimal.workspace = true
+rand = "0.8"
+zeroize = "1"
+url = "2"
+
+[dev-dependencies]
+serde_json = "1"

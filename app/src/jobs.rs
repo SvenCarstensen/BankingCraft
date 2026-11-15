@@ -8,7 +8,8 @@ use crate::view;
 use crate::payments::{OrderStatus, PaymentOrder};
 use crate::AppState;
 use chrono::{Duration, Local};
-use fints::{Account, Client, Error, Medium, SepaTransfer, StandingOrder, TanChallenge, TanMethod};
+use banking::{Account, Error, SepaTransfer, StandingOrder, TanChallenge, TanMethod};
+use aqbanking::{Client, Medium};
 use crate::ui::{SharedString};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +26,28 @@ pub type JobResult = Result<String, String>;
 
 #[cfg(test)]
 mod account_refresh_tests;
+
+/// The production implementation delegates all bank communication to AqBanking.
+/// Keeping this small interface also permits socket-free refresh regressions.
+trait RefreshClient: Sized {
+    fn accounts(&mut self) -> banking::Result<Vec<Account>>;
+    fn current_accounts(&mut self, accounts: Vec<Account>) -> banking::Result<Vec<Account>> { Ok(accounts) }
+    fn balance(&mut self, account: &Account) -> banking::Result<Option<banking::Balance>>;
+    fn transaction_report(&mut self, account: &Account, from: chrono::NaiveDate, to: Option<chrono::NaiveDate>) -> banking::Result<banking::TransactionReport>;
+    fn finish(self) -> banking::State;
+}
+macro_rules! refresh_client {
+    ($client:ty) => {
+        impl RefreshClient for $client {
+            fn accounts(&mut self) -> banking::Result<Vec<Account>> { self.accounts() }
+            fn current_accounts(&mut self, a: Vec<Account>) -> banking::Result<Vec<Account>> { self.current_accounts(a) }
+            fn balance(&mut self, a: &Account) -> banking::Result<Option<banking::Balance>> { self.balance(a) }
+            fn transaction_report(&mut self, a: &Account, f: chrono::NaiveDate, t: Option<chrono::NaiveDate>) -> banking::Result<banking::TransactionReport> { self.transaction_report(a,f,t) }
+            fn finish(self) -> banking::State { self.finish() }
+        }
+    };
+}
+refresh_client!(Client<'_>);
 
 impl Ctx {
     /// Commit a local edit only after the encrypted vault was saved successfully.
@@ -47,6 +70,7 @@ impl Ctx {
 
     /// Run `f` on a worker thread with the busy overlay, then save and refresh.
     pub fn run(&self, title: &str, f: impl FnOnce(&Ctx) -> JobResult + Send + 'static) {
+        if self.bridge.locked.load(Ordering::Acquire) { return; }
         // Reserve synchronously before the busy overlay is posted to the event loop.
         if self.running.swap(true, Ordering::AcqRel) {
             return;
@@ -54,7 +78,9 @@ impl Ctx {
         self.bridge.cancelled.store(false, Ordering::Release);
         let ctx = self.clone();
         let title = SharedString::from(title);
+        let locked = self.bridge.locked.clone();
         let _ = self.bridge.weak.upgrade_in_event_loop(move |app| {
+            if locked.load(Ordering::Acquire) { return; }
             let st = app.global::<AppState>();
             st.set_busy(true);
             st.set_busy_text(title);
@@ -67,10 +93,16 @@ impl Ctx {
             // Keep the session reserved until its final UI update has run, so a
             // vault switch cannot overtake callbacks belonging to the old vault.
             let running = ctx.running.clone();
+            let locked = ctx.bridge.locked.clone();
             let queued = ctx.bridge.weak.upgrade_in_event_loop(move |app| {
                 let st = app.global::<AppState>();
                 st.set_busy(false);
                 running.store(false, Ordering::Release);
+                if locked.load(Ordering::Acquire) {
+                    crate::session::finish_lock(&app);
+                    if save.is_err() { st.set_unlock_error("Tresor gesperrt. Letztes Speichern fehlgeschlagen; Bankstatus vor erneutem Senden prüfen.".into()); }
+                    return;
+                }
                 st.set_show_pinpad(false);
                 crate::refresh_view(&app);
                 match (result, save) {
@@ -85,13 +117,11 @@ impl Ctx {
     }
 }
 
-/// Store the client state and turn a FinTS error into a user message; bank/syntax errors
-/// get a masked protocol of the last message exchange written next to the vault.
-fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -> Result<T, String> {
-    let trace = client.last_trace.clone();
+/// Persist native state and translate errors for the current UI session.
+fn conclude<T>(ctx: &Ctx, access_id: u32, client: impl RefreshClient, r: Result<T, Error>) -> Result<T, String> {
     let state = client.finish();
     store_state(ctx, access_id, state);
-    let wrong_pin = matches!(&r, Err(Error::Bank { code, text })
+    let wrong_pin = matches!(&r, Err(Error::Bank { code, text } | Error::Access { code, text })
         if ["9931", "9942", "9340", "9930"].iter().any(|c| code == c || text.contains(c)));
     let pin_note = handle_saved_pin(ctx, access_id, wrong_pin);
     let r = r.inspect(|_| {
@@ -99,23 +129,16 @@ fn conclude<T>(ctx: &Ctx, access_id: u32, client: Client, r: Result<T, Error>) -
             log::info!("{n}");
         }
     });
-    r.map_err(|e| {
-        let mut msg = err_text(ctx, &e);
-        if matches!(e, Error::Bank { .. } | Error::Syntax(_) | Error::Security(_)) {
-            if let Some(p) = write_error_report(trace.as_deref()) {
-                msg.push_str(&i18n::tr_format!("\n\nFehlerprotokoll (ohne Nachrichteninhalte): {}", p.display()));
-            }
-        }
-        msg
-    })
+    r.map_err(|e| err_text(ctx, &e))
 }
 
 /// Store the PIN when the user asked for it, drop a stored PIN the bank rejected.
 fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String> {
     let bridge = &ctx.bridge;
+    let rejected=bridge.pin_was_rejected.swap(false,Ordering::AcqRel);
     let mut v = ctx.vault.lock().unwrap();
     let access = v.accesses.iter_mut().find(|a| a.id == access_id)?;
-    if wrong_pin {
+    if wrong_pin || rejected {
         *bridge.pin_cache.lock().unwrap() = None;
         *bridge.pin_save_requested.lock().unwrap() = false;
         if access.saved_pin.take().is_some() {
@@ -132,21 +155,6 @@ fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String
     None
 }
 
-fn write_error_report(trace: Option<&str>) -> Option<std::path::PathBuf> {
-    let trace = trace?;
-    let dir = crate::store::default_path().parent()?.to_path_buf();
-    std::fs::create_dir_all(&dir).ok()?;
-    let path = dir.join("fints-fehlerprotokoll.txt");
-    let text = i18n::tr_format!(
-        "BankingCraft {} – {}\n\nTechnische Segmentübersicht (Fehlerdetails werden nur in der App angezeigt):\n{}\n",
-        env!("CARGO_PKG_VERSION"),
-        Local::now().format("%d.%m.%Y %H:%M:%S"),
-        trace.replace('\'', "'\n")
-    );
-    crate::private_file::replace(&path, text.as_bytes()).ok()?;
-    Some(path)
-}
-
 fn err_text(ctx: &Ctx, e: &Error) -> String {
     match e {
         Error::Cancelled => {
@@ -160,56 +168,22 @@ fn err_text(ctx: &Ctx, e: &Error) -> String {
     }
 }
 
-fn medium_for(ctx: &Ctx, access: &BankAccess) -> Result<Medium, String> {
+fn medium_for(_ctx: &Ctx, access: &BankAccess) -> Result<Medium, String> {
     match &access.kind {
         AccessKind::PinTan => Ok(Medium::PinTan),
-        AccessKind::ChipCard { reader, .. } => {
-            let b = ctx.bridge.clone();
-            let soft: cardreader::SoftPinProvider = Box::new(move || b.ask_pin(i18n::tr("PIN der HBCI-Chipkarte (Leser ohne PIN-Pad)")));
-            ctx.bridge.status(i18n::tr("Verbinde mit Chipkarte …"));
-            let mut card = cardreader::DdvChipCard::open(Some(reader), Some(soft)).map_err(|e| e.to_string())?;
-            let b2 = ctx.bridge.clone();
-            card.pinpad_notify = Some(Box::new(move |on| {
-                b2.pinpad(on, i18n::tr("Bitte geben Sie die PIN Ihrer HBCI-Chipkarte am Kartenleser ein und bestätigen Sie mit OK."));
-            }));
-            Ok(Medium::Ddv(Box::new(card)))
-        }
-        AccessKind::RdhCard { reader, record } => {
-            let card = open_rdh_card(ctx, reader)?;
-            Ok(Medium::Rdh(Box::new(card), *record))
-        }
+        AccessKind::ChipCard { reader, record } => Ok(Medium::Ddv { reader: reader.clone(), record: *record }),
+        AccessKind::RdhCard { reader, record } => Ok(Medium::Rdh { reader: reader.clone(), record: *record }),
         AccessKind::Demo => Err(i18n::tr("Demo-Zugang").into()),
         AccessKind::PayPal { .. } => Err(crate::paypal::read_only_error()),
     }
 }
 
-fn open_rdh_card(ctx: &Ctx, reader: &str) -> Result<cardreader::RdhChipCard, String> {
-    let b = ctx.bridge.clone();
-    let soft: cardreader::SoftPinProvider = Box::new(move || b.ask_pin(i18n::tr("PIN der RDH-Chipkarte (Leser ohne PIN-Pad)")));
-    ctx.bridge.status(i18n::tr("Verbinde mit RDH-Chipkarte …"));
-    let mut card = cardreader::RdhChipCard::open(Some(reader), Some(soft)).map_err(|e| e.to_string())?;
-    let b2 = ctx.bridge.clone();
-    card.pinpad_notify = Some(Box::new(move |on| {
-        b2.pinpad(on, i18n::tr("Bitte geben Sie die PIN Ihrer Chipkarte (z. B. VR-NetWorld-Card) am Kartenleser ein und bestätigen Sie mit OK."));
-    }));
-    Ok(card)
-}
-
-/// Read the bank access `record` (0 = first) from the notepad of an RDH card.
-pub fn read_rdh_card(ctx: &Ctx, reader: &str, record: u8) -> Result<(fints::rdh::RdhContext, String), String> {
-    use fints::rdh::RdhCard;
-    let mut card = open_rdh_card(ctx, reader)?;
-    let number = card.card_number();
-    let list = card.contexts().map_err(|e| err_text(ctx, &e))?;
-    let c = list
-        .iter()
-        .find(|c| record == 0 || c.record == record)
-        .cloned()
-        .ok_or(i18n::tr("Auf der Chipkarte ist kein Bankzugang eingerichtet"))?;
-    Ok((c, number))
+pub fn read_rdh_card(ctx: &Ctx, reader: &str, record: u8) -> Result<(aqbanking::CardContext, String), String> {
+    aqbanking::read_card(Medium::Rdh { reader: reader.into(), record }, &ctx.bridge).map_err(|e| err_text(ctx,&e))
 }
 
 fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result<Client<'a>, String> {
+    bridge.pin_was_rejected.store(false,Ordering::Release);
     // saved PIN (decrypted only in memory) and the offer to save it
     let pintan = access.kind == AccessKind::PinTan;
     *bridge.pin_save_offer.lock().unwrap() = pintan && access.saved_pin.is_none();
@@ -234,7 +208,7 @@ fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result
     Client::new(cfg, access.state.clone(), medium, bridge).map_err(|e| err_text(ctx, &e))
 }
 
-fn store_state(ctx: &Ctx, access_id: u32, state: fints::State) {
+fn store_state(ctx: &Ctx, access_id: u32, state: banking::State) {
     let mut v = ctx.vault.lock().unwrap();
     if let Some(a) = v.accesses.iter_mut().find(|a| a.id == access_id) {
         a.state = state;
@@ -335,33 +309,49 @@ fn sync_scope(ctx: &Ctx, access: BankAccess, selected: Option<AccountBatch>) -> 
         let name = scope_name(ctx, &access, selected.as_ref());
         return Ok(i18n::tr_format!("{}: Demo-Daten sind aktuell.", name));
     }
-    let bridge = ctx.bridge.clone();
+    let bridge = ctx.bridge.with_application_progress();
     let client = make_client(ctx, &access, &bridge).map_err(|e| format!("{}:\n{e}", access.name))?;
     sync_with_client(ctx, &access, selected, client)
 }
 
-fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatch>, mut client: Client) -> JobResult {
+fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatch>, mut client: impl RefreshClient) -> JobResult {
     let access_id = access.id;
     let single_account = selected.as_ref().is_some_and(|accounts| accounts.len() == 1);
     let name = scope_name(ctx, access, selected.as_ref());
     let mut warnings: Vec<String> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     let mut new_tx = 0usize;
     let result: Result<usize, Error> = (|| {
+        ctx.bridge.status(&i18n::tr_format!("{}: Kontodaten aktualisieren …", name));
         let (accounts, ids): (Vec<_>, Vec<_>) = if let Some(accounts) = selected {
-            accounts.into_iter().unzip()
+            let (old,ids): (Vec<_>, Vec<_>) = accounts.into_iter().unzip();
+            let mut accounts = client.current_accounts(old)?;
+            if accounts.len()!=ids.len() { return Err(Error::Security("Unvollständige AqBanking-Kontozuordnung".into())); }
+            let mut vault=ctx.vault.lock().unwrap();
+            for (account,id) in accounts.iter_mut().zip(&ids) {
+                crate::banks::complete_account(account);
+                if let Some(stored)=vault.accounts.iter_mut().find(|a| a.id==*id && a.access_id==access_id) {
+                    stored.account=account.clone();
+                }
+            }
+            (accounts,ids)
         } else {
             let mut accounts = client.accounts()?;
             for account in &mut accounts { crate::banks::complete_account(account); }
             let ids = ctx.vault.lock().unwrap().merge_accounts(access_id, accounts.clone());
             (accounts, ids)
         };
+        let mut updated=0;
         for (acc, id) in accounts.iter().zip(ids) {
             let warnings_before = warnings.len();
             let mut fetched = false;
+            let mut unavailable = false;
             if (30..=39).contains(&acc.kind) {
                 continue; // securities accounts are out of scope
             }
+            let label = view::account_label(&ctx.vault.lock().unwrap(), id);
             if allowed(acc, &["HKSAL", "HKKKS", "DKKKS"]) {
+                ctx.bridge.status(&i18n::tr_format!("{}: Saldo abrufen …", label));
                 match client.balance(acc) {
                     Ok(Some(b)) => {
                         fetched = true;
@@ -371,8 +361,8 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
                         }
                     }
                     Ok(None) | Err(Error::NotSupported(_)) => {}
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
-                    Err(e) => warnings.push(i18n::tr_format!("Saldo {}: {}", fints::client::display_account(acc), err_text(ctx, &e))),
+                    Err(e) if stops_refresh(&e) => return Err(e),
+                    Err(e) => warnings.push(i18n::tr_format!("Saldo {}: {}", banking::display::display_account(acc), err_text(ctx, &e))),
                 }
             }
             if allowed(acc, &["HKKAZ", "HKCAZ", "HKKKU", "DKKKU"]) {
@@ -384,6 +374,7 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
                     .map(|d| d - Duration::days(10))
                     // PSD2: up to 90 days of history need no extra approval
                     .unwrap_or_else(|| Local::now().date_naive() - Duration::days(89));
+                ctx.bridge.status(&i18n::tr_format!("{}: Umsätze abrufen …", label));
                 match client.transaction_report(acc, from, None) {
                     Ok(report) => {
                         fetched = true;
@@ -392,38 +383,53 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
                         if let Some(balance) = report.balance {
                             if let Some(stored) = v.accounts.iter_mut().find(|s| s.id == id) { stored.balance = Some(balance); }
                         }
-                        new_tx += v.merge_transactions(id, report.transactions);
+                        new_tx += v.merge_aqbanking_transactions(id, report.transactions);
                     }
-                    Err(Error::NotSupported(e)) if (50..=59).contains(&acc.kind) => warnings.push(i18n::tr_format!("Kreditkartenumsätze: {e}")),
-                    Err(Error::NotSupported(_)) => {}
-                    Err(Error::Cancelled) => return Err(Error::Cancelled),
+                    Err(Error::NotSupported(e)) => {
+                        unavailable = true;
+                        notes.push(i18n::tr_format!("Umsätze {}: {}", banking::display::display_account(acc), e));
+                    }
+                    Err(e) if stops_refresh(&e) => return Err(e),
                     Err(e) => {
-                        let message = i18n::tr_format!("Umsätze {}: {}", fints::client::display_account(acc), err_text(ctx, &e));
-                        if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
-                            write_error_report(client.last_trace.as_deref());
-                        }
+                        let message = i18n::tr_format!("Umsätze {}: {}", banking::display::display_account(acc), err_text(ctx, &e));
                         warnings.push(message);
                     },
                 }
+            } else {
+                notes.push(i18n::tr_format!("Umsätze {}: In den aktuellen Kontodaten ist kein unterstützter Umsatzabruf verfügbar.", banking::display::display_account(acc)));
             }
+            if fetched { updated+=1; }
             let mut v = ctx.vault.lock().unwrap();
             if let Some(s) = v.accounts.iter_mut().find(|s| s.id == id) {
-                if fetched && warnings.len() == warnings_before { s.last_sync = Some(Local::now().naive_local()); }
+                if fetched && !unavailable && warnings.len() == warnings_before { s.last_sync = Some(Local::now().naive_local()); }
             }
         }
-        Ok(accounts.len())
+        Ok(updated)
     })();
     let count = conclude(ctx, access_id, client, result).map_err(|e| format!("{name}:\n{e}"))?;
-    let mut msg = if single_account {
-        i18n::tr_format!("{}: Konto geprüft, {} neue Umsätze.", name, new_tx)
+    let mut msg = if single_account && count==0 {
+        i18n::tr_format!("{}: Keine Kontodaten aktualisiert.", name)
+    } else if single_account {
+        i18n::tr_format!("{}: Konto aktualisiert, {} neue Umsätze.", name, new_tx)
     } else {
-        i18n::tr_format!("{}: {} Konten geprüft, {} neue Umsätze.", name, count, new_tx)
+        i18n::tr_format!("{}: {} Konten aktualisiert, {} neue Umsätze.", name, count, new_tx)
     };
+    if !notes.is_empty() { msg.push('\n'); msg.push_str(&notes.join("\n")); }
     if !warnings.is_empty() {
         msg.push('\n');
         msg.push_str(&warnings.join("\n"));
     }
     if warnings.is_empty() { Ok(msg) } else { Err(msg) }
+}
+
+// A failed access setup or transport must not be retried for every account and
+// operation. Preserve partial results/state, then let the user resolve the cause.
+fn stops_refresh(error: &Error) -> bool {
+    match error {
+        Error::Access { .. } | Error::Transport(_) | Error::Security(_) | Error::Cancelled => true,
+        Error::Bank { code, .. } => matches!(code.as_str(), "9930" | "9931" | "9942" | "9340"),
+        _ => false,
+    }
 }
 
 pub fn sync_all(ctx: &Ctx) -> JobResult {
@@ -435,18 +441,12 @@ pub fn sync_all(ctx: &Ctx) -> JobResult {
 }
 
 pub fn reset_tan(ctx: &Ctx, access_id: u32) -> JobResult {
-    let mut access = ctx.vault.lock().unwrap().access(access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
-    access.state.tan_method = None;
-    access.state.tan_medium = None;
+    let access = ctx.vault.lock().unwrap().access(access_id).cloned().ok_or(i18n::tr("Bankzugang nicht gefunden"))?;
     let bridge = ctx.bridge.clone();
     let mut client = make_client(ctx, &access, &bridge)?;
-    let r = client.open();
+    let r = client.reset_tan();
     conclude(ctx, access_id, client, r)?;
-    let name = ctx.vault.lock().unwrap().access(access_id).and_then(|a| {
-        let sf = a.state.tan_method.clone()?;
-        a.state.bpd.tan_methods.iter().find(|m| m.security_function == sf).map(|m| m.name.clone())
-    });
-    Ok(i18n::tr_format!("TAN-Verfahren: {}", name.unwrap_or_else(|| i18n::tr("Standard").into())))
+    Ok("TAN-Verfahren wurde in AqBanking gespeichert.".into())
 }
 
 fn account_and_access(ctx: &Ctx, account_id: u32) -> Result<(Account, BankAccess), String> {
@@ -462,28 +462,19 @@ fn account_and_access(ctx: &Ctx, account_id: u32) -> Result<(Account, BankAccess
 }
 
 fn demo_tan(ctx: &Ctx, what: &str) -> Result<(), String> {
-    use fints::Interaction;
+    use banking::Interaction;
     let ch = TanChallenge {
         text: i18n::tr_format!("Demo: {what}\n\nIm Demo-Modus wird nichts an eine Bank gesendet. Geben Sie eine beliebige TAN ein."),
-        hhduc: Some(demo::DEMO_FLICKER.as_bytes().to_vec()),
         method: TanMethod {
-            security_function: "Demo".into(),
             name: i18n::tr("chipTAN optisch (Demo)").into(),
             technical_id: "HHD1.4OPT".into(),
-            dk_id: "HHD".into(),
-            tan_process: "2".into(),
             decoupled: false,
-            needs_medium: false,
             max_tan_length: 6,
-            hhduc_response_required: false,
-            decoupled_poll_wait_first: 0,
-            decoupled_poll_wait_next: 0,
         },
         decoupled: false,
-        task_reference: "DEMO".into(),
     };
-    match ctx.bridge.tan(&ch) {
-        fints::TanAnswer::Cancel => Err(err_text(ctx, &Error::Cancelled)),
+    match ctx.bridge.tan(&ch, Some(demo::DEMO_FLICKER), None) {
+        banking::TanAnswer::Cancel => Err(err_text(ctx, &Error::Cancelled)),
         _ => Ok(()),
     }
 }
@@ -554,13 +545,14 @@ fn perform_transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool
     if t.debtor_name.is_empty() {
         t.debtor_name = if acc.owner.is_empty() { i18n::tr("Kontoinhaber").into() } else { acc.owner.clone() };
     }
+    confirm_payment(ctx, &t, if scheduled { "Terminüberweisung freigeben" } else { "Überweisung freigeben" })?;
     if access.kind == AccessKind::Demo {
-        let result = fints::vop::PayeeVerification { status: fints::vop::PayeeStatus::Unavailable,
+        let result = banking::payee::PayeeVerification { status: banking::payee::PayeeStatus::Unavailable,
             name: t.creditor_name.clone(), iban: t.creditor_iban.clone(), suggested_name: String::new(),
             reason: i18n::tr("Demo-Modus: Es findet keine Empfängerprüfung durch eine Bank statt.").into(), bank_notice: String::new() };
-        if !fints::Interaction::verify_payee(&ctx.bridge, &result, false) { return Err(err_text(ctx, &Error::Cancelled)); }
+        if !banking::Interaction::verify_payee(&ctx.bridge, &result, false) { return Err(err_text(ctx, &Error::Cancelled)); }
         demo_tan(ctx, &i18n::tr_format!("Überweisung {} an {}", view::fmt_eur(t.amount), t.creditor_name))?;
-        let mut tx = fints::Transaction {
+        let mut tx = banking::Transaction {
             booking_date: t.execution_date.unwrap_or_else(|| Local::now().date_naive()),
             value_date: t.execution_date.unwrap_or_else(|| Local::now().date_naive()),
             amount: -t.amount,
@@ -582,6 +574,28 @@ fn perform_transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool
     let r = if scheduled { client.scheduled_transfer(&acc, &t) } else { client.transfer(&acc, &t) };
     let summary = conclude(ctx, access.id, client, r)?;
     Ok(i18n::tr_format!("Auftrag übermittelt.\n{summary}"))
+}
+
+fn confirm_payment(ctx: &Ctx, transfer: &SepaTransfer, action: &str) -> Result<(), String> {
+    use banking::Interaction;
+    // Bank/user strings must not insert fake field labels or reverse IBAN
+    // display with bidi controls. Escaping is presentation-only.
+    fn visible(s:&str)->String {
+        s.chars().flat_map(|c| {
+            if c.is_control() || matches!(c,'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}') {
+                c.escape_unicode().to_string().chars().collect::<Vec<_>>()
+            } else {vec![c]}
+        }).collect()
+    }
+    let details = format!("Auftraggeber: {}\nVon IBAN: {}\n\nEmpfänger: {}\nAn IBAN: {}\nBIC: {}\nBetrag: {}\nVerwendungszweck: {}\nAusführung: {}{}\n\nBitte alle Angaben vor der Freigabe prüfen.",
+        visible(&transfer.debtor_name), visible(&transfer.debtor_iban), visible(&transfer.creditor_name), visible(&transfer.creditor_iban), visible(&transfer.creditor_bic),
+        view::fmt_eur(transfer.amount), visible(&transfer.purpose),
+        transfer.execution_date.map(|d| d.to_string()).unwrap_or_else(|| "sobald möglich".into()),
+        if transfer.instant { " (Echtzeit)" } else { "" });
+    if ctx.bridge.cancelled() || !ctx.bridge.confirm(action, &details) || ctx.bridge.cancelled() {
+        return Err(err_text(ctx, &Error::Cancelled));
+    }
+    Ok(())
 }
 
 pub fn fetch_standing(ctx: &Ctx) -> JobResult {
@@ -608,7 +622,7 @@ pub fn fetch_standing(ctx: &Ctx) -> JobResult {
     let mut loaded_accounts = 0;
     let mut warnings = Vec::new();
     for (access, accs) in groups {
-        if accs.is_empty() || !access.state.bpd.supports("HKCDB") && !access.state.bpd.versions.is_empty() {
+        if accs.is_empty() {
             continue;
         }
         let bridge = ctx.bridge.clone();
@@ -632,14 +646,11 @@ pub fn fetch_standing(ctx: &Ctx) -> JobResult {
                     return Err(i18n::tr("Vorgang abgebrochen.").into());
                 }
                 Err(e) => {
-                    wrong_pin = matches!(&e, Error::Bank { code, text }
+                    wrong_pin = matches!(&e, Error::Bank { code, text } | Error::Access { code, text }
                         if ["9931", "9942", "9340", "9930"].iter().any(|c| code == c || text.contains(c)));
                     let msg = format!("{} · {}: {}", access.name, acc.product, err_text(ctx, &e));
-                    if matches!(e, Error::Bank { .. } | Error::Syntax(_)) {
-                        write_error_report(client.last_trace.as_deref());
-                    }
                     warnings.push(msg);
-                    if wrong_pin { break; }
+                    if wrong_pin || stops_refresh(&e) { break; }
                 },
             }
         }
@@ -668,6 +679,9 @@ pub fn create_standing(ctx: &Ctx, account_id: u32, mut so: StandingOrder) -> Job
     if so.transfer.debtor_name.is_empty() {
         so.transfer.debtor_name = if acc.owner.is_empty() { i18n::tr("Kontoinhaber").into() } else { acc.owner.clone() };
     }
+    let details = format!("Dauerauftrag: {:?}, alle {}, Ausführungstag {}, Beginn {}, Ende {}",
+        so.interval, so.every, so.day, so.first_date, so.last_date.map(|d| d.to_string()).unwrap_or_else(|| "unbefristet".into()));
+    confirm_payment(ctx, &so.transfer, &details)?;
     if access.kind == AccessKind::Demo {
         demo_tan(ctx, &i18n::tr_format!("Dauerauftrag {} an {}", view::fmt_eur(so.transfer.amount), so.transfer.creditor_name))?;
         so.order_id = format!("DEMO-{}", ctx.vault.lock().unwrap().new_id());
@@ -693,6 +707,7 @@ pub fn create_standing(ctx: &Ctx, account_id: u32, mut so: StandingOrder) -> Job
 pub fn delete_standing(ctx: &Ctx, index: usize) -> JobResult {
     let item = ctx.vault.lock().unwrap().standing.get(index).cloned().ok_or(i18n::tr("Dauerauftrag nicht gefunden"))?;
     let (acc, access) = account_and_access(ctx, item.account_id)?;
+    confirm_payment(ctx, &item.order.transfer, "Dauerauftrag löschen")?;
     if access.kind != AccessKind::Demo {
         let bridge = ctx.bridge.clone();
         let mut client = make_client(ctx, &access, &bridge)?;
@@ -706,10 +721,8 @@ pub fn delete_standing(ctx: &Ctx, index: usize) -> JobResult {
     Ok(i18n::tr("Dauerauftrag gelöscht.").into())
 }
 
-pub fn read_card(reader: &str, record: u8) -> Result<fints::security::DdvBankData, String> {
-    use fints::security::DdvCard;
-    let mut card = cardreader::DdvChipCard::open(Some(reader), None).map_err(|e| e.to_string())?;
-    card.bank_data(record).map_err(|e| e.to_string())
+pub fn read_card(ctx: &Ctx, reader: &str, record: u8) -> Result<aqbanking::CardContext, String> {
+    aqbanking::read_card(Medium::Ddv {reader:reader.into(),record}, &ctx.bridge).map(|(card,_)| card).map_err(|e| err_text(ctx,&e))
 }
 
 #[cfg(test)]
@@ -739,7 +752,7 @@ mod business_tests {
         demo::add_demo(&mut ctx.vault.lock().unwrap()); assert!(sync_all(&ctx).unwrap().contains("Demo"));
         assert!(fetch_standing(&ctx).unwrap().contains("Demo"));
         assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
-        assert!(ctx.vault.lock().unwrap().accounts.iter().all(|a| fints::pain::iban_valid(&a.account.iban)));
+        assert!(ctx.vault.lock().unwrap().accounts.iter().all(|a| banking::validation::iban_valid(&a.account.iban)));
     }
 
     #[test]
@@ -834,12 +847,12 @@ mod outgoing_order_tests {
                 let mut v = ctx.vault.lock().unwrap();
                 let access_id = v.account(account).unwrap().access_id;
                 events.borrow_mut().push(format!("send:{access_id}"));
-                v.accesses.iter_mut().find(|a| a.id == access_id).unwrap().state.system_id = "AFTER_PAYMENT".into();
+                v.accesses.iter_mut().find(|a| a.id == access_id).unwrap().state.aqbanking.get_or_insert_with(Default::default).binding = "AFTER_PAYMENT".into();
                 Ok("Accepted".into())
             },
             |ctx, access, selected| {
                 assert!(selected.is_none());
-                assert_eq!(access.state.system_id, "AFTER_PAYMENT");
+                assert_eq!(access.state.aqbanking.as_ref().unwrap().binding, "AFTER_PAYMENT");
                 assert!(ctx.vault.lock().unwrap().payment_orders.iter().all(|o| o.status == OrderStatus::Sent));
                 events.borrow_mut().push(format!("fetch:{}", access.id));
                 Ok("Retrieved".into())
