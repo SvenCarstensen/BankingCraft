@@ -52,15 +52,21 @@ offline test coverage. **This does not expand the live-tested bank list above.**
   security audit or banking certification. See [SECURITY.md](SECURITY.md) for confidential
   reporting through GitHub. Private vulnerability reporting must be enabled after the repository
   becomes public. Do not post vulnerabilities, credentials or bank data in public issues.
-- **Release source packaging remains to be prepared.** Third-party license and attribution
-  notices, including the LGPL-2.1 bank directory, are included in
-  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Binary releases must also provide their
-  matching corresponding source.
+- **Packaged alpha releases** are built on GitHub Actions as a Linux AppImage, a Windows
+  EXE installer/portable ZIP and macOS DMGs for Apple Silicon and Intel. Each release includes
+  matching source with vendored Rust dependencies, license notices and SHA-256 checksums.
+  See [downloads and release instructions](docs/releases.md).
   Earlier security-review sections describe the previous Slint version and must be read with
   their dates; the current UI verification is documented in [docs/testing.md](docs/testing.md).
 
 The application was previously called Kontor. Existing vaults are still found in their original
 location; the file format, `vault.kontor` filename and key derivation remain compatible.
+
+## Downloads
+
+Get versioned packages from [GitHub Releases](https://github.com/SvenCarstensen/BankingCraft/releases).
+See [installation and release instructions](docs/releases.md) for platform requirements, signatures
+and the workflow for publishing a new version.
 
 ## Screenshots
 
@@ -216,8 +222,8 @@ cargo build --release --locked -p bankingcraft
 .\target\release\bankingcraft.exe
 ```
 
-The executable is `target\release\bankingcraft.exe`. There is currently no Windows
-installer/packaging script. WinSCard is supplied by Windows; no separate PC/SC development
+The executable is `target\release\bankingcraft.exe`. The [release workflow](docs/releases.md)
+creates an EXE installer and portable ZIP. WinSCard is supplied by Windows; no separate PC/SC development
 package is needed. Install your reader's driver separately if required. If `py` is not
 available, use `python` after confirming that `python --version` reports Python 3.
 
@@ -255,7 +261,7 @@ sudo systemctl enable --now pcscd.socket
 
 Install a compatible reader driver, such as the distribution's cyberJack driver where
 applicable. PIN/TAN and PayPal do not require a connected reader. The executable is
-`target/release/bankingcraft`; no AppImage, `.deb` or `.rpm` packaging script is included.
+`target/release/bankingcraft`; the [release workflow](docs/releases.md) produces an AppImage.
 
 ### Tests, troubleshooting and redistribution
 
@@ -279,8 +285,8 @@ packages or `pkg-config`. See the [Rust installation guide](https://doc.rust-lan
 
 When distributing binaries, include `LICENSE`, `THIRD_PARTY_NOTICES.md` and the
 `licenses/` directory, plus the matching corresponding source required by the applicable
-licenses. The macOS script already copies the reviewed notices and editable bank data;
-manual Windows/Linux packaging must do the same. See [license notices](THIRD_PARTY_NOTICES.md).
+licenses. All release packaging scripts copy the reviewed notices and editable bank data.
+Tagged releases also include a source archive with locked Rust dependency sources. See [license notices](THIRD_PARTY_NOTICES.md).
 
 System fonts are discovered with Fontique and rendered by egui using `skrifa`.
 Wayland title bars use Crossfont/FreeType. The local `crates/crossfont-compat` re-export

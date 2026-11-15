@@ -1,0 +1,177 @@
+name: Release packages
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTUP_TOOLCHAIN: 1.99.1
+
+jobs:
+  package:
+    name: Package (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            platform: linux
+          - name: windows-x86_64
+            os: windows-2025
+            platform: windows
+          - name: macos-aarch64
+            os: macos-15
+            platform: macos
+          - name: macos-x86_64
+            os: macos-15-intel
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Validate version and tag
+        id: version
+        run: echo "value=$(python3 scripts/release-version.py)" >> "$GITHUB_OUTPUT"
+      - name: Install Linux libraries and packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcsclite-dev libxkbcommon-dev libfontconfig1-dev libfreetype6-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev libxinerama-dev fonts-noto-core libgl1-mesa-dri libegl1 libgl1 xvfb xauth desktop-file-utils patchelf
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ matrix.os }}-${{ runner.arch }}-1.99.1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: release-${{ matrix.os }}-${{ runner.arch }}-1.99.1-
+      - name: Verify license bundle
+        run: python3 scripts/update-licenses.py --check
+      - name: Test with synthetic data only
+        run: cargo test --workspace --locked
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Build normal release
+        run: cargo build --release --locked -p bankingcraft
+      - name: Package AppImage
+        if: runner.os == 'Linux'
+        run: bash scripts/package-appimage.sh
+      - name: Smoke-test AppImage in a virtual display
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          smoke_dir="$(mktemp -d)"
+          cd "$smoke_dir"
+          "$GITHUB_WORKSPACE/dist/BankingCraft-$RELEASE_VERSION-linux-x86_64.AppImage" --appimage-extract > /dev/null
+          xvfb-run -a python3 "$GITHUB_WORKSPACE/scripts/smoke-desktop.py" "$smoke_dir/squashfs-root/AppRun"
+      - name: Package Windows installer and portable ZIP
+        if: runner.os == 'Windows'
+        run: python3 scripts/package-release.py windows
+      - name: Smoke-test Windows installation, startup and uninstallation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-windows-installer.ps1
+      - name: Package and verify macOS DMG
+        if: runner.os == 'macOS'
+        run: python3 scripts/package-release.py macos
+      - name: Smoke-test macOS app from the DMG
+        if: runner.os == 'macOS'
+        run: |
+          mount="$(mktemp -d)"
+          hdiutil attach dist/*.dmg -readonly -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          python3 scripts/smoke-desktop.py "$mount/BankingCraft.app/Contents/MacOS/BankingCraft"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  source:
+    name: Matching source archive
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - name: Package committed source and locked Rust dependencies
+        run: bash scripts/package-source.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-source
+          path: dist/*-source.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  publish:
+    name: Publish versioned release
+    needs: [package, source]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Verify complete asset set and calculate checksums
+        run: |
+          python3 scripts/release-version.py
+          python3 scripts/release-checksums.py
+      - name: Create release after every package has passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # Drafts allow a failed upload to be retried without publishing a partial release.
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
+            python3 -c 'import json; assert json.load(open("release-state.json"))["isDraft"], "Refusing to replace an already published release"'
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease \
+              --title "BankingCraft $RELEASE_TAG" --notes-file docs/release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BankingCraft
+Comment=Desktop banking with FinTS/HBCI
+Exec=bankingcraft
+Icon=bankingcraft
+Categories=Office;Finance;
+Terminal=false
+StartupWMClass=bankingcraft
