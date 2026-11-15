@@ -23,7 +23,7 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 "$work/linuxdeploy.AppImage" --appdir "$appdir" \
   --executable "$appdir/usr/bin/bankingcraft" \
   --desktop-file packaging/linux/BankingCraft.desktop \
-  --icon-file macos/bankingcraft-icon.png --icon-filename bankingcraft
+  --icon-file packaging/linux/bankingcraft.png
 
 # Preserve the distribution's copyright notices for the shared libraries linuxdeploy bundles.
 native="$appdir/usr/share/bankingcraft/licenses/linux-system"
