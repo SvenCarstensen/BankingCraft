@@ -19,19 +19,10 @@ separate experimental read-only integration.
 credit-card transactions, completed successfully on macOS on November 15, 2026.
 Real payments and physical card/reader operation remain unvalidated with this backend.**
 
-Historical Postbank PIN/TAN retrieval (November 12, 2026) and VR Bank Nord RDH-7
-retrieval (November 13, 2026) used the previous Rust backend. Those successes do
-not establish compatibility of the new integration. Other bank/card configurations
-must be validated separately. The application remains an evaluation build.
+Other bank/card configurations must be validated separately. The application remains
+an evaluation build.
 See [native banking](docs/native-banking.md) and the
 [security implementation and audit handoff](docs/security-hardening.md).
-
-Bank profiles were compared with AqBanking and current bank publications on
-**November 13–14, 2026**. Setup hints, selected outdated endpoints, statement-format
-negotiation and account-data handling have been updated. See the
-[bank compatibility review](docs/bank-compatibility.md) for the per-bank sources,
-remaining uncertainties (including Consorsbank's documented FinTS version) and
-offline test coverage. **This is historical reference material for the previous backend.**
 
 - **FinTS product registration is pending.** BankingCraft does not yet have its own registered
   product ID. Normal builds without a configured ID send an unregistered placeholder and may
@@ -44,9 +35,8 @@ offline test coverage. **This is historical reference material for the previous 
   changes and Verification of Payee have not been validated by submitting real payment orders.
   Their automated tests use simulated bank responses. **Synchronize transactions sends saved
   orders for the selected accounts before retrieving balances and transactions.**
-- **The interface has just migrated to egui/eframe 0.36.** Automated UI tests and a native macOS
-  startup check have passed, but broad hands-on validation is still pending. Some font rendering
-  and spacing differ from the previous interface.
+- **The interface uses egui/eframe 0.36.** Automated UI tests and a native macOS
+  startup check have passed, but broad hands-on validation is still pending.
 - **Interactive platform validation is limited to macOS.** GitHub CI is configured to test, lint
   and build normal releases on macOS, Windows and Linux. This does not replace hands-on
   validation with real readers, graphics drivers or bank connections on each platform.
@@ -58,11 +48,10 @@ offline test coverage. **This is historical reference material for the previous 
   EXE installer/portable ZIP and macOS DMGs for Apple Silicon and Intel. Each release includes
   matching source with vendored Rust dependencies, license notices and SHA-256 checksums.
   See [downloads and release instructions](docs/releases.md).
-  Earlier security-review sections describe the previous Slint version and must be read with
-  their dates; the current UI verification is documented in [docs/testing.md](docs/testing.md).
+  Current verification is documented in [docs/testing.md](docs/testing.md).
 
-The application was previously called Kontor. Existing vaults are still found in their original
-location; the file format, `vault.kontor` filename and key derivation remain compatible.
+Existing vaults are found in their original location; the file format, `vault.kontor`
+filename and key derivation remain compatible.
 
 ## Downloads
 
@@ -327,7 +316,6 @@ Keep this file outside the repository with permissions `0600`; its contents must
 in source, examples, documentation or commits. The ID is neither compiled into the app nor
 saved to a vault. A configured vault ID always takes precedence. Normal builds ignore this file;
 copying the test app to another machine does not copy its local configuration.
-The former `BANKINGCRAFT_DEFAULT_PRODUCT_ID` build variable is no longer used.
 
 Raw FinTS protocol logs are disabled. Application diagnostics retain warning/error metadata
 without formatted messages or panic payloads. Bank errors remain visible in the app through
@@ -436,8 +424,6 @@ there is no claim of general compatibility or a completed real-account test.
 - PayPal transfers and standing orders are not implemented. Credentials never enter FinTS,
   logs or exports; changing the vault password also re-encrypts the stored API credentials.
 
-Implementation and source references: [bank compatibility review](docs/bank-compatibility.md).
-
 ## Multiple vaults
 
 The startup password dialog lets you choose a recent vault, **Open vault…** from a file,
@@ -505,17 +491,15 @@ persisted identifiers or user/bank-supplied text. Keep this README and commit me
 
 `app/data/banks.tsv` originates from the `blz.properties` file in
 [hbci4java](https://github.com/hbci4j/hbci4java) (LGPL-2.1, October 2026 snapshot).
-Old endpoints were updated: `hbci-pintan.gad.de` to `fints1.atruvia.de`, `hbci11.fiducia.de` to
-`fints2.atruvia.de`, and former Dresdner Bank addresses to Commerzbank. The bank’s own information
-remains authoritative; the endpoint can be edited in the connection form.
+The bank’s own connection information remains authoritative; the endpoint can be edited
+in the connection form.
 The [LGPL-2.1 license text](licenses/bank-directory/LGPL-2.1.txt), provenance and
 modification notice are included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#bank-directory-from-hbci4java).
 
 ## AqBanking, GnuCash and verification
 
-The current application uses AqBanking and Libchipcard directly through a separate
-native worker. It no longer dispatches bank requests or card cryptography through
-the previous Rust implementation. Sharing libraries with GnuCash does not establish
+The application uses AqBanking and Libchipcard directly through a separate
+native worker. Sharing libraries with GnuCash does not establish
 identical security: BankingCraft's UI, IPC, encrypted persistence, packaging and
 payment authorization are separate code requiring review.
 
@@ -527,11 +511,7 @@ also confirmed by the user. These checks do not validate other banks, physical c
 real payment submission.
 
 Run `cargo test --workspace --locked`, the native offline tests and the packaged
-runtime scan described in [native banking](docs/native-banking.md). The historical
-[RDH review](docs/rdh-review.md), [bank compatibility review](docs/bank-compatibility.md)
-describe the former backend; the superseded protocol simulators and implementations
-have been removed. Those historical reviews are not evidence
-of live compatibility or cryptographic validation of the new integration.
+runtime scan described in [native banking](docs/native-banking.md).
 
 ### Verification of Payee
 
@@ -540,7 +520,7 @@ the bank's VoP protocol. Its complete VoP dialog text requires explicit confirma
 no result is silently accepted by that dialog adapter. Cancellation and unknown
 dialog types fail closed. To correct a payment, cancel and submit the revised form.
 Native adapter tests exercise the actual AqBanking VoP dialog with synthetic data.
-No real payment, bank VoP workflow or card signing flow has been tested after migration.
+No real payment, bank VoP workflow or card signing flow has been tested with this backend.
 
 See [security hardening and audit scope](docs/security-hardening.md) for controls,
 known limits and outstanding independent review. PCI-DSS/FAPI compliance and security
