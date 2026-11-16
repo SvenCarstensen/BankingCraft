@@ -48,7 +48,8 @@ runs:
       shell: msys2 {0}
       run: |
         cygpath -m "$MINGW_PREFIX/bin" >> "$GITHUB_PATH"
-        echo "MINGW_PREFIX=$(cygpath -m "$MINGW_PREFIX")" >> "$GITHUB_ENV"
+        export MINGW_PREFIX="$(cygpath -m "$MINGW_PREFIX")"
+        echo "MINGW_PREFIX=$MINGW_PREFIX" >> "$GITHUB_ENV"
         python scripts/build-native.py
         python scripts/test-native.py
         python scripts/package-native.py .native/review

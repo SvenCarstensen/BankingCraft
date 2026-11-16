@@ -149,6 +149,8 @@ batch; missing amounts in supported balances or transactions still fail the batc
 Gwenhywfar 5.14.3 and Libchipcard 5.1.6. Source packages are verified before extraction.
 The exact build environment's transitive libraries are inventoried during packaging;
 those OS package versions are not pinned by this manifest.
+The inventory retains original library paths while relocating dependencies, so
+Linux package ownership is looked up against installed files rather than staging copies.
 
 `scripts/build-native.py` applies explicit compatibility/security changes:
 

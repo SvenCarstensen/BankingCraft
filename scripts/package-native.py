@@ -33,6 +33,7 @@ def main():
     windows=platform.system()=="Windows"
     executable="bankingcraft-aqbanking"+(".exe" if windows else "")
     shutil.copy2(prefix/"bin"/executable,destination/"bin"/executable)
+    origins={destination/"bin"/executable: (prefix/"bin"/executable).resolve()}
     for directory in ["share","etc"]:
         if (prefix/directory).exists():
             shutil.copytree(prefix/directory,destination/directory)
@@ -41,6 +42,7 @@ def main():
             target=destination/"lib"/path.relative_to(prefix/"lib")
             target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(path,target)
+            origins[target]=path.resolve()
     binaries=[p for p in destination.rglob("*") if p.is_file() and
               (p==destination/"bin"/executable or p.suffix in [".dylib",".dll"] or ".so" in p.name)]
     queue=list(binaries); processed=set(); inventory={}
@@ -72,11 +74,15 @@ def main():
             if linked.startswith("@"):
                 raise SystemExit("Unexpected unresolved Mach-O path: "+linked)
             source=Path(linked).resolve()
+            # ldd can resolve to an already relocated library in staging.
+            # Retain its original source for dependency ownership and hashes.
+            source=origins.get(source,source)
             target=destination/("bin" if windows else "lib")/source.name
             if not target.exists():
                 shutil.copy2(source,target);queue.append(target)
             elif hashlib.sha256(target.read_bytes()).digest()!=hashlib.sha256(source.read_bytes()).digest() and target not in processed:
                 raise SystemExit("Conflicting library name: "+source.name)
+            origins[target]=source
             inventory[str(target.relative_to(destination))]={"source":str(source),"sha256":hashlib.sha256(source.read_bytes()).hexdigest()}
             if platform.system()=="Darwin":
                 relative=os.path.relpath(target,binary.parent)
