@@ -81,9 +81,11 @@ Mach-O code, configured holder and team identity, hardened runtime, notarization
 acceptance. Native libraries and plugins are signed with the same identity. The main executable's
 dynamic-library links must be system-only. Startup checks run the packaged executables for twelve seconds;
 Windows also verifies silent installation and uninstallation.
-If the hosted Windows VM cannot provide an OpenGL context, the startup test retries with a
-checksum-verified Mesa llvmpipe driver. That driver is used only in the temporary test installation
-and is not included in the installer or portable ZIP. Other startup failures still fail the job.
+The Windows startup test uses a checksum-verified Mesa llvmpipe driver because hosted VMs
+do not guarantee a usable OpenGL context. It does not classify failures from application logs:
+production diagnostics intentionally omit error payloads. Any startup failure still fails the test.
+That driver is used only in the temporary test installation
+and is not included in the installer or portable ZIP.
 
 Extract the matching source archive and follow the platform prerequisites in the README.
 Its `.cargo/config.toml` points to the bundled Rust sources, so `cargo build --release --locked
