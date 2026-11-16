@@ -46,6 +46,27 @@ def resources(destination):
     }, indent=2) + "\n")
 
 
+def relocate_macos_native_resources(app):
+    """Keep data outside code directories while retaining the runtime's paths."""
+    native = app / "Contents/MacOS/native"
+    destination = app / "Contents/Resources/native"
+    binaries = set(macos_signing.macho_files(native))
+
+    def relocate(directory):
+        for path in sorted(directory.iterdir()):
+            if path.is_symlink():
+                continue
+            if path.is_dir() and any(binary.is_relative_to(path) for binary in binaries):
+                relocate(path)
+            elif path not in binaries:
+                target = destination / path.relative_to(native)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(path), str(target))
+                path.symlink_to(os.path.relpath(target, path.parent))
+
+    relocate(native)
+
+
 def macos(version, temporary, output):
     mode = os.environ.get("MACOS_SIGNING_MODE", "adhoc")
     macos_signing.validate_configuration(mode)
@@ -67,6 +88,7 @@ def macos(version, temporary, output):
         library = line.strip().split(" (", 1)[0]
         if not library.startswith(("/System/Library/", "/usr/lib/")):
             raise SystemExit(f"Non-system library would be missing from DMG: {library}")
+    relocate_macos_native_resources(app)
     (temporary / "image/Applications").symlink_to("/Applications")
     dmg = temporary / f"BankingCraft-{version}-macos-{arch}.dmg"
     with macos_signing.signing_session(mode) as signer:

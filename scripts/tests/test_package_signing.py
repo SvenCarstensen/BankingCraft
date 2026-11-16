@@ -14,6 +14,28 @@ spec.loader.exec_module(packaging)
 
 
 class PackageSigningTests(unittest.TestCase):
+    def test_native_data_moves_to_resources_without_changing_runtime_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "BankingCraft.app"
+            native = app / "Contents/MacOS/native"
+            binary_names = ["bin/worker", "lib/plugins/plugin.so", "lib/libexample.dylib"]
+            data_names = ["lib/plugins/plugin.xml", "share/data.xml", "licenses/gmp/COPYING.LESSERv3", "minimum-macos.txt"]
+            for name in binary_names + data_names:
+                path = native / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(bytes.fromhex("cffaedfe") if name in binary_names else b"fixture data")
+            packaging.relocate_macos_native_resources(app)
+            self.assertEqual(set(packaging.macos_signing.macho_files(app)), {native / name for name in binary_names})
+            for name in binary_names:
+                self.assertFalse((native / name).is_symlink())
+            for name in data_names:
+                target = app / "Contents/Resources/native" / name
+                self.assertEqual((native / name).resolve(), target.resolve())
+                self.assertEqual((native / name).read_bytes(), b"fixture data")
+            # Reapplying the layout must not move or replace the existing links.
+            packaging.relocate_macos_native_resources(app)
+            self.assertTrue((native / "share").is_symlink())
+
     def exercise(self, failure):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

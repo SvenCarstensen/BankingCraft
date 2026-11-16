@@ -112,6 +112,9 @@ The packager finds Mach-O code by file header, including extensionless helpers a
 plugins, signs it inside out with hardened runtime and a secure timestamp, then signs the
 app bundle. It verifies every code object's team, certificate authority, timestamp and
 runtime flag, then tests the signed native worker and plugins with synthetic data.
+Native licenses, XML profiles and other data live in `Contents/Resources/native`.
+Relative links within the bundle preserve the libraries' existing resource paths;
+the files in code directories are Mach-O code or links, not unsigned data files.
 
 The app is uploaded as a ZIP, accepted by Apple, stapled and assessed by Gatekeeper. The
 DMG is then built from the stapled app, signed, notarized and stapled separately so both
