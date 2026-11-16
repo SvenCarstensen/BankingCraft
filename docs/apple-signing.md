@@ -41,6 +41,9 @@ all five secrets and both variables below are installed. The Developer ID Applic
 certificate expires on **2027-12-16**. The dedicated team API key is named
 **BankingCraft GitHub Notary** and has the Developer role. Local credential validation
 confirmed both the certificate/private key and Apple's notarization API authentication.
+The complete workflow on `master` has also passed for Apple Silicon and Intel: Apple accepted
+both the app and DMG for each architecture, and their stapled tickets, Gatekeeper assessments
+and packaged startup checks passed. This signing setup is used for release 0.1.0 and later.
 
 | Kind | Name | Value |
 | --- | --- | --- |
@@ -81,7 +84,7 @@ replacement and testing a new signed package before revoking the old certificate
 
 ## Validate and release
 
-After the workflows are merged into `master`:
+For credential rotation or future releases:
 
 1. Run **Apple signing check** in Actions. This checks that the `.p12` includes a valid
    private key, the certificate is exactly the configured Developer ID Application identity
@@ -131,7 +134,8 @@ Temporary keychains and credential files are removed on success or exception. If
 is forcibly stopped, GitHub destroys the hosted VM. Do not switch to self-hosted runners
 without adding cancellation-safe cleanup and access isolation.
 
-The new pipeline does not change already published `0.0.10` DMGs, which remain ad-hoc signed.
+Release 0.1.0 is the first version distributed through this Developer ID signing pipeline.
+Already published `0.0.10` DMGs remain unsigned and their apps remain ad-hoc signed.
 Mock tests and credential validation alone do not prove Apple acceptance or Gatekeeper
 behavior; verify the signed release workflow before publishing.
 

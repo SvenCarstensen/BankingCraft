@@ -57,11 +57,17 @@ filename and key derivation remain compatible.
 
 ## Downloads
 
-Get versioned packages from [GitHub Releases](https://github.com/SvenCarstensen/BankingCraft/releases).
-The AqBanking/Libchipcard migration and fixes described here are on `master` and are
-not included in the previously published `v0.0.10` packages.
-See [installation and release instructions](docs/releases.md) for platform requirements, signatures
-and the workflow for publishing a new version.
+Get the [0.1.0 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
+for Linux x64, Windows x64, Apple Silicon or Intel Macs. Version 0.1.0 includes the
+AqBanking/Libchipcard backend, category management and the fixes described below.
+Both macOS packages are Developer ID signed and Apple notarized. The signing identity is
+**Sven Carstensen (Y322FFQ9N6)**, the authorized Apple account; AppCreation GmbH remains
+the app's publisher. Windows packages are not Authenticode signed.
+
+See the [0.1.0 release notes](docs/release-notes.md) and
+[installation instructions](docs/releases.md) for package choices, signature verification
+and platform requirements. Existing vaults remain compatible; the alpha limitations above
+still apply. Earlier `v0.0.10` downloads do not contain these backend and signing updates.
 
 ## Screenshots
 
@@ -362,6 +368,12 @@ no advisories are suppressed. The current lockfile still contains unmaintained `
 Native CI also builds the pinned AqBanking, Gwenhywfar and Libchipcard sources, tests the
 worker, inventories the packaged libraries and runs local SBOM/CVE scans. Unix adapter
 tests use AddressSanitizer and UndefinedBehaviorSanitizer. See [native banking](docs/native-banking.md).
+
+The [release workflow](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/release.yml)
+also checks the installed Windows application and Linux AppImage, and signs, notarizes and
+checks both macOS DMGs with Gatekeeper before publishing. The separate
+[Apple signing check](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/apple-signing-check.yml)
+validates the configured certificate and notarization credentials without building a full release.
 
 ## Getting started
 

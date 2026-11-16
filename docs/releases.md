@@ -7,8 +7,9 @@ before a tagged release can be published. No bank credentials or local FinTS tes
 
 ## Downloads and installation
 
-Get packages from [GitHub Releases](https://github.com/SvenCarstensen/BankingCraft/releases).
-While the repository is private, access requires permission to that repository.
+Get [version 0.1.0](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
+from GitHub Releases. It is an early-alpha prerelease for evaluation.
+The filenames below use `VERSION=0.1.0`; choose the package for your operating system and CPU.
 
 | Asset | Target and installation |
 | --- | --- |
@@ -21,11 +22,13 @@ While the repository is private, access requires permission to that repository.
 | `SHA256SUMS.txt` | SHA-256 checksums for all six assets. |
 
 The macOS deployment target is at least 11.0 (the bundle records the highest minimum required
-by its native libraries). Published `0.0.10` DMGs contain an ad-hoc signed app and are **not
-Apple Developer signed or notarized**. The next release pipeline requires the authorized account's
-Developer ID signing and Apple notarization for both macOS architectures; configure the
-[Apple signing credentials](apple-signing.md) before publishing. Windows packages are
-**not Authenticode signed**. Trust warnings remain expected for the existing unsigned packages.
+by its native libraries). Starting with **0.1.0**, both macOS apps and DMGs are
+**Developer ID signed and Apple notarized**, with stapled tickets for offline verification.
+The signer is **Sven Carstensen**, team `Y322FFQ9N6`, using the authorized personal Apple account.
+AppCreation GmbH remains the publisher. See [Apple signing](apple-signing.md) for maintenance.
+The older `0.0.10` DMGs remain unsigned and their apps are only ad-hoc signed; download 0.1.0
+for the new signatures. Windows packages are **not Authenticode signed**, so Windows trust
+warnings may still appear.
 This pipeline does not claim interactive compatibility with every supported OS or reader.
 
 For Linux, a working X11 or Wayland desktop and system graphics drivers are required.
@@ -39,6 +42,27 @@ Uninstalling the application does not delete banking vaults or user configuratio
 The existing [alpha limitations](../README.md#development-status-and-known-limitations) apply,
 including pending FinTS product registration. Packaged startup tests do not contact a bank.
 
+### Verify the download
+
+Download `SHA256SUMS.txt` from the same release. Compare the package's SHA-256 digest
+using `shasum -a 256 <downloaded-file>` on macOS, `sha256sum <downloaded-file>` on Linux,
+or `Get-FileHash <downloaded-file> -Algorithm SHA256` in Windows PowerShell.
+
+After dragging the macOS app to Applications, the following commands verify its signature,
+notarization ticket and Gatekeeper assessment:
+
+```sh
+codesign --verify --deep --strict /Applications/BankingCraft.app
+codesign --display --verbose=4 /Applications/BankingCraft.app
+xcrun stapler validate /Applications/BankingCraft.app
+spctl --assess --type execute --verbose=2 /Applications/BankingCraft.app
+```
+
+The displayed authority must be `Developer ID Application: Sven Carstensen (Y322FFQ9N6)`
+and the team must be `Y322FFQ9N6`. Gatekeeper should report `accepted` and
+`source=Notarized Developer ID`. This optional command-line check uses Apple's developer
+tools; ordinary installation does not require them.
+
 ## Creating the next version
 
 1. Update the workspace version in `Cargo.toml`, the five workspace package entries in
@@ -49,7 +73,7 @@ including pending FinTS product registration. Packaged startup tests do not cont
    `publish=false` and `sign_macos=true` to validate signed packages without creating a release.
    An explicit `sign_macos=false` allows ad-hoc macOS test artifacts without Apple credentials.
 4. After a successful run, create and push an annotated tag matching the version, for example
-   `git tag -a v0.0.11 -m 'BankingCraft 0.0.11'` and `git push origin v0.0.11`.
+   `git tag -a v0.1.1 -m 'BankingCraft 0.1.1'` and `git push origin v0.1.1`.
 
 Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
 current version, then creates its tag and publishes the release only after every check passes.
@@ -59,7 +83,7 @@ an existing tag pointing to a different commit is rejected.
 
 A version tag starts all four builds and the source archive job. After all jobs succeed,
 the workflow validates the complete asset set, computes checksums, uploads the files to a
-draft and publishes it as a **prerelease**. The first release is `v0.0.9`.
+draft and publishes it as a **prerelease**, preserving the project's early-alpha status.
 By default, manual workflow runs on a branch produce Actions artifacts only; manual runs on a version
 tag follow the same publication rules as a tag push. Artifacts are retained for seven days;
 published release assets remain attached to the release.

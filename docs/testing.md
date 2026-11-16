@@ -1,5 +1,29 @@
 # Testing
 
+## Cross-platform release pipeline — November 16, 2026
+
+The release preparation was validated on `master` commit
+`6614366566a5aaffd2f60dafbd59624e36dc8951` before the 0.1.0 version bump:
+
+- [CI](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43871846683): all desktop
+  tests, Clippy and release builds passed on Linux, Windows and macOS; the 12 signing and
+  packaging regression checks also passed.
+- [Dependency audit](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43871846505):
+  RustSec and native/transitive library checks passed on all three platforms. The macOS
+  job needed one targeted retry after GitHub could not allocate a hosted runner.
+- [Full signed package run](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43871879543):
+  the Linux AppImage started, the Windows installer passed installation/startup/uninstallation,
+  and Apple accepted the app and DMG for both Apple Silicon and Intel without issues.
+  Stapling, Gatekeeper assessment and startup from each mounted DMG passed.
+- The separate [Apple credential and signing check](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43877392661)
+  passed. Both downloaded macOS artifacts were independently checked on a Mac for the
+  expected build commit, Developer ID authority, team `Y322FFQ9N6`, hardened runtime,
+  timestamp, strict deep signature validity and stapled app/DMG notarization tickets.
+
+The above was a dry run with publishing disabled. The version 0.1.0 publication workflow
+rebuilds the versioned artifacts and repeats the same checks before publishing them.
+These checks do not validate live bank access or payment submission on every platform.
+
 ## Overview layout and sidebar — November 15, 2026
 
 The overview regression checks the rendered bounds of all six cards: both cards in
