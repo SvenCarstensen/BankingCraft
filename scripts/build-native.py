@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -192,9 +193,6 @@ def main():
         make_tool = str(msys_bin / "make.exe")
         env["SHELL"] = shell.as_posix()
         env["PATH"] = os.pathsep.join([str(prefix / "bin"), str(toolchain / "bin"), str(msys_bin), env["PATH"]])
-        # gettext's Windows headers redirect printf functions to libintl.
-        # Plugins need the direct import library, not just Gwenhywfar's DLL.
-        env["LIBS"] = env.get("LIBS", "") + " -lintl"
     if sys.platform == "darwin":
         sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
         flags = " -I" + shlex.quote(sdk + "/System/Library/Frameworks/PCSC.framework/Headers")
@@ -246,13 +244,22 @@ def main():
                     # The worker also needs the internal AB_/AH_ entry points.
                     package_env["LDFLAGS"] += " -Wl,--export-all-symbols"
             with (work / (stem + ".build.log")).open("w") as log:
-                for command in [configure, make + ["clean"], make + ["-j" + str(args.jobs)], make + ["install"]]:
-                    try:
+                try:
+                    subprocess.run(configure, cwd=source, env=package_env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                    if os.name == "nt":
+                        # gettext redirects printf functions on Windows. The
+                        # configure scripts clear LIBS, so append the direct
+                        # dependency at make time, preserving configured libs.
+                        configured = re.search(r"^LIBS[ \t]*=[ \t]*(.*)$", (source / "Makefile").read_text(), re.MULTILINE)
+                        if configured is None:
+                            raise RuntimeError(f"Cannot determine configured LIBS for {stem}")
+                        make += ["LIBS=" + configured.group(1).strip() + " -lintl"]
+                    for command in [make + ["clean"], make + ["-j" + str(args.jobs)], make + ["install"]]:
                         subprocess.run(command, cwd=source, env=package_env, stdout=log, stderr=subprocess.STDOUT, check=True)
-                    except subprocess.CalledProcessError:
-                        log.flush()
-                        print((work / (stem + ".build.log")).read_text(errors="replace")[-16000:], file=sys.stderr)
-                        raise
+                except subprocess.CalledProcessError:
+                    log.flush()
+                    print((work / (stem + ".build.log")).read_text(errors="replace")[-16000:], file=sys.stderr)
+                    raise
             stamp.write_text(recipe + "\n")
     print("Building BankingCraft worker", flush=True)
     pkg = ["pkg-config"]
