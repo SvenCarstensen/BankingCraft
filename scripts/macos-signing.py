@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shlex
 import subprocess
 import tempfile
 
@@ -147,6 +148,8 @@ def signing_session(mode):
         directory = Path(temp)
         keychain = directory / "signing.keychain-db"
         password = secrets.token_urlsafe(32)
+        search_list = shlex.split(run("security", "list-keychains", "-d", "user",
+                                     capture_output=True, text=True).stdout)
         try:
             certificate = directory / "certificate.p12"
             private_key = directory / "AuthKey.p8"
@@ -161,6 +164,9 @@ def signing_session(mode):
             run("security", "create-keychain", "-p", password, str(keychain))
             run("security", "set-keychain-settings", "-lut", "7200", str(keychain))
             run("security", "unlock-keychain", "-p", password, str(keychain))
+            # Hosted macOS runners need the keychain in the search list even
+            # with codesign --keychain. Preserve every existing entry.
+            run("security", "list-keychains", "-d", "user", "-s", str(keychain), *search_list)
             run("security", "import", str(certificate), "-k", str(keychain),
                 "-P", os.environ["APPLE_CERTIFICATE_PASSWORD"], "-t", "cert", "-f", "pkcs12",
                 "-T", "/usr/bin/codesign", "-T", "/usr/bin/security", stdout=subprocess.DEVNULL)
@@ -182,8 +188,10 @@ def signing_session(mode):
             private_key.unlink()
             yield SigningSession(directory, matches[0], team, name)
         finally:
+            result = subprocess.run(["security", "list-keychains", "-d", "user", "-s", *search_list], check=False)
+            if result.returncode:
+                print("Warning: restoring the keychain search list failed", flush=True)
             if keychain.exists():
-                # The dedicated keychain is never added to the user's search list.
                 result = subprocess.run(["security", "delete-keychain", str(keychain)], check=False)
                 if result.returncode:
                     print("Warning: keychain deletion failed; temporary directory cleanup follows", flush=True)
@@ -198,7 +206,13 @@ if __name__ == "__main__":
     if args.command == "check-credentials":
         if selected != "developer-id":
             parser.error("check-credentials requires MACOS_SIGNING_MODE=developer-id")
-        with signing_session(selected):
-            print("Apple signing certificate and notarization credentials validated")
+        with signing_session(selected) as signer:
+            source = signer.directory / "probe.c"
+            binary = signer.directory / "probe"
+            source.write_text("int main(void) { return 0; }\n")
+            run("xcrun", "clang", str(source), "-o", str(binary))
+            signer.sign(binary)
+            signer.verify(binary)
+            print("Developer ID signing probe and notarization credentials validated")
     else:
         print(f"macOS signing configuration: {selected}")

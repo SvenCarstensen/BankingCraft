@@ -85,7 +85,9 @@ After the workflows are merged into `master`:
 
 1. Run **Apple signing check** in Actions. This checks that the `.p12` includes a valid
    private key, the certificate is exactly the configured Developer ID Application identity
-   with the configured team, and the API credentials authenticate successfully.
+   with the configured team, a tiny compiled probe can actually be signed and verified,
+   and the API credentials authenticate successfully. Signed release runs also perform
+   this check before building the app.
 2. Run **Release packages** on `master` with `publish=false` and `sign_macos=true`.
    Both architectures must pass all existing tests, signing, notarization, stapling,
    Gatekeeper assessment and the startup test from the final DMG. This produces artifacts
@@ -103,7 +105,8 @@ Pull-request CI runs signing regression tests with synthetic data and no Apple s
 
 After compilation and cache saving, packaging imports the `.p12` into a dedicated temporary
 keychain. A random keychain password is generated per run. Only signing tools receive access;
-the normal keychain search list is not changed. Credentials are scoped to the signing steps.
+the keychain is temporarily prepended to the search list, preserving existing entries.
+The original search list is restored during cleanup. Credentials are scoped to the signing steps.
 
 The packager finds Mach-O code by file header, including extensionless helpers and `.so`
 plugins, signs it inside out with hardened runtime and a secure timestamp, then signs the

@@ -115,7 +115,12 @@ class SigningTests(unittest.TestCase):
             for fail_inside in (False, True):
                 with self.subTest(identity=identity, fail_inside=fail_inside), tempfile.TemporaryDirectory() as parent:
                     deleted = []
+                    searches = []
                     def security(args, **kwargs):
+                        if list(args[:4]) == ["security", "list-keychains", "-d", "user"]:
+                            if "-s" in args:
+                                searches.append(list(args[5:]))
+                            return subprocess.CompletedProcess(args, 0, stdout='"/tmp/login keychain-db"\n"/tmp/other.keychain-db"\n')
                         if args[:2] == ("security", "create-keychain"):
                             Path(args[-1]).touch()
                         if args[:2] == ["security", "delete-keychain"]:
@@ -139,6 +144,8 @@ class SigningTests(unittest.TestCase):
                         else:
                             execute()
                     self.assertEqual(len(deleted), 1)
+                    self.assertEqual(searches[0], [str(deleted[0]), "/tmp/login keychain-db", "/tmp/other.keychain-db"])
+                    self.assertEqual(searches[-1], ["/tmp/login keychain-db", "/tmp/other.keychain-db"])
                     self.assertEqual(list(Path(parent).iterdir()), [])
 
 
