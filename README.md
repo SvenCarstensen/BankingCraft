@@ -47,7 +47,8 @@ See [native banking](docs/native-banking.md) and the
   reporting through GitHub. Private vulnerability reporting must be enabled by the maintainer.
   Do not post vulnerabilities, credentials or bank data in public issues.
 - **Packaged alpha releases** are built on GitHub Actions as a Linux AppImage, a Windows
-  EXE installer/portable ZIP and macOS DMGs for Apple Silicon and Intel. Each release includes
+  EXE installer/portable ZIP and an ARM64 macOS DMG for Apple Silicon. Future releases
+  no longer include an Intel Mac package. Each release includes
   matching source with vendored Rust dependencies, license notices and SHA-256 checksums.
   See [downloads and release instructions](docs/releases.md).
   Current verification is documented in [docs/testing.md](docs/testing.md).
@@ -371,7 +372,7 @@ tests use AddressSanitizer and UndefinedBehaviorSanitizer. See [native banking](
 
 The [release workflow](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/release.yml)
 also checks the installed Windows application and Linux AppImage, and signs, notarizes and
-checks both macOS DMGs with Gatekeeper before publishing. The separate
+checks the ARM64 macOS DMG with Gatekeeper before publishing. The separate
 [Apple signing check](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/apple-signing-check.yml)
 validates the configured certificate and notarization credentials without building a full release.
 

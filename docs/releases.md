@@ -2,8 +2,12 @@
 
 The [Release packages workflow](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/release.yml)
 builds the application on GitHub-hosted runners. Local machines are not used to compile release binaries.
-All four native builds must pass the license check, workspace tests, Clippy and package startup checks
+All three native builds must pass the license check, workspace tests, Clippy and package startup checks
 before a tagged release can be published. No bank credentials or local FinTS test configuration are used.
+
+Future macOS releases target **Apple Silicon (ARM64) only**. The release matrix and asset
+verification no longer build or require an Intel DMG. Existing version 0.1.0 downloads,
+including its Intel package and checksums, remain available unchanged.
 
 ## Downloads and installation
 
@@ -81,12 +85,14 @@ Publication always requires signed and notarized macOS packages, regardless of `
 This avoids a second build of the same commit. Manual publication is restricted to `master`;
 an existing tag pointing to a different commit is rejected.
 
-A version tag starts all four builds and the source archive job. After all jobs succeed,
+A version tag starts all three builds and the source archive job. After all jobs succeed,
 the workflow validates the complete asset set, computes checksums, uploads the files to a
 draft and publishes it as a **regular GitHub release marked Latest**, with the prerelease
 flag disabled. These settings are applied at the final publication step, including when
 an existing draft is resumed. The application's early-alpha limitations remain documented
 in the README and release notes.
+Future releases contain five assets plus `SHA256SUMS.txt`: the Linux AppImage, two Windows
+packages, the ARM64 macOS DMG and the matching source archive.
 By default, manual workflow runs on a branch produce Actions artifacts only; manual runs on a version
 tag follow the same publication rules as a tag push. Artifacts are retained for seven days;
 published release assets remain attached to the release.

@@ -1,6 +1,6 @@
 # Apple signing in GitHub Actions
 
-BankingCraft's macOS release pipeline signs both architectures with the explicitly
+BankingCraft's macOS release pipeline signs the Apple Silicon (ARM64) package with the explicitly
 configured **Developer ID Application** holder and team, then notarizes them with Apple.
 The authorized signing account is **Sven Carstensen**, enrolled as an individual.
 The displayed signing identity therefore uses his name; AppCreation GmbH remains the app's publisher.
@@ -92,7 +92,7 @@ For credential rotation or future releases:
    and the API credentials authenticate successfully. Signed release runs also perform
    this check before building the app.
 2. Run **Release packages** on `master` with `publish=false` and `sign_macos=true`.
-   Both architectures must pass all existing tests, signing, notarization, stapling,
+   The ARM64 package must pass all existing tests, signing, notarization, stapling,
    Gatekeeper assessment and the startup test from the final DMG. This produces artifacts
    without publishing a release. Download and launch a package on a separate Mac as well.
 3. Update the version as described in [Desktop releases](releases.md), then push its version
@@ -125,8 +125,9 @@ the installer image and installed app carry their offline tickets. Only the full
 DMG enters `dist/`; the normal startup smoke test runs from that image before artifact upload.
 No release build is compiled or signed on a developer's Mac by these workflows.
 
-Apple submission results and logs appear in `notarization-macos-aarch64` and
-`notarization-macos-x86_64` Actions artifacts for seven days, separate from release assets.
+Apple submission results and logs appear in the `notarization-macos-aarch64` Actions
+artifact for seven days, separate from release assets. Future builds no longer create
+Intel packages; the already published version 0.1.0 Intel download is unchanged.
 Each submission is uploaded once and its ID is saved before polling for up to 30 minutes;
 the packaging job allows 120 minutes in total. Temporary network failures during credential
 validation, timestamp signing, status/log retrieval and stapling get up to four attempts,

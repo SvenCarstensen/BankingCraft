@@ -14,7 +14,6 @@ expected = {
     f"BankingCraft-{version}-windows-x86_64-setup.exe",
     f"BankingCraft-{version}-windows-x86_64-portable.zip",
     f"BankingCraft-{version}-macos-aarch64.dmg",
-    f"BankingCraft-{version}-macos-x86_64.dmg",
     f"BankingCraft-{version}-source.tar.gz",
 }
 dist = ROOT / "dist"
@@ -30,4 +29,4 @@ for name in sorted(expected):
         digest = hashlib.file_digest(file, "sha256").hexdigest()
     lines.append(f"{digest}  {name}\n")
 (dist / "SHA256SUMS.txt").write_text("".join(lines))
-print("Verified all six release assets and wrote SHA256SUMS.txt")
+print("Verified all five release assets and wrote SHA256SUMS.txt")
