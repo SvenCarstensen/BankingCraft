@@ -192,6 +192,9 @@ def main():
         make_tool = str(msys_bin / "make.exe")
         env["SHELL"] = shell.as_posix()
         env["PATH"] = os.pathsep.join([str(prefix / "bin"), str(toolchain / "bin"), str(msys_bin), env["PATH"]])
+        # gettext's Windows headers redirect printf functions to libintl.
+        # Plugins need the direct import library, not just Gwenhywfar's DLL.
+        env["LIBS"] = env.get("LIBS", "") + " -lintl"
     if sys.platform == "darwin":
         sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
         flags = " -I" + shlex.quote(sdk + "/System/Library/Frameworks/PCSC.framework/Headers")

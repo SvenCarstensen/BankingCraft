@@ -248,6 +248,8 @@ worker still requires the patched `AB_BankingCraft_NoLegacyImport` marker. Windo
 uses UCRT64 consistently for the worker, libraries, packaging and audit inventory.
 Gwenhywfar uses its Win32 path discovery there; its Unix `/proc` binreloc code is
 enabled only on Unix.
+Native Windows libraries/plugins link gettext's `libintl` directly for the
+formatted-output functions redirected by its Windows headers.
 On Linux the built worker and sanitizer test binary locate their bundled libraries
 via `$ORIGIN/../lib`. Token-plugin initialization tests require a running PC/SC
 service, but do not open a card or request a PIN.
