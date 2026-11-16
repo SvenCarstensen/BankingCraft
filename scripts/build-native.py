@@ -3,7 +3,7 @@
 
 Prerequisites: C/C++ compiler, make, pkg-config, GnuTLS, libgcrypt, GMP,
 libxml2/xmlsec, gettext, and PC/SC development headers (macOS: system SDK).
-Windows: run in an MSYS2 MinGW environment; the Rust executable may use MSVC.
+Windows: run in an MSYS2 UCRT64 environment; the Rust executable may use MSVC.
 """
 import argparse
 import hashlib
@@ -195,14 +195,29 @@ def main():
         recipe = hashlib.sha256(Path(__file__).read_bytes() + (ROOT / "native/dependencies.json").read_bytes()).hexdigest()
         if not stamp.exists() or stamp.read_text().strip() != recipe:
             print("Building", stem, flush=True)
+            package_env = env.copy()
+            make = ["make"]
             configure = (["bash"] if os.name=="nt" else []) + ["./configure", "--prefix=" + prefix.as_posix(), "--disable-static", "--disable-full-doc", "--enable-local-install"]
             if package["name"] == "gwenhywfar":
                 configure += ["--with-guis=none", "--enable-binreloc"]
             if package["name"] == "aqbanking":
                 configure += ["--with-backends=aqhbci aqnone"]
+                # The isolated worker uses the pinned AqHBCI/backend API, which
+                # upstream hides on ELF. Export it from our bundled library,
+                # as the macOS build already does; never use a system AqBanking.
+                make += ["visibility_cflags="]
+                if os.name == "nt":
+                    # Explicit public dllexports disable MinGW's automatic exports.
+                    # The worker also needs the internal AB_/AH_ entry points.
+                    package_env["LDFLAGS"] += " -Wl,--export-all-symbols"
             with (work / (stem + ".build.log")).open("w") as log:
-                for command in [configure, ["make", "clean"], ["make", "-j" + str(args.jobs)], ["make", "install"]]:
-                    subprocess.run(command, cwd=source, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                for command in [configure, make + ["clean"], make + ["-j" + str(args.jobs)], make + ["install"]]:
+                    try:
+                        subprocess.run(command, cwd=source, env=package_env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                    except subprocess.CalledProcessError:
+                        log.flush()
+                        print((work / (stem + ".build.log")).read_text(errors="replace")[-16000:], file=sys.stderr)
+                        raise
             stamp.write_text(recipe + "\n")
     print("Building BankingCraft worker", flush=True)
     pkg = ["pkg-config"]

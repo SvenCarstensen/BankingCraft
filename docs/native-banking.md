@@ -214,14 +214,14 @@ sudo apt-get install build-essential pkg-config gettext libgnutls28-dev \
   libgcrypt20-dev libgmp-dev libxml2-dev libxmlsec1-dev libpcsclite-dev patchelf
 ```
 
-Windows: build the Rust GUI with MSVC. Build/package the worker in an MSYS2 MINGW64
+Windows: build the Rust GUI with MSVC. Build/package the worker in an MSYS2 UCRT64
 shell, using its native MinGW Python and compiler:
 
 ```sh
-pacman -S --needed make mingw-w64-x86_64-gcc mingw-w64-x86_64-python \
-  mingw-w64-x86_64-pkgconf mingw-w64-x86_64-gettext-tools \
-  mingw-w64-x86_64-gnutls mingw-w64-x86_64-libgcrypt mingw-w64-x86_64-gmp \
-  mingw-w64-x86_64-libxml2 mingw-w64-x86_64-xmlsec
+pacman -S --needed make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python \
+  mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-gettext-tools \
+  mingw-w64-ucrt-x86_64-gnutls mingw-w64-ucrt-x86_64-libgcrypt mingw-w64-ucrt-x86_64-gmp \
+  mingw-w64-ucrt-x86_64-libxml2 mingw-w64-ucrt-x86_64-xmlsec
 python scripts/build-native.py
 python scripts/test-native.py
 # After building the Rust GUI with MSVC:
@@ -231,6 +231,13 @@ python scripts/package-native.py target/release
 The CI composite action `.github/actions/native-runtime/action.yml` encodes these
 steps. It runs offline runtime checks, bundles a test runtime and scans it. Native
 ASan/UBSan adapter tests run on Unix. Windows runtime tests do not use sanitizers.
+
+The worker intentionally uses backend APIs from the pinned AqBanking source tree.
+Its bundled library exports those symbols on ELF and Windows, matching the macOS
+build. The build overrides `visibility_cflags` only for AqBanking and enables
+MinGW DLL exports there. It does not change the installed system libraries; the
+worker still requires the patched `AB_BankingCraft_NoLegacyImport` marker. Windows
+uses UCRT64 consistently for the worker, libraries, packaging and audit inventory.
 
 ## Verification and inventory
 

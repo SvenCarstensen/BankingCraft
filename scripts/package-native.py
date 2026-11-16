@@ -57,7 +57,7 @@ def main():
         elif windows:
             names=re.findall(r"DLL Name:\s*(\S+)",output("objdump","-p",str(binary)))
             for name in names:
-                candidates=[prefix/"bin"/name,Path(os.environ.get("MINGW_PREFIX","/mingw64"))/"bin"/name]
+                candidates=[prefix/"bin"/name,Path(os.environ.get("MINGW_PREFIX","C:/msys64/ucrt64"))/"bin"/name]
                 source=next((p for p in candidates if p.is_file()),None)
                 if source: links.append(str(source))
                 elif not (Path(os.environ["WINDIR"])/"System32"/name).is_file():
@@ -133,7 +133,7 @@ def main():
             if notice.is_file(): shutil.copy2(notice,licenses/(name+"-copyright.txt"))
         (destination/"system-packages.json").write_text(json.dumps(list(packages.values()),indent=2)+"\n")
     if windows:
-        mingw=Path(os.environ.get("MINGW_PREFIX","C:/msys64/mingw64"))
+        mingw=Path(os.environ.get("MINGW_PREFIX","C:/msys64/ucrt64"))
         pacman=mingw.parent/"usr/bin/pacman.exe"
         cygpath=mingw.parent/"usr/bin/cygpath.exe"
         packages={}
@@ -144,7 +144,8 @@ def main():
             name=output(str(pacman),"-Qqo",unix)
             if name in packages: continue
             _,version=output(str(pacman),"-Q",name).split()
-            packages[name]={"name":name,"version":version,"upstream_name":name.removeprefix("mingw-w64-x86_64-"),
+            upstream_name=re.sub(r"^mingw-w64-(?:ucrt-|clang-)?(?:x86_64|aarch64)-", "", name)
+            packages[name]={"name":name,"version":version,"upstream_name":upstream_name,
                             "upstream_version":version.rsplit("-",1)[0]}
             for filename in output(str(pacman),"-Qlq",name).splitlines():
                 if "/share/licenses/" not in filename or filename.endswith("/"): continue

@@ -17,20 +17,20 @@ runs:
       if: runner.os == 'Windows'
       uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
       with:
-        msystem: MINGW64
+        msystem: UCRT64
         update: true
         path-type: inherit
         install: >-
           make
-          mingw-w64-x86_64-gcc
-          mingw-w64-x86_64-python
-          mingw-w64-x86_64-pkgconf
-          mingw-w64-x86_64-gettext-tools
-          mingw-w64-x86_64-gnutls
-          mingw-w64-x86_64-libgcrypt
-          mingw-w64-x86_64-gmp
-          mingw-w64-x86_64-libxml2
-          mingw-w64-x86_64-xmlsec
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-python
+          mingw-w64-ucrt-x86_64-pkgconf
+          mingw-w64-ucrt-x86_64-gettext-tools
+          mingw-w64-ucrt-x86_64-gnutls
+          mingw-w64-ucrt-x86_64-libgcrypt
+          mingw-w64-ucrt-x86_64-gmp
+          mingw-w64-ucrt-x86_64-libxml2
+          mingw-w64-ucrt-x86_64-xmlsec
     - name: Build and test native runtime (Unix)
       if: runner.os != 'Windows'
       shell: bash
@@ -44,8 +44,8 @@ runs:
       if: runner.os == 'Windows'
       shell: msys2 {0}
       run: |
-        cygpath -m /mingw64/bin >> "$GITHUB_PATH"
-        echo "MINGW_PREFIX=$(cygpath -m /mingw64)" >> "$GITHUB_ENV"
+        cygpath -m "$MINGW_PREFIX/bin" >> "$GITHUB_PATH"
+        echo "MINGW_PREFIX=$(cygpath -m "$MINGW_PREFIX")" >> "$GITHUB_ENV"
         python scripts/build-native.py
         python scripts/test-native.py
         python scripts/package-native.py .native/review
