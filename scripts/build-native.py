@@ -148,6 +148,12 @@ def patch_source(name, source):
                      '                AH_TanMethod_SetNeedTanMediumId(tm, 1);\n'
                      '            }')
     if name == "libchipcard":
+        # pkg-config 0.29 (Ubuntu 22.04 releases) expands variables in order.
+        # Both upstream templates reference datadir before defining it.
+        for kind, variable in [("client", "lc_client_xml_dir"), ("server", "lc_server_data_dir")]:
+            replace_once(source / f"libchipcard-{kind}.pc.in",
+                         f"pkgdatadir=@{variable}@\ndatarootdir=@datarootdir@\ndatadir=@datadir@",
+                         f"datarootdir=@datarootdir@\ndatadir=@datadir@\npkgdatadir=@{variable}@")
         # Current Apple C++ compilers reject concatenation without whitespace.
         replace_once(source / "src/tools/cardcommander/cardcommander.cpp",
                      'v"k_CHIPCARD_VERSION_STRING"', 'v" k_CHIPCARD_VERSION_STRING "')

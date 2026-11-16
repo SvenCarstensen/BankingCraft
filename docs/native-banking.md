@@ -178,6 +178,8 @@ Linux package ownership is looked up against installed files rather than staging
   the bounded Libchipcard adapter, avoiding the legacy upstream USB TAN parser.
 - Filter Libchipcard reader selection by the exact user-selected reader name.
 - Correct a C++ string-literal spacing issue for current Apple compilers.
+- Define Libchipcard's pkg-config directory variables before referencing them,
+  as required by the pkg-config version on Ubuntu 22.04 release runners.
 - Release temporary SWIFT descriptors and global-data directory lists, and avoid
   allocating an account-spec list before the getter replaces it. Linux's existing
   LeakSanitizer tests exercise all three paths; leak detection stays enabled.
