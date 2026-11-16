@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -18,6 +19,8 @@ helper=parser.parse_args().helper
 source=prefix.parent/"aqbanking-6.9.2/src/libs"
 env=os.environ.copy();env["PKG_CONFIG_PATH"]=str(prefix/"lib/pkgconfig")
 flags=shlex.split(subprocess.check_output(["pkg-config","--cflags","--libs","aqbanking","gwenhywfar","libchipcard-client"],env=env,text=True))
+if sys.platform.startswith("linux"):
+    flags += ["-Wl,-rpath,$ORIGIN/../lib"]
 binary=prefix/"bin/bankingcraft-native-tests"
 subprocess.run([env.get("CC","cc"),"-std=c11","-g","-fsanitize=address,undefined",
     "-I"+str(source),"-I"+str(source/"plugins/backends"),"-I"+str(source/"plugins/backends/aqhbci"),
@@ -33,7 +36,9 @@ with tempfile.TemporaryDirectory(prefix="bankingcraft-adapter-") as directory:
         dict(op="answer",value="7920"),dict(op="answer",value="X"*33),dict(op="answer",value="Ü"*32),
         dict(op="answer",value="Repaired Device")]
     for answer,expected in [(dict(op="answer",value="1"),b"1"),(dict(op="answer",value="0"),b"0"),(dict(op="answer",cancel="1"),b"0")]:
-        result=subprocess.run([str(binary),str(blocker)],input=b"".join(wire.encode(a) for a in [*medium_answers,answer]),capture_output=True,env=env,timeout=10)
+        # This process runs the entire instrumented C suite, including plugin
+        # initialization. Intel hosted Macs need more than a single IPC timeout.
+        result=subprocess.run([str(binary),str(blocker)],input=b"".join(wire.encode(a) for a in [*medium_answers,answer]),capture_output=True,env=env,timeout=60)
         if result.returncode: raise RuntimeError(result.stderr.decode())
         frames=wire.decode(result.stdout)
         prompts=[frame for frame in frames if frame["event"]==b"password"]

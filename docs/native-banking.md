@@ -149,6 +149,8 @@ batch; missing amounts in supported balances or transactions still fail the batc
 Gwenhywfar 5.14.3 and Libchipcard 5.1.6. Source packages are verified before extraction.
 The exact build environment's transitive libraries are inventoried during packaging;
 those OS package versions are not pinned by this manifest.
+The inventory retains original library paths while relocating dependencies, so
+Linux package ownership is looked up against installed files rather than staging copies.
 
 `scripts/build-native.py` applies explicit compatibility/security changes:
 
@@ -176,6 +178,11 @@ those OS package versions are not pinned by this manifest.
   the bounded Libchipcard adapter, avoiding the legacy upstream USB TAN parser.
 - Filter Libchipcard reader selection by the exact user-selected reader name.
 - Correct a C++ string-literal spacing issue for current Apple compilers.
+- Define Libchipcard's pkg-config directory variables before referencing them,
+  as required by the pkg-config version on Ubuntu 22.04 release runners.
+- Release temporary SWIFT descriptors and global-data directory lists, and avoid
+  allocating an account-spec list before the getter replaces it. Linux's existing
+  LeakSanitizer tests exercise all three paths; leak detection stays enabled.
 
 Review these patches on every native version update. Preserve native COPYING and
 AUTHORS files. Exact original archives accompany `package-source.sh` output and
@@ -211,17 +218,18 @@ Ubuntu/Debian native prerequisites (in addition to the GUI dependencies in READM
 
 ```sh
 sudo apt-get install build-essential pkg-config gettext libgnutls28-dev \
-  libgcrypt20-dev libgmp-dev libxml2-dev libxmlsec1-dev libpcsclite-dev patchelf
+  libgcrypt20-dev libgmp-dev libxml2-dev libxmlsec1-dev libpcsclite-dev pcscd zlib1g-dev patchelf
+sudo systemctl start pcscd.socket
 ```
 
-Windows: build the Rust GUI with MSVC. Build/package the worker in an MSYS2 MINGW64
+Windows: build the Rust GUI with MSVC. Build/package the worker in an MSYS2 UCRT64
 shell, using its native MinGW Python and compiler:
 
 ```sh
-pacman -S --needed make mingw-w64-x86_64-gcc mingw-w64-x86_64-python \
-  mingw-w64-x86_64-pkgconf mingw-w64-x86_64-gettext-tools \
-  mingw-w64-x86_64-gnutls mingw-w64-x86_64-libgcrypt mingw-w64-x86_64-gmp \
-  mingw-w64-x86_64-libxml2 mingw-w64-x86_64-xmlsec
+pacman -S --needed make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python \
+  mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-gettext-tools \
+  mingw-w64-ucrt-x86_64-gnutls mingw-w64-ucrt-x86_64-libgcrypt mingw-w64-ucrt-x86_64-gmp \
+  mingw-w64-ucrt-x86_64-libxml2 mingw-w64-ucrt-x86_64-xmlsec
 python scripts/build-native.py
 python scripts/test-native.py
 # After building the Rust GUI with MSVC:
@@ -231,6 +239,23 @@ python scripts/package-native.py target/release
 The CI composite action `.github/actions/native-runtime/action.yml` encodes these
 steps. It runs offline runtime checks, bundles a test runtime and scans it. Native
 ASan/UBSan adapter tests run on Unix. Windows runtime tests do not use sanitizers.
+
+The worker intentionally uses backend APIs from the pinned AqBanking source tree.
+Its bundled library exports those symbols on ELF and Windows, matching the macOS
+build. The build disables hidden symbol visibility only for AqBanking and enables
+MinGW DLL exports there. It does not change the installed system libraries; the
+worker still requires the patched `AB_BankingCraft_NoLegacyImport` marker. Windows
+uses UCRT64 consistently for the worker, libraries, packaging and audit inventory.
+Gwenhywfar uses its Win32 path discovery there; its Unix `/proc` binreloc code is
+enabled only on Unix.
+Native Windows libraries/plugins link gettext's `libintl` directly for the
+formatted-output functions redirected by its Windows headers.
+On Linux the built worker and sanitizer test binary locate their bundled libraries
+via `$ORIGIN/../lib`. Token-plugin initialization tests require a running PC/SC
+service, but do not open a card or request a PIN.
+The ephemeral GitHub Linux runner grants its `runner` user permission to establish
+a PC/SC context because CI has no active desktop session. That rule grants no
+permission to access cards, and is not installed by application packages.
 
 ## Verification and inventory
 

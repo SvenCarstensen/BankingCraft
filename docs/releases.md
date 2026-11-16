@@ -20,9 +20,12 @@ While the repository is private, access requires permission to that repository.
 | `BankingCraft-VERSION-source.tar.gz` | Matching committed source, locked Rust dependency sources in `vendor/`, build/package scripts and source/toolchain identifiers. |
 | `SHA256SUMS.txt` | SHA-256 checksums for all six assets. |
 
-The macOS deployment target is 11.0. Both DMGs contain an ad-hoc signed app, but are **not
-Apple Developer signed or notarized**. Windows packages are **not Authenticode signed**.
-Operating-system trust warnings are expected for this first alpha release.
+The macOS deployment target is at least 11.0 (the bundle records the highest minimum required
+by its native libraries). Published `0.0.10` DMGs contain an ad-hoc signed app and are **not
+Apple Developer signed or notarized**. The next release pipeline requires the authorized account's
+Developer ID signing and Apple notarization for both macOS architectures; configure the
+[Apple signing credentials](apple-signing.md) before publishing. Windows packages are
+**not Authenticode signed**. Trust warnings remain expected for the existing unsigned packages.
 This pipeline does not claim interactive compatibility with every supported OS or reader.
 
 For Linux, a working X11 or Wayland desktop and system graphics drivers are required.
@@ -42,13 +45,15 @@ including pending FinTS product registration. Packaged startup tests do not cont
    `Cargo.lock`, and both `CFBundleShortVersionString` and `CFBundleVersion` in `macos/Info.plist`.
 2. Refresh and review the license bundle using `scripts/update-licenses.py`, and update
    `docs/release-notes.md`. Run `python3 scripts/release-version.py` to check version consistency.
-3. Commit and push the changes. Run **Release packages → Run workflow** on the branch to
-   validate and download packages without creating a release.
+3. Commit and push the changes. Run **Release packages → Run workflow** on the branch with
+   `publish=false` and `sign_macos=true` to validate signed packages without creating a release.
+   An explicit `sign_macos=false` allows ad-hoc macOS test artifacts without Apple credentials.
 4. After a successful run, create and push an annotated tag matching the version, for example
    `git tag -a v0.0.11 -m 'BankingCraft 0.0.11'` and `git push origin v0.0.11`.
 
 Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
 current version, then creates its tag and publishes the release only after every check passes.
+Publication always requires signed and notarized macOS packages, regardless of `sign_macos`.
 This avoids a second build of the same commit. Manual publication is restricted to `master`;
 an existing tag pointing to a different commit is rejected.
 
@@ -71,12 +76,16 @@ and PC/SC service. Packaging-tool pins must be updated deliberately.
 
 `scripts/package-release.py` packages already compiled binaries on Windows and macOS.
 The Windows installer definition is `packaging/windows/BankingCraft.iss`.
-The DMG check verifies its filesystem, bundle metadata, ad-hoc signature and system-only
-dynamic-library links. Startup checks run the packaged executables for twelve seconds;
+The signed DMG path verifies its filesystem, bundle metadata, signatures on all embedded
+Mach-O code, configured holder and team identity, hardened runtime, notarization tickets and Gatekeeper
+acceptance. Native libraries and plugins are signed with the same identity. The main executable's
+dynamic-library links must be system-only. Startup checks run the packaged executables for twelve seconds;
 Windows also verifies silent installation and uninstallation.
-If the hosted Windows VM cannot provide an OpenGL context, the startup test retries with a
-checksum-verified Mesa llvmpipe driver. That driver is used only in the temporary test installation
-and is not included in the installer or portable ZIP. Other startup failures still fail the job.
+The Windows startup test uses a checksum-verified Mesa llvmpipe driver because hosted VMs
+do not guarantee a usable OpenGL context. It does not classify failures from application logs:
+production diagnostics intentionally omit error payloads. Any startup failure still fails the test.
+That driver is used only in the temporary test installation
+and is not included in the installer or portable ZIP.
 
 Extract the matching source archive and follow the platform prerequisites in the README.
 Its `.cargo/config.toml` points to the bundled Rust sources, so `cargo build --release --locked
