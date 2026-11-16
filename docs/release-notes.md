@@ -1,7 +1,7 @@
 # BankingCraft 0.1.0
 
 Version 0.1.0 brings the AqBanking/Libchipcard banking backend, category management and
-Developer ID signed, Apple-notarized macOS downloads. It remains an **early-alpha prerelease
+Developer ID signed, Apple-notarized macOS downloads. It remains an **early-alpha release
 for evaluation and development**.
 
 ## Signed desktop packages

@@ -8,7 +8,7 @@ before a tagged release can be published. No bank credentials or local FinTS tes
 ## Downloads and installation
 
 Get [version 0.1.0](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
-from GitHub Releases. It is an early-alpha prerelease for evaluation.
+from GitHub Releases. It is an early-alpha release for evaluation.
 The filenames below use `VERSION=0.1.0`; choose the package for your operating system and CPU.
 
 | Asset | Target and installation |
@@ -83,7 +83,10 @@ an existing tag pointing to a different commit is rejected.
 
 A version tag starts all four builds and the source archive job. After all jobs succeed,
 the workflow validates the complete asset set, computes checksums, uploads the files to a
-draft and publishes it as a **prerelease**, preserving the project's early-alpha status.
+draft and publishes it as a **regular GitHub release marked Latest**, with the prerelease
+flag disabled. These settings are applied at the final publication step, including when
+an existing draft is resumed. The application's early-alpha limitations remain documented
+in the README and release notes.
 By default, manual workflow runs on a branch produce Actions artifacts only; manual runs on a version
 tag follow the same publication rules as a tag push. Artifacts are retained for seven days;
 published release assets remain attached to the release.
