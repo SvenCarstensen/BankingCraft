@@ -5,15 +5,15 @@ builds the application on GitHub-hosted runners. Local machines are not used to 
 All three native builds must pass the license check, workspace tests, Clippy and package startup checks
 before a tagged release can be published. No bank credentials or local FinTS test configuration are used.
 
-Future macOS releases target **Apple Silicon (ARM64) only**. The release matrix and asset
-verification no longer build or require an Intel DMG. Existing version 0.1.0 downloads,
+Starting with version 0.1.1, macOS releases target **Apple Silicon (ARM64) only**.
+The release matrix and asset verification no longer build or require an Intel DMG. Existing version 0.1.0 downloads,
 including its Intel package and checksums, remain available unchanged.
 
 ## Downloads and installation
 
-Get [version 0.1.0](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
+Get [version 0.1.1](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.1)
 from GitHub Releases. It is an early-alpha release for evaluation.
-The filenames below use `VERSION=0.1.0`; choose the package for your operating system and CPU.
+The filenames below use `VERSION=0.1.1`; choose the package for your operating system and CPU.
 
 | Asset | Target and installation |
 | --- | --- |
@@ -21,18 +21,18 @@ The filenames below use `VERSION=0.1.0`; choose the package for your operating s
 | `BankingCraft-VERSION-windows-x86_64-setup.exe` | Windows 10/11 x64. Per-user installer with Start menu entry, optional desktop shortcut and uninstaller; no administrator rights required. |
 | `BankingCraft-VERSION-windows-x86_64-portable.zip` | Windows x64 executable, runtime libraries and notices. Extract the entire folder and run `BankingCraft.exe`. |
 | `BankingCraft-VERSION-macos-aarch64.dmg` | Apple Silicon Mac. Open the image and drag BankingCraft to Applications. |
-| `BankingCraft-VERSION-macos-x86_64.dmg` | Intel Mac. Open the image and drag BankingCraft to Applications. |
 | `BankingCraft-VERSION-source.tar.gz` | Matching committed source, locked Rust dependency sources in `vendor/`, build/package scripts and source/toolchain identifiers. |
-| `SHA256SUMS.txt` | SHA-256 checksums for all six assets. |
+| `SHA256SUMS.txt` | SHA-256 checksums for all five assets. |
 
 The macOS deployment target is at least 11.0 (the bundle records the highest minimum required
-by its native libraries). Starting with **0.1.0**, both macOS apps and DMGs are
+by its native libraries). Starting with **0.1.0**, the macOS apps and DMGs are
 **Developer ID signed and Apple notarized**, with stapled tickets for offline verification.
 The signer is **Sven Carstensen**, team `Y322FFQ9N6`, using the authorized personal Apple account.
 AppCreation GmbH remains the publisher. See [Apple signing](apple-signing.md) for maintenance.
-The older `0.0.10` DMGs remain unsigned and their apps are only ad-hoc signed; download 0.1.0
-for the new signatures. Windows packages are **not Authenticode signed**, so Windows trust
-warnings may still appear.
+Intel Mac users can still download the signed
+[0.1.0 package](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0).
+The older `0.0.10` DMGs remain unsigned and their apps are only ad-hoc signed.
+Windows packages are **not Authenticode signed**, so Windows trust warnings may still appear.
 This pipeline does not claim interactive compatibility with every supported OS or reader.
 
 For Linux, a working X11 or Wayland desktop and system graphics drivers are required.
@@ -77,7 +77,7 @@ tools; ordinary installation does not require them.
    `publish=false` and `sign_macos=true` to validate signed packages without creating a release.
    An explicit `sign_macos=false` allows ad-hoc macOS test artifacts without Apple credentials.
 4. After a successful run, create and push an annotated tag matching the version, for example
-   `git tag -a v0.1.1 -m 'BankingCraft 0.1.1'` and `git push origin v0.1.1`.
+   `git tag -a v0.1.2 -m 'BankingCraft 0.1.2'` and `git push origin v0.1.2`.
 
 Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
 current version, then creates its tag and publishes the release only after every check passes.
@@ -91,8 +91,8 @@ draft and publishes it as a **regular GitHub release marked Latest**, with the p
 flag disabled. These settings are applied at the final publication step, including when
 an existing draft is resumed. The application's early-alpha limitations remain documented
 in the README and release notes.
-Future releases contain five assets plus `SHA256SUMS.txt`: the Linux AppImage, two Windows
-packages, the ARM64 macOS DMG and the matching source archive.
+Releases starting with 0.1.1 contain five assets plus `SHA256SUMS.txt`: the Linux AppImage,
+two Windows packages, the ARM64 macOS DMG and the matching source archive.
 By default, manual workflow runs on a branch produce Actions artifacts only; manual runs on a version
 tag follow the same publication rules as a tag push. Artifacts are retained for seven days;
 published release assets remain attached to the release.

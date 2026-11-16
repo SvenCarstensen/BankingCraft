@@ -47,8 +47,8 @@ See [native banking](docs/native-banking.md) and the
   reporting through GitHub. Private vulnerability reporting must be enabled by the maintainer.
   Do not post vulnerabilities, credentials or bank data in public issues.
 - **Packaged alpha releases** are built on GitHub Actions as a Linux AppImage, a Windows
-  EXE installer/portable ZIP and an ARM64 macOS DMG for Apple Silicon. Future releases
-  no longer include an Intel Mac package. Each release includes
+  EXE installer/portable ZIP and an ARM64 macOS DMG for Apple Silicon. Starting with 0.1.1,
+  releases no longer include an Intel Mac package. Each release includes
   matching source with vendored Rust dependencies, license notices and SHA-256 checksums.
   See [downloads and release instructions](docs/releases.md).
   Current verification is documented in [docs/testing.md](docs/testing.md).
@@ -58,14 +58,15 @@ filename and key derivation remain compatible.
 
 ## Downloads
 
-Get the [0.1.0 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
-for Linux x64, Windows x64, Apple Silicon or Intel Macs. Version 0.1.0 includes the
-AqBanking/Libchipcard backend, category management and the fixes described below.
-Both macOS packages are Developer ID signed and Apple notarized. The signing identity is
-**Sven Carstensen (Y322FFQ9N6)**, the authorized Apple account; AppCreation GmbH remains
-the app's publisher. Windows packages are not Authenticode signed.
+Get the [0.1.1 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.1)
+for Linux x64, Windows x64 or Apple Silicon Macs. Version 0.1.1 adds bounded Apple/network
+and hosted-runner retries, publishes releases as Latest and drops new Intel Mac builds.
+The existing [0.1.0 Intel download](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
+remains available unchanged. The macOS app and DMG are Developer ID signed and Apple notarized.
+The signing identity is **Sven Carstensen (Y322FFQ9N6)**, the authorized Apple account;
+AppCreation GmbH remains the app's publisher. Windows packages are not Authenticode signed.
 
-See the [0.1.0 release notes](docs/release-notes.md) and
+See the [0.1.1 release notes](docs/release-notes.md) and
 [installation instructions](docs/releases.md) for package choices, signature verification
 and platform requirements. Existing vaults remain compatible; the alpha limitations above
 still apply. Earlier `v0.0.10` downloads do not contain these backend and signing updates.
