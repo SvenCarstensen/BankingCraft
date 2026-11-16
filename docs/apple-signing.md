@@ -36,6 +36,12 @@ library validation remains enabled. Review this if restricted Apple capabilities
 Repository: [SvenCarstensen/BankingCraft](https://github.com/SvenCarstensen/BankingCraft).
 Use Settings → Secrets and variables → Actions, or the setup helper below.
 
+Configured on 2026-11-16 for **Sven Carstensen**, team `Y322FFQ9N6`:
+all five secrets and both variables below are installed. The Developer ID Application
+certificate expires on **2027-12-16**. The dedicated team API key is named
+**BankingCraft GitHub Notary** and has the Developer role. Local credential validation
+confirmed both the certificate/private key and Apple's notarization API authentication.
+
 | Kind | Name | Value |
 | --- | --- | --- |
 | Variable | `APPLE_TEAM_ID` | Verified ten-character ID of the authorized signing team |
@@ -120,8 +126,8 @@ is forcibly stopped, GitHub destroys the hosted VM. Do not switch to self-hosted
 without adding cancellation-safe cleanup and access isolation.
 
 The new pipeline does not change already published `0.0.10` DMGs, which remain ad-hoc signed.
-A full signed run still requires the selected account's credentials; mock tests alone do not prove
-Apple acceptance or Gatekeeper behavior.
+Mock tests and credential validation alone do not prove Apple acceptance or Gatekeeper
+behavior; verify the signed release workflow before publishing.
 
 ## References
 

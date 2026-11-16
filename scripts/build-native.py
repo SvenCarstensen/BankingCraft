@@ -28,6 +28,17 @@ def replace_once(path, old, new):
 
 def patch_source(name, source):
     if name == "aqbanking":
+        # Linux LeakSanitizer exposes three ownership bugs in pinned 6.9.2.
+        # Free temporary objects at their owners; keep leak detection enabled.
+        replace_once(source / "src/libs/plugins/backends/aqhbci/joblayer/jobqueue_account.c",
+                     '    accountSpecList=AB_AccountSpec_List_new();\n    rv=AB_Banking_GetAccountSpecList(ab, &accountSpecList);',
+                     '    /* GetAccountSpecList allocates the returned list. */\n    rv=AB_Banking_GetAccountSpecList(ab, &accountSpecList);')
+        replace_once(source / "src/libs/aqbanking/banking_imex.c",
+                     '  } /* while(seGlobalDataDir) */\n  GWEN_Buffer_free(pathBuffer);',
+                     '  } /* while(seGlobalDataDir) */\n  GWEN_StringList_free(slGlobalDataDirs);\n  GWEN_Buffer_free(pathBuffer);')
+        replace_once(source / "src/libs/plugins/backends/aqhbci/joblayer/job_swift.c",
+                     '      DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%d", sName, family, version1);\n    }',
+                     '      DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%d", sName, family, version1);\n    }\n    AB_SwiftDescr_free(tmpDescr);')
         # camt.052.001.08 creates one transaction per Ntry, but 6.9.2 reads
         # its amount inside optional NtryDtls/TxDtls. Banks can omit those
         # details, and a detail/foreign-currency amount is not the booked
@@ -212,7 +223,9 @@ def main():
             make = [make_tool]
             configure = ([str(shell)] if shell else []) + ["./configure", "--prefix=" + prefix.as_posix(), "--disable-static", "--disable-full-doc", "--enable-local-install"]
             if package["name"] == "gwenhywfar":
-                configure += ["--with-guis=none", "--enable-binreloc"]
+                # binreloc reads /proc symlinks and is unavailable in native
+                # Windows; Gwenhywfar has a separate Win32 path implementation.
+                configure += ["--with-guis=none", "--disable-binreloc" if os.name == "nt" else "--enable-binreloc"]
             if package["name"] == "aqbanking":
                 configure += ["--with-backends=aqhbci aqnone"]
                 # The isolated worker uses the pinned AqHBCI/backend API, which

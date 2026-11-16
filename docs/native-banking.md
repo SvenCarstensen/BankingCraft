@@ -176,6 +176,9 @@ those OS package versions are not pinned by this manifest.
   the bounded Libchipcard adapter, avoiding the legacy upstream USB TAN parser.
 - Filter Libchipcard reader selection by the exact user-selected reader name.
 - Correct a C++ string-literal spacing issue for current Apple compilers.
+- Release temporary SWIFT descriptors and global-data directory lists, and avoid
+  allocating an account-spec list before the getter replaces it. Linux's existing
+  LeakSanitizer tests exercise all three paths; leak detection stays enabled.
 
 Review these patches on every native version update. Preserve native COPYING and
 AUTHORS files. Exact original archives accompany `package-source.sh` output and
@@ -239,6 +242,8 @@ build. The build disables hidden symbol visibility only for AqBanking and enable
 MinGW DLL exports there. It does not change the installed system libraries; the
 worker still requires the patched `AB_BankingCraft_NoLegacyImport` marker. Windows
 uses UCRT64 consistently for the worker, libraries, packaging and audit inventory.
+Gwenhywfar uses its Win32 path discovery there; its Unix `/proc` binreloc code is
+enabled only on Unix.
 On Linux the built worker and sanitizer test binary locate their bundled libraries
 via `$ORIGIN/../lib`. Token-plugin initialization tests require a running PC/SC
 service, but do not open a card or request a PIN.
