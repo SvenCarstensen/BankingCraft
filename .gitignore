@@ -19,3 +19,8 @@ bankx-import.json
 
 dist/
 __pycache__/
+
+# Apple signing material belongs in GitHub Actions secrets, never in source archives.
+*.p12
+*.p8
+*.keychain-db

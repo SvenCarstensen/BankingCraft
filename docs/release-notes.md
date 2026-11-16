@@ -2,6 +2,10 @@
 
 These changes are not part of the published 0.0.10 packages.
 
+- Prepare automatic AppCreation GmbH Developer ID signing and Apple notarization in
+  GitHub Actions for both macOS architectures, including the native banking runtime.
+  Publishing requires configured organization credentials and successful verification;
+  existing 0.0.10 downloads are unchanged. See [Apple signing setup](apple-signing.md).
 - Manage categories on a dedicated sidebar page below Bank connections. Create categories,
   rename or delete both built-in and custom categories per vault. Renaming preserves
   assignments and automatic matching; deletion redirects them to a chosen replacement.

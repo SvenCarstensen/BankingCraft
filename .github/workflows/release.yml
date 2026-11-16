@@ -9,6 +9,10 @@ on:
         description: 'Publish the Cargo.toml version after all checks pass (master only)'
         type: boolean
         default: false
+      sign_macos:
+        description: 'Sign and notarize macOS packages (mandatory when publishing)'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -42,9 +46,13 @@ jobs:
             os: macos-15-intel
             platform: macos
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
+      # Tags and publishing always require signing, regardless of the manual input.
+      MACOS_SIGNING_MODE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish || inputs.sign_macos) && 'developer-id' || 'adhoc' }}
+      MACOS_PUBLISHING: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
     defaults:
       run:
         shell: bash
@@ -58,6 +66,15 @@ jobs:
       - name: Validate version and tag
         id: version
         run: echo "value=$(python3 scripts/release-version.py)" >> "$GITHUB_OUTPUT"
+      - name: Check required Apple signing configuration before building
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: python3 scripts/macos-signing.py preflight
       - name: Install Linux libraries and packaging dependencies
         if: runner.os == 'Linux'
         run: |
@@ -114,6 +131,13 @@ jobs:
         run: ./scripts/test-windows-installer.ps1
       - name: Package and verify macOS DMG
         if: runner.os == 'macOS'
+        env:
+          MACOS_NOTARY_LOG_DIR: ${{ runner.temp }}/notarization
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: python3 scripts/package-release.py macos
       - name: Smoke-test macOS app from the DMG
         if: runner.os == 'macOS'
@@ -129,6 +153,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+      - name: Retain Apple notarization diagnostics
+        if: always() && runner.os == 'macOS' && env.MACOS_SIGNING_MODE == 'developer-id'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notarization-${{ matrix.name }}
+          path: ${{ runner.temp }}/notarization/*.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   source:
     name: Matching source archive

@@ -17,6 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("release_version", ROOT / "scripts/release-version.py")
 release_version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release_version)
+signing_spec = importlib.util.spec_from_file_location("macos_signing", ROOT / "scripts/macos-signing.py")
+macos_signing = importlib.util.module_from_spec(signing_spec)
+signing_spec.loader.exec_module(macos_signing)
 
 
 def run(*args, **kwargs):
@@ -44,6 +47,8 @@ def resources(destination):
 
 
 def macos(version, temporary, output):
+    mode = os.environ.get("MACOS_SIGNING_MODE", "adhoc")
+    macos_signing.validate_configuration(mode)
     arch = {"arm64": "aarch64", "x86_64": "x86_64"}[platform.machine()]
     app = temporary / "image/BankingCraft.app"
     executable = app / "Contents/MacOS/BankingCraft"
@@ -56,9 +61,6 @@ def macos(version, temporary, output):
     minimums = [os.environ.get("MACOSX_DEPLOYMENT_TARGET", "11.0"), (executable.parent / "native/minimum-macos.txt").read_text().strip()]
     info["LSMinimumSystemVersion"] = max(minimums, key=lambda v: tuple(map(int, v.split("."))))
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps(info))
-    # Distribution certificates are optional; never imply this ad-hoc signature is notarization.
-    run("codesign", "--force", "--sign", "-", str(app))
-    run("codesign", "--verify", "--deep", "--strict", str(app))
     run("plutil", "-lint", str(app / "Contents/Info.plist"))
     linked = subprocess.check_output(["otool", "-L", str(executable)], text=True)
     for line in linked.splitlines()[1:]:
@@ -66,10 +68,33 @@ def macos(version, temporary, output):
         if not library.startswith(("/System/Library/", "/usr/lib/")):
             raise SystemExit(f"Non-system library would be missing from DMG: {library}")
     (temporary / "image/Applications").symlink_to("/Applications")
-    dmg = output / f"BankingCraft-{version}-macos-{arch}.dmg"
-    run("hdiutil", "create", "-volname", f"BankingCraft {version}", "-srcfolder",
-        str(temporary / "image"), "-format", "UDZO", str(dmg))
-    run("hdiutil", "verify", str(dmg))
+    dmg = temporary / f"BankingCraft-{version}-macos-{arch}.dmg"
+    with macos_signing.signing_session(mode) as signer:
+        if signer:
+            signer.sign_app(app)
+            # Exercise the bundled worker/plugins with hardened runtime and library validation.
+            run(sys.executable, "scripts/test-native.py", str(executable.parent / "native/bin/bankingcraft-aqbanking"))
+            archive = signer.directory / "BankingCraft.zip"
+            run("ditto", "-c", "-k", "--keepParent", str(app), str(archive))
+            signer.notarize(archive, "app")
+            signer.staple(app)
+            run("spctl", "--assess", "--type", "execute", "--verbose=2", str(app))
+        else:
+            print("Ad-hoc test package only; not Developer ID signed or notarized", flush=True)
+            run("codesign", "--force", "--sign", "-", str(app))
+        run("codesign", "--verify", "--deep", "--strict", str(app))
+        run("hdiutil", "create", "-volname", f"BankingCraft {version}", "-srcfolder",
+            str(temporary / "image"), "-format", "UDZO", str(dmg))
+        if signer:
+            signer.sign(dmg, runtime=False)
+            signer.verify(dmg, runtime=False)
+            signer.notarize(dmg, "dmg")
+            signer.staple(dmg)
+            run("spctl", "--assess", "--type", "open", "--context", "context:primary-signature",
+                "--verbose=2", str(dmg))
+        run("hdiutil", "verify", str(dmg))
+        # Only fully verified artifacts enter dist and become eligible for upload.
+        shutil.move(str(dmg), output / dmg.name)
 
 
 def windows(version, temporary, output):
