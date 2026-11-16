@@ -1,6 +1,7 @@
 """Signing policy, nested-code coverage and failure behavior; no real credentials or Apple calls."""
 import base64
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -90,15 +91,107 @@ class SigningTests(unittest.TestCase):
                 with self.subTest(code=code, data=data):
                     def notary(args, **kwargs):
                         if args[2] == "submit":
-                            kwargs["stdout"].write(json.dumps(data) if data else "connection failed")
-                            return subprocess.CompletedProcess(args, code)
-                        return subprocess.CompletedProcess(args, 0)
+                            return subprocess.CompletedProcess(args, code, stdout=json.dumps(data) if data else "connection failed")
+                        return subprocess.CompletedProcess(args, 0, stdout="invalid response")
                     with patch.object(signing.subprocess, "run", side_effect=notary):
                         if accepted:
                             signer.notarize(Path("fixture.zip"), "app")
                         else:
                             with self.assertRaises(SystemExit):
                                 signer.notarize(Path("fixture.zip"), "app")
+
+    def test_apple_network_retries_are_bounded_and_do_not_expose_secrets(self):
+        timeout = subprocess.CompletedProcess([], 1, stdout="", stderr='NSURLErrorDomain Code=-1001 "The request timed out."')
+        success = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        with patch.object(signing.subprocess, "run", side_effect=[timeout, timeout, success]) as command, \
+                patch.object(signing.time, "sleep") as sleep, patch("sys.stdout", new_callable=io.StringIO) as output:
+            signing.apple_run("xcrun", "notarytool", "store-credentials", CONFIG["APPLE_CERTIFICATE_PASSWORD"])
+            self.assertEqual(command.call_count, 3)
+            self.assertEqual([c.args[0] for c in sleep.call_args_list], [10, 30])
+            self.assertNotIn(CONFIG["APPLE_CERTIFICATE_PASSWORD"], output.getvalue())
+        with patch.object(signing.subprocess, "run", return_value=timeout) as command, \
+                patch.object(signing.time, "sleep") as sleep:
+            with self.assertRaises(SystemExit):
+                signing.apple_run("xcrun", "notarytool", "store-credentials")
+            self.assertEqual(command.call_count, 4)
+            self.assertEqual([c.args[0] for c in sleep.call_args_list], [10, 30, 60])
+
+    def test_permanent_apple_errors_are_never_retried(self):
+        for error in ("HTTPError(statusCode: Optional(401)) request timed out", "HTTP 403", "Invalid credentials",
+                      "signature is invalid", '{"status": "Invalid"}', "unknown failure"):
+            with self.subTest(error=error), patch.object(signing.subprocess, "run", return_value=
+                    subprocess.CompletedProcess([], 1, stdout="", stderr=error)) as command, \
+                    patch.object(signing.time, "sleep") as sleep:
+                with self.assertRaises(SystemExit):
+                    signing.apple_run("xcrun", "notarytool", "store-credentials")
+                self.assertEqual(command.call_count, 1)
+                sleep.assert_not_called()
+        for error in ("HTTPError(statusCode: Optional(503))", "HTTP 429", "NSURLErrorDomain Code=-1005"):
+            self.assertTrue(signing.transient_apple_error(error))
+
+    def test_process_timeout_retries_without_printing_argv(self):
+        secret = CONFIG["APPLE_CERTIFICATE_PASSWORD"]
+        with patch.object(signing.subprocess, "run", side_effect=[subprocess.TimeoutExpired(["xcrun", secret], 120),
+                subprocess.CompletedProcess([], 0, stdout="", stderr="")]) as command, \
+                patch.object(signing.time, "sleep"), patch("sys.stdout", new_callable=io.StringIO) as output:
+            signing.apple_run("xcrun", secret)
+            self.assertEqual(command.call_count, 2)
+            self.assertNotIn(secret, output.getvalue())
+
+    def test_notary_status_recovers_without_uploading_again(self):
+        responses = [subprocess.CompletedProcess([], 0, stdout='{"id":"submission"}'),
+                     subprocess.CompletedProcess([], 1, stdout="", stderr="The request timed out"),
+                     subprocess.CompletedProcess([], 0, stdout='{"id":"submission","status":"In Progress"}'),
+                     subprocess.CompletedProcess([], 0, stdout='{"id":"submission","status":"Accepted"}'),
+                     subprocess.CompletedProcess([], 0, stdout="")]
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True), \
+                patch.object(signing.subprocess, "run", side_effect=responses) as command, \
+                patch.object(signing.time, "sleep"):
+            signing.SigningSession(Path(directory), FINGERPRINT, TEAM, "Sven Carstensen").notarize(Path("app.zip"), "app")
+            calls = [c.args[0] for c in command.call_args_list]
+            self.assertEqual([c[2] for c in calls], ["submit", "info", "info", "info", "log"])
+            self.assertTrue(all(c[3] == "submission" for c in calls[1:]))
+            self.assertEqual(json.loads((Path(directory) / "logs/app-submission.json").read_text())["id"], "submission")
+
+    def test_notary_ambiguous_upload_is_not_duplicated(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True), \
+                patch.object(signing.subprocess, "run", return_value=subprocess.CompletedProcess([], 1,
+                    stdout="", stderr="The request timed out")) as command, patch.object(signing.time, "sleep") as sleep:
+            with self.assertRaises(SystemExit):
+                signing.SigningSession(Path(directory), FINGERPRINT, TEAM, "Sven Carstensen").notarize(Path("app.zip"), "app")
+            self.assertEqual(command.call_count, 1)
+            sleep.assert_not_called()
+
+    def test_notary_polling_stops_at_deadline(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True), \
+                patch.object(signing, "NOTARY_WAIT_SECONDS", 0), patch.object(signing.subprocess, "run",
+                return_value=subprocess.CompletedProcess([], 0, stdout='{"id":"submission"}')) as command:
+            with self.assertRaisesRegex(SystemExit, "timed out"):
+                signing.SigningSession(Path(directory), FINGERPRINT, TEAM, "Sven Carstensen").notarize(Path("app.zip"), "app")
+            self.assertEqual(command.call_count, 1)
+
+    def test_notary_status_rejects_wrong_id_malformed_and_rejected_results(self):
+        for response in ('{"id":"other","status":"Accepted"}', '{"id":"submission","status":"Invalid"}',
+                         '{"id":"submission","status":"Unknown"}', '[]', 'not json'):
+            responses = [subprocess.CompletedProcess([], 0, stdout='{"id":"submission"}'),
+                         subprocess.CompletedProcess([], 0, stdout=response),
+                         subprocess.CompletedProcess([], 0, stdout="")]
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as directory, \
+                    patch.dict(os.environ, {}, clear=True), \
+                    patch.object(signing.subprocess, "run", side_effect=responses) as command, \
+                    patch.object(signing.time, "sleep") as sleep:
+                with self.assertRaises(SystemExit):
+                    signing.SigningSession(Path(directory), FINGERPRINT, TEAM, "Sven Carstensen").notarize(Path("app.zip"), "app")
+                self.assertEqual(sum(c.args[0][2] == "submit" for c in command.call_args_list), 1)
+                sleep.assert_not_called()
+
+    def test_deadline_prevents_retry_past_notary_budget(self):
+        with patch.object(signing.subprocess, "run", return_value=subprocess.CompletedProcess([], 1,
+                stdout="", stderr="The request timed out")) as command, \
+                patch.object(signing.time, "monotonic", return_value=100), patch.object(signing.time, "sleep") as sleep:
+            self.assertNotEqual(signing.apple_request("xcrun", deadline=105).returncode, 0)
+            self.assertEqual(command.call_args.kwargs["timeout"], 5)
+            sleep.assert_not_called()
 
     def test_command_failure_does_not_print_secret_arguments(self):
         with patch.object(signing.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)):
