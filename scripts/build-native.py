@@ -162,6 +162,19 @@ def main():
     env["PKG_CONFIG_PATH"] = str(prefix / "lib/pkgconfig") + os.pathsep + env.get("PKG_CONFIG_PATH", "")
     env["PATH"] = str(prefix / "bin") + os.pathsep + env["PATH"]
     env["LDFLAGS"] = "-L" + (prefix / "lib").as_posix() + " " + env.get("LDFLAGS", "")
+    shell = None
+    make_tool = "make"
+    if os.name == "nt":
+        # CreateProcess searches System32 before PATH: bare "bash" starts WSL
+        # on hosted runners. Use the MSYS2 installation owning this Python.
+        toolchain = Path(sys.executable).resolve().parents[1]
+        msys_bin = toolchain.parent / "usr/bin"
+        shell = msys_bin / "bash.exe"
+        if not shell.is_file():
+            raise RuntimeError("Run build-native.py with MSYS2 UCRT64 Python")
+        make_tool = str(msys_bin / "make.exe")
+        env["SHELL"] = shell.as_posix()
+        env["PATH"] = os.pathsep.join([str(prefix / "bin"), str(toolchain / "bin"), str(msys_bin), env["PATH"]])
     if sys.platform == "darwin":
         sdk = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
         flags = " -I" + shlex.quote(sdk + "/System/Library/Frameworks/PCSC.framework/Headers")
@@ -196,8 +209,8 @@ def main():
         if not stamp.exists() or stamp.read_text().strip() != recipe:
             print("Building", stem, flush=True)
             package_env = env.copy()
-            make = ["make"]
-            configure = (["bash"] if os.name=="nt" else []) + ["./configure", "--prefix=" + prefix.as_posix(), "--disable-static", "--disable-full-doc", "--enable-local-install"]
+            make = [make_tool]
+            configure = ([str(shell)] if shell else []) + ["./configure", "--prefix=" + prefix.as_posix(), "--disable-static", "--disable-full-doc", "--enable-local-install"]
             if package["name"] == "gwenhywfar":
                 configure += ["--with-guis=none", "--enable-binreloc"]
             if package["name"] == "aqbanking":
@@ -205,7 +218,7 @@ def main():
                 # The isolated worker uses the pinned AqHBCI/backend API, which
                 # upstream hides on ELF. Export it from our bundled library,
                 # as the macOS build already does; never use a system AqBanking.
-                make += ["visibility_cflags="]
+                package_env["ac_cv_hidden_visibility_attribute"] = "no"
                 if os.name == "nt":
                     # Explicit public dllexports disable MinGW's automatic exports.
                     # The worker also needs the internal AB_/AH_ entry points.
@@ -223,6 +236,9 @@ def main():
     pkg = ["pkg-config"]
     cflags = shlex.split(subprocess.check_output(pkg + ["--cflags", "aqbanking", "gwenhywfar", "libchipcard-client"], env=env, text=True))
     libs = shlex.split(subprocess.check_output(pkg + ["--libs", "aqbanking", "gwenhywfar", "libchipcard-client"], env=env, text=True))
+    if sys.platform.startswith("linux"):
+        # pkg-config supplies -L for linking, not a runtime search path.
+        libs += ["-Wl,-rpath,$ORIGIN/../lib"]
     executable = prefix / "bin" / ("bankingcraft-aqbanking.exe" if os.name == "nt" or "MINGW" in env.get("MSYSTEM", "") else "bankingcraft-aqbanking")
     subprocess.run([env.get("CC", "cc"), "-std=c11", "-O2", "-Wall", "-Wextra", "-Wno-unused-function", "-Wno-unused-parameter"]
                    + cflags + ["-I" + str(work / "aqbanking-6.9.2/src/libs"), "-I" + str(work / "aqbanking-6.9.2/src/libs/plugins/backends"),

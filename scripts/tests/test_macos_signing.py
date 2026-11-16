@@ -18,6 +18,7 @@ TEAM = "ABC1234567"
 FINGERPRINT = "A" * 40
 CONFIG = {
     "APPLE_TEAM_ID": TEAM,
+    "APPLE_SIGNING_NAME": "Sven Carstensen",
     "APPLE_CERTIFICATE_BASE64": base64.b64encode(b"synthetic p12 fixture").decode(),
     "APPLE_CERTIFICATE_PASSWORD": "synthetic-password-do-not-log",
     "APPLE_API_KEY_ID": "KEY1234567",
@@ -57,7 +58,7 @@ class SigningTests(unittest.TestCase):
                 binary.write_bytes(bytes.fromhex("cffaedfe") + b"synthetic Mach-O")
             (app / "Contents/MacOS/native/lib/link.dylib").symlink_to(binaries[-1])
             (app / "Contents/Info.plist").write_text("not executable")
-            signer = signing.SigningSession(Path(directory), FINGERPRINT, TEAM)
+            signer = signing.SigningSession(Path(directory), FINGERPRINT, TEAM, "Sven Carstensen")
             with patch.object(signer, "sign") as sign, patch.object(signer, "verify") as verify, patch.object(signing, "run"):
                 signer.sign_app(app)
             signed = [call.args[0] for call in sign.call_args_list]
@@ -67,12 +68,12 @@ class SigningTests(unittest.TestCase):
             self.assertEqual(verify.call_count, 5)
 
     def test_signature_metadata_rejects_wrong_team_or_missing_protections(self):
-        valid = (f"TeamIdentifier={TEAM}\nAuthority=Developer ID Application: AppCreation GmbH ({TEAM})\n"
+        valid = (f"TeamIdentifier={TEAM}\nAuthority=Developer ID Application: Sven Carstensen ({TEAM})\n"
                  "CodeDirectory flags=0x10000(runtime)\nTimestamp=Nov 16, 2026\n")
-        signer = signing.SigningSession(Path("/tmp/fixture"), FINGERPRINT, TEAM)
+        signer = signing.SigningSession(Path("/tmp/fixture"), FINGERPRINT, TEAM, "Sven Carstensen")
         with patch.object(signing, "run", return_value=subprocess.CompletedProcess([], 0, stderr=valid)):
             signer.verify(Path("BankingCraft.app"))
-        for invalid in (valid.replace(TEAM, "OTHER12345"), valid.replace("AppCreation GmbH", "Personal Team"),
+        for invalid in (valid.replace(TEAM, "OTHER12345"), valid.replace("Sven Carstensen", "Other Signer"),
                         valid.replace("0x10000", "0x0"), valid.replace("Timestamp=", "Signed Time=")):
             with self.subTest(details=invalid), patch.object(signing, "run", return_value=subprocess.CompletedProcess([], 0, stderr=invalid)):
                 with self.assertRaises(SystemExit):
@@ -80,7 +81,7 @@ class SigningTests(unittest.TestCase):
 
     def test_notary_rejections_timeouts_and_malformed_results_stop_packaging(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
-            signer = signing.SigningSession(Path(directory), FINGERPRINT, TEAM)
+            signer = signing.SigningSession(Path(directory), FINGERPRINT, TEAM, "Sven Carstensen")
             cases = [(0, {"id": "submission", "status": "Accepted"}, True),
                      (0, {"id": "submission", "status": "Invalid"}, False),
                      (1, {"id": "submission", "status": "In Progress"}, False),
@@ -106,10 +107,10 @@ class SigningTests(unittest.TestCase):
         self.assertNotIn(CONFIG["APPLE_CERTIFICATE_PASSWORD"], str(raised.exception))
 
     def test_temporary_keychain_cleaned_on_success_wrong_identity_and_exception(self):
-        identities = [f'Developer ID Application: AppCreation GmbH ({TEAM})',
-                      f'Apple Distribution: AppCreation GmbH ({TEAM})',
-                      f'Developer ID Application: Personal Team ({TEAM})',
-                      'Developer ID Application: AppCreation GmbH (OTHER12345)']
+        identities = [f'Developer ID Application: Sven Carstensen ({TEAM})',
+                      f'Apple Distribution: Sven Carstensen ({TEAM})',
+                      f'Developer ID Application: Other Signer ({TEAM})',
+                      'Developer ID Application: Sven Carstensen (OTHER12345)']
         for identity in identities:
             for fail_inside in (False, True):
                 with self.subTest(identity=identity, fail_inside=fail_inside), tempfile.TemporaryDirectory() as parent:

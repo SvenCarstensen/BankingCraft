@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate AppCreation's Apple credentials locally and store them as GitHub Actions secrets."""
+"""Validate the authorized Apple credentials and store them as GitHub Actions secrets."""
 import argparse
 import base64
 import getpass
@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--certificate", type=Path, required=True, help="Developer ID Application .p12 including private key")
     parser.add_argument("--api-key", type=Path, required=True, help="App Store Connect team API key .p8")
     parser.add_argument("--team-id", required=True)
+    parser.add_argument("--signing-name", required=True, help="Certificate holder, e.g. Sven Carstensen")
     parser.add_argument("--key-id", required=True)
     parser.add_argument("--issuer-id", required=True)
     args = parser.parse_args()
@@ -33,13 +34,15 @@ def main():
         "APPLE_API_ISSUER_ID": args.issuer_id,
         "APPLE_CERTIFICATE_PASSWORD": getpass.getpass("Password for the Developer ID .p12: "),
     }
-    # Reject the wrong organization, certificate type, team or notarization credentials before writing secrets.
-    environment = {**os.environ, **values, "APPLE_TEAM_ID": args.team_id, "MACOS_SIGNING_MODE": "developer-id"}
+    # Reject the wrong holder, certificate type, team or credentials before writing secrets.
+    environment = {**os.environ, **values, "APPLE_TEAM_ID": args.team_id,
+                   "APPLE_SIGNING_NAME": args.signing_name, "MACOS_SIGNING_MODE": "developer-id"}
     run(sys.executable, str(Path(__file__).with_name("macos-signing.py")), "check-credentials", env=environment)
     for name, value in values.items():
         run("gh", "secret", "set", name, "--repo", args.repo, input=value, text=True)
         print(f"Stored {name}", flush=True)
     run("gh", "variable", "set", "APPLE_TEAM_ID", "--repo", args.repo, "--body", args.team_id)
+    run("gh", "variable", "set", "APPLE_SIGNING_NAME", "--repo", args.repo, "--body", args.signing_name)
     print(f"Configured {args.repo}. Run the Apple signing check workflow, then a signed release dry run.")
 
 

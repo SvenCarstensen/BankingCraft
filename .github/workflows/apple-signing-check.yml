@@ -8,17 +8,18 @@ permissions:
 
 jobs:
   credentials:
-    name: Validate AppCreation Developer ID and notarization access
+    name: Validate authorized Developer ID and notarization access
     runs-on: macos-15
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate certificate, private key, organization, team and Apple API access
+      - name: Validate certificate, private key, holder, team and Apple API access
         env:
           MACOS_SIGNING_MODE: developer-id
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_SIGNING_NAME: ${{ vars.APPLE_SIGNING_NAME }}
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}

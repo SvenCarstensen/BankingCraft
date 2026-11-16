@@ -1,25 +1,27 @@
 # Apple signing in GitHub Actions
 
-BankingCraft's macOS release pipeline signs both architectures with
-**Developer ID Application: AppCreation GmbH (TEAM_ID)** and notarizes them with Apple.
+BankingCraft's macOS release pipeline signs both architectures with the explicitly
+configured **Developer ID Application** holder and team, then notarizes them with Apple.
+The authorized signing account is **Sven Carstensen**, enrolled as an individual.
+The displayed signing identity therefore uses his name; AppCreation GmbH remains the app's publisher.
 The bundle identifier remains `de.appcreation.bankingcraft`. This is direct DMG distribution,
 not a Mac App Store upload. The existing local build command continues to use ad-hoc signing.
 
 ## One-time Apple setup
 
-Use the **AppCreation GmbH** team in the [Apple Developer account](https://developer.apple.com/account/).
-Copy its ten-character **Team ID** from Membership details. Do not reuse the personal team's ID.
-The organization needs an active Apple Developer Program membership and accepted agreements.
+Use the authorized **Sven Carstensen** team in the [Apple Developer account](https://developer.apple.com/account/).
+Copy its ten-character **Team ID** from Membership details and its exact certificate-holder
+name. The account needs an active Apple Developer Program membership and accepted agreements.
 
-1. Create or select a **Developer ID Application** certificate for AppCreation GmbH.
-   In Xcode, use Settings → Accounts → the organization's team → Manage Certificates,
+1. Create or select a **Developer ID Application** certificate for that team.
+   In Xcode, use Settings → Accounts → the authorized team → Manage Certificates,
    or use Apple's Certificates, Identifiers & Profiles portal. Certificate creation may require
    the Account Holder or an authorized Admin. Cloud-managed certificates without an exportable
    private key cannot be used by this pipeline.
 2. Export the certificate **with its private key** from Keychain Access as a password-protected
    `.p12`. An Apple Distribution, Mac Distribution or Developer ID Installer certificate is
-   not a substitute. Never export an unrelated personal certificate.
-3. In [App Store Connect](https://appstoreconnect.apple.com/), select AppCreation GmbH,
+   not a substitute. Never export an unrelated account's certificate.
+3. In [App Store Connect](https://appstoreconnect.apple.com/), select the same account,
    then Users and Access → Integrations → App Store Connect API. Create a **team API key**
    with access to notarization (Developer role), download its `.p8`, and record its Key ID
    and Issuer ID. The private key can only be downloaded once. This setup deliberately uses
@@ -36,11 +38,12 @@ Use Settings → Secrets and variables → Actions, or the setup helper below.
 
 | Kind | Name | Value |
 | --- | --- | --- |
-| Variable | `APPLE_TEAM_ID` | Verified ten-character AppCreation GmbH Team ID |
+| Variable | `APPLE_TEAM_ID` | Verified ten-character ID of the authorized signing team |
+| Variable | `APPLE_SIGNING_NAME` | Exact certificate-holder name (`Sven Carstensen` for the selected account) |
 | Secret | `APPLE_CERTIFICATE_BASE64` | Base64 of the complete `.p12` export |
 | Secret | `APPLE_CERTIFICATE_PASSWORD` | Password protecting that export |
 | Secret | `APPLE_API_KEY_ID` | App Store Connect team API Key ID |
-| Secret | `APPLE_API_ISSUER_ID` | Issuer UUID from the same AppCreation team |
+| Secret | `APPLE_API_ISSUER_ID` | Issuer UUID from the same signing team |
 | Secret | `APPLE_API_PRIVATE_KEY` | Complete original `.p8` text, including PEM header/footer and newlines |
 
 On a Mac with Xcode and authenticated GitHub CLI, run this from the repository,
@@ -49,19 +52,20 @@ replacing the example paths and identifiers:
 ```sh
 python3 scripts/configure-apple-signing.py \
   --repo SvenCarstensen/BankingCraft \
-  --certificate /absolute/path/AppCreation-Developer-ID.p12 \
+  --certificate /absolute/path/BankingCraft-Developer-ID.p12 \
   --api-key /absolute/path/AuthKey_KEYID.p8 \
   --team-id APPLE_TEAM_ID \
+  --signing-name 'Sven Carstensen' \
   --key-id API_KEY_ID \
   --issuer-id API_ISSUER_UUID
 ```
 
-The helper prompts for the `.p12` password without echo, validates the organization's
+The helper prompts for the `.p12` password without echo, validates the configured holder's
 signing identity and Apple's notarization API access, then sends secrets through standard
 input to `gh secret set`. It never prints secret values or includes them in command arguments
-to GitHub. It creates or replaces these five repository secrets and the team variable;
+to GitHub. It creates or replaces these five repository secrets and the two identity variables;
 if a GitHub write fails, correct the access issue and rerun the helper to complete the set.
-An API key from another team will not authorize the final AppCreation notarization;
+An API key from another team will not authorize the final notarization;
 the signed dry run below is the final account-integration check.
 
 Keep the original exports in secure storage outside the checkout. `.p12`, `.p8` and
@@ -74,7 +78,7 @@ replacement and testing a new signed package before revoking the old certificate
 After the workflows are merged into `master`:
 
 1. Run **Apple signing check** in Actions. This checks that the `.p12` includes a valid
-   private key, the certificate is exactly AppCreation's Developer ID Application identity
+   private key, the certificate is exactly the configured Developer ID Application identity
    with the configured team, and the API credentials authenticate successfully.
 2. Run **Release packages** on `master` with `publish=false` and `sign_macos=true`.
    Both architectures must pass all existing tests, signing, notarization, stapling,
@@ -116,7 +120,7 @@ is forcibly stopped, GitHub destroys the hosted VM. Do not switch to self-hosted
 without adding cancellation-safe cleanup and access isolation.
 
 The new pipeline does not change already published `0.0.10` DMGs, which remain ad-hoc signed.
-A full signed run still requires the organization credentials; mock tests alone do not prove
+A full signed run still requires the selected account's credentials; mock tests alone do not prove
 Apple acceptance or Gatekeeper behavior.
 
 ## References

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -18,6 +19,8 @@ helper=parser.parse_args().helper
 source=prefix.parent/"aqbanking-6.9.2/src/libs"
 env=os.environ.copy();env["PKG_CONFIG_PATH"]=str(prefix/"lib/pkgconfig")
 flags=shlex.split(subprocess.check_output(["pkg-config","--cflags","--libs","aqbanking","gwenhywfar","libchipcard-client"],env=env,text=True))
+if sys.platform.startswith("linux"):
+    flags += ["-Wl,-rpath,$ORIGIN/../lib"]
 binary=prefix/"bin/bankingcraft-native-tests"
 subprocess.run([env.get("CC","cc"),"-std=c11","-g","-fsanitize=address,undefined",
     "-I"+str(source),"-I"+str(source/"plugins/backends"),"-I"+str(source/"plugins/backends/aqhbci"),

@@ -13,7 +13,7 @@ import tempfile
 
 
 REQUIRED = (
-    "APPLE_TEAM_ID", "APPLE_CERTIFICATE_BASE64", "APPLE_CERTIFICATE_PASSWORD",
+    "APPLE_TEAM_ID", "APPLE_SIGNING_NAME", "APPLE_CERTIFICATE_BASE64", "APPLE_CERTIFICATE_PASSWORD",
     "APPLE_API_KEY_ID", "APPLE_API_ISSUER_ID", "APPLE_API_PRIVATE_KEY",
 )
 MACHO_MAGIC = {
@@ -44,7 +44,9 @@ def validate_configuration(mode):
     if missing:
         raise SystemExit("Missing Apple signing configuration: " + ", ".join(missing))
     if not re.fullmatch(r"[A-Z0-9]{10}", os.environ["APPLE_TEAM_ID"]):
-        raise SystemExit("APPLE_TEAM_ID must be the 10-character AppCreation GmbH team ID")
+        raise SystemExit("APPLE_TEAM_ID must be the authorized 10-character Apple team ID")
+    if any(character in os.environ["APPLE_SIGNING_NAME"] for character in "\r\n\"()"):
+        raise SystemExit("APPLE_SIGNING_NAME must be the certificate holder's name without its team suffix")
     if not re.fullmatch(r"[A-Za-z0-9]+", os.environ["APPLE_API_KEY_ID"]):
         raise SystemExit("Invalid APPLE_API_KEY_ID")
     if not re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", os.environ["APPLE_API_ISSUER_ID"]):
@@ -64,11 +66,12 @@ def macho_files(app):
 
 
 class SigningSession:
-    def __init__(self, directory, identity, team):
+    def __init__(self, directory, identity, team, name):
         self.directory = directory
         self.keychain = directory / "signing.keychain-db"
         self.identity = identity
         self.team = team
+        self.authority = f"Developer ID Application: {name} ({team})"
 
     def sign(self, path, *, runtime=True):
         options = ("--options", "runtime") if runtime else ()
@@ -81,7 +84,7 @@ class SigningSession:
                       capture_output=True, text=True).stderr
         if f"TeamIdentifier={self.team}" not in details.splitlines():
             raise SystemExit(f"Unexpected signing team: {path.name}")
-        if f"Authority=Developer ID Application: AppCreation GmbH ({self.team})" not in details.splitlines():
+        if f"Authority={self.authority}" not in details.splitlines():
             raise SystemExit(f"Unexpected Developer ID authority: {path.name}")
         if not any(line.startswith("Timestamp=") for line in details.splitlines()):
             raise SystemExit(f"Secure signing timestamp missing: {path.name}")
@@ -166,17 +169,18 @@ def signing_session(mode):
             identities = run("security", "find-identity", "-v", "-p", "codesigning", str(keychain),
                              capture_output=True, text=True).stdout
             team = os.environ["APPLE_TEAM_ID"]
-            expected = f"Developer ID Application: AppCreation GmbH ({team})"
+            name = os.environ["APPLE_SIGNING_NAME"]
+            expected = f"Developer ID Application: {name} ({team})"
             matches = re.findall(r'\b([0-9A-F]{40}) "' + re.escape(expected) + '"', identities)
             if len(matches) != 1:
                 raise SystemExit("Expected exactly one valid Developer ID Application certificate "
-                                 "with private key for AppCreation GmbH and APPLE_TEAM_ID")
+                                 "with private key for APPLE_SIGNING_NAME and APPLE_TEAM_ID")
             run("xcrun", "notarytool", "store-credentials", "bankingcraft-notary",
                 "--key", str(private_key), "--key-id", os.environ["APPLE_API_KEY_ID"],
                 "--issuer", os.environ["APPLE_API_ISSUER_ID"], "--keychain", str(keychain))
             certificate.unlink()
             private_key.unlink()
-            yield SigningSession(directory, matches[0], team)
+            yield SigningSession(directory, matches[0], team, name)
         finally:
             if keychain.exists():
                 # The dedicated keychain is never added to the user's search list.

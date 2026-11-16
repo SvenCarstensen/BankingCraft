@@ -1,0 +1,7 @@
+// GitHub-hosted runners have no interactive desktop session. Allow the test
+// process to initialize PC/SC, but do not grant access to any smart card.
+polkit.addRule(function(action, subject) {
+    if (action.id === "org.debian.pcsc-lite.access_pcsc" && subject.user === "runner") {
+        return polkit.Result.YES;
+    }
+});

@@ -22,7 +22,7 @@ While the repository is private, access requires permission to that repository.
 
 The macOS deployment target is at least 11.0 (the bundle records the highest minimum required
 by its native libraries). Published `0.0.10` DMGs contain an ad-hoc signed app and are **not
-Apple Developer signed or notarized**. The next release pipeline requires AppCreation GmbH
+Apple Developer signed or notarized**. The next release pipeline requires the authorized account's
 Developer ID signing and Apple notarization for both macOS architectures; configure the
 [Apple signing credentials](apple-signing.md) before publishing. Windows packages are
 **not Authenticode signed**. Trust warnings remain expected for the existing unsigned packages.
@@ -77,7 +77,7 @@ and PC/SC service. Packaging-tool pins must be updated deliberately.
 `scripts/package-release.py` packages already compiled binaries on Windows and macOS.
 The Windows installer definition is `packaging/windows/BankingCraft.iss`.
 The signed DMG path verifies its filesystem, bundle metadata, signatures on all embedded
-Mach-O code, AppCreation team identity, hardened runtime, notarization tickets and Gatekeeper
+Mach-O code, configured holder and team identity, hardened runtime, notarization tickets and Gatekeeper
 acceptance. Native libraries and plugins are signed with the same identity. The main executable's
 dynamic-library links must be system-only. Startup checks run the packaged executables for twelve seconds;
 Windows also verifies silent installation and uninstallation.

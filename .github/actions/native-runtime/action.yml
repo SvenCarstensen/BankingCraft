@@ -8,7 +8,10 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential pkg-config gettext libgnutls28-dev libgcrypt20-dev libgmp-dev libxml2-dev libxmlsec1-dev libpcsclite-dev patchelf
+        sudo apt-get install -y build-essential pkg-config gettext libgnutls28-dev libgcrypt20-dev libgmp-dev libxml2-dev libxmlsec1-dev libpcsclite-dev pcscd zlib1g-dev patchelf
+        # Token plugin initialization needs PC/SC, even when tests open no card.
+        sudo install -D -m 644 .github/actions/native-runtime/pcsc-context.rules /etc/polkit-1/rules.d/49-bankingcraft-ci.rules
+        sudo systemctl start pcscd.socket
     - name: Install macOS build dependencies
       if: runner.os == 'macOS'
       shell: bash
