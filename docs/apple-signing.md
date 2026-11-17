@@ -1,6 +1,6 @@
 # Apple signing in GitHub Actions
 
-BankingCraft's macOS release pipeline signs both architectures with the explicitly
+BankingCraft's macOS release pipeline signs the Apple Silicon (ARM64) package with the explicitly
 configured **Developer ID Application** holder and team, then notarizes them with Apple.
 The authorized signing account is **Sven Carstensen**, enrolled as an individual.
 The displayed signing identity therefore uses his name; AppCreation GmbH remains the app's publisher.
@@ -92,7 +92,7 @@ For credential rotation or future releases:
    and the API credentials authenticate successfully. Signed release runs also perform
    this check before building the app.
 2. Run **Release packages** on `master` with `publish=false` and `sign_macos=true`.
-   Both architectures must pass all existing tests, signing, notarization, stapling,
+   The ARM64 package must pass all existing tests, signing, notarization, stapling,
    Gatekeeper assessment and the startup test from the final DMG. This produces artifacts
    without publishing a release. Download and launch a package on a separate Mac as well.
 3. Update the version as described in [Desktop releases](releases.md), then push its version
@@ -125,11 +125,23 @@ the installer image and installed app carry their offline tickets. Only the full
 DMG enters `dist/`; the normal startup smoke test runs from that image before artifact upload.
 No release build is compiled or signed on a developer's Mac by these workflows.
 
-Apple submission results and logs appear in `notarization-macos-aarch64` and
-`notarization-macos-x86_64` Actions artifacts for seven days, separate from release assets.
-Each submission waits up to 30 minutes; the packaging job allows 120 minutes in total.
-A timeout fails the job rather than distributing an unaccepted package. Apple may continue
-processing that submission; inspect its ID and rerun when appropriate.
+Apple submission results and logs appear in the `notarization-macos-aarch64` Actions
+artifact for seven days, separate from release assets. Future builds no longer create
+Intel packages; the already published version 0.1.0 Intel download is unchanged.
+Each submission is uploaded once and its ID is saved before polling for up to 30 minutes;
+the packaging job allows 120 minutes in total. Temporary network failures during credential
+validation, timestamp signing, status/log retrieval and stapling get up to four attempts,
+with 10, 30 and 60 seconds between attempts. Each request is limited to 120 seconds, and
+status retries share the submission's 30-minute deadline. Authentication errors, invalid
+signatures, rejected submissions and unknown errors stop immediately. The standalone
+credential check allows 25 minutes to cover both credential and timestamp retries.
+
+Polling resumes the existing submission ID without uploading again. Uploads have a
+10-minute limit and are not automatically replayed if the outcome is ambiguous and no
+ID is available. Inspect Apple's submission history before submitting again in that case.
+A final timeout still fails the job rather than distributing an unaccepted package.
+The `*-submission.json`, `*-status.json` and Apple log artifacts retain the available
+evidence; Apple may continue processing after the local wait expires.
 Temporary keychains and credential files are removed on success or exception. If a runner
 is forcibly stopped, GitHub destroys the hosted VM. Do not switch to self-hosted runners
 without adding cancellation-safe cleanup and access isolation.
@@ -138,6 +150,30 @@ Release 0.1.0 is the first version distributed through this Developer ID signing
 Already published `0.0.10` DMGs remain unsigned and their apps remain ad-hoc signed.
 Mock tests and credential validation alone do not prove Apple acceptance or Gatekeeper
 behavior; verify the signed release workflow before publishing.
+
+## GitHub runner allocation failures
+
+The **Retry runner allocation failures** workflow inspects completed CI, Dependency audit,
+Apple signing check and Release packages runs. It retries only GitHub's explicit
+`The job was not acquired by Runner of type hosted even after multiple attempts` failure
+when no runner was assigned and no step started. Manual cancellations, application/test
+failures, unknown infrastructure errors and jobs that exceeded their execution limit
+are not retried by this workflow.
+
+There are at most three total attempts, including the initial run and any manual retries.
+Retries wait 60 seconds after attempt one and 120 seconds after attempt two. Only the
+current `master` commit (including version tags at that commit) in this repository is
+eligible; pull requests and forks are excluded. The workflow rechecks the run and master
+after the delay to avoid restarting a superseded or manually restarted run.
+If all failed jobs have proven allocation failures, they are retried together. Otherwise,
+only one confirmed allocation failure is retried; unrelated failures remain visible.
+GitHub also reruns dependent jobs, preserving the original publish/signing inputs.
+
+The controller checks out its trusted default-branch workflow revision, never code or
+artifacts from the triggering run. It uses the built-in `GITHUB_TOKEN` with Actions write,
+Checks read and Contents read permissions, with no additional secret. Its Actions summary
+records the decision. Once the attempt limit is reached, inspect the remaining failure
+and rerun the affected job manually when GitHub capacity is available.
 
 ## References
 

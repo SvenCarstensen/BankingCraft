@@ -42,9 +42,6 @@ jobs:
           - name: macos-aarch64
             os: macos-15
             platform: macos
-          - name: macos-x86_64
-            os: macos-15-intel
-            platform: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     env:
@@ -232,8 +229,9 @@ jobs:
           if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
             python3 -c 'import json; assert json.load(open("release-state.json"))["isDraft"], "Refusing to replace an already published release"'
           else
-            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease \
+            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease=false \
               --title "BankingCraft $RELEASE_TAG" --notes-file docs/release-notes.md
           fi
           gh release upload "$RELEASE_TAG" dist/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false
+          # Apply the policy at publication, including drafts resumed from older runs.
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest

@@ -1,5 +1,30 @@
 # Testing
 
+## Version 0.1.1 release preparation — November 16, 2026
+
+The 25 credential-free signing, packaging and runner-retry regression tests pass.
+They cover bounded Apple network retries, submission-ID reuse, rejected notarizations,
+credential cleanup, runner allocation classification and the automatic retry limit.
+Version consistency, the license bundle for 488 external packages and workflow syntax
+also pass. The version bump changes no external dependency or application feature.
+
+The retry policy was also exercised on GitHub at commit
+`69541b8b1b34d7bee26e02a8748fca12548cb9ce`: the
+[retry controller](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43899269902)
+restarted a confirmed hosted-runner allocation failure, and the
+[Apple signing check](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43896497997)
+succeeded on its second attempt. The
+[signed package dry run](https://github.com/SvenCarstensen/BankingCraft/actions/runs/43896503988/job/133401384807)
+recovered from a temporary Apple failure during DMG stapling and passed Gatekeeper.
+That job was an Intel build before the ARM64-only policy; version 0.1.1 builds only ARM64 for macOS.
+
+The versioned release workflow independently builds and checks Linux x64, Windows x64
+and macOS ARM64, including signing/notarization of the macOS app and DMG. Publication
+requires all package jobs to pass; the preparation results above are not a claim that
+an unfinished release run has succeeded. See the
+[release workflow runs](https://github.com/SvenCarstensen/BankingCraft/actions/workflows/release.yml)
+for the version-specific result.
+
 ## Cross-platform release pipeline — November 16, 2026
 
 The release preparation was validated on `master` commit

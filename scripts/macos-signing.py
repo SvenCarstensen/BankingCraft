@@ -11,6 +11,7 @@ import secrets
 import shlex
 import subprocess
 import tempfile
+import time
 
 
 REQUIRED = (
@@ -23,6 +24,56 @@ MACHO_MAGIC = {
         "cafebabe", "bebafeca", "cafebabf", "bfbafeca",
     )
 }
+APPLE_RETRY_DELAYS = (10, 30, 60)
+NOTARY_WAIT_SECONDS = 30 * 60
+
+
+def transient_apple_error(message):
+    """Retry transport failures, never credentials, signatures or Apple rejections."""
+    if re.search(r"(?:status(?:Code)?[\s:=]*(?:Optional\()?|HTTP\s+)(?:401|403)\b|"
+                 r"invalid credentials|authentication failed|signature.*invalid|status.*(?:Invalid|Rejected)",
+                 message, re.IGNORECASE):
+        return False
+    return bool(re.search(
+        r"NSURLErrorDomain\s+Code=-(?:1001|1003|1004|1005|1006|1009)\b|"
+        r"(?:status(?:Code)?[\s:=]*(?:Optional\()?|HTTP\s+)(?:429|5\d\d)\b|"
+        r"request timed out|network connection was lost|could not connect to the server|"
+        r"could not resolve host|connection reset by peer|timestamp service is not available",
+        message, re.IGNORECASE))
+
+
+def apple_request(*args, retry=True, timeout=120, deadline=None):
+    """Bounded retries for idempotent Apple requests; never log argv or credentials."""
+    result = subprocess.CompletedProcess(args, 124, stdout="", stderr="Apple request timed out")
+    for attempt in range(len(APPLE_RETRY_DELAYS) + 1 if retry else 1):
+        remaining = timeout if deadline is None else min(timeout, deadline - time.monotonic())
+        if remaining <= 0:
+            return result
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, check=False, timeout=remaining)
+        except subprocess.TimeoutExpired as error:
+            # Keep partial JSON (including a possible submission ID), without printing argv.
+            def decoded(value):
+                return value.decode(errors="replace") if isinstance(value, bytes) else (value or "")
+            result = subprocess.CompletedProcess(args, 124, stdout=decoded(error.stdout),
+                                                 stderr=decoded(error.stderr) + "\nApple request timed out")
+        if not result.returncode or not retry or not transient_apple_error((result.stdout or "") + (result.stderr or "")):
+            return result
+        if attempt == len(APPLE_RETRY_DELAYS):
+            return result
+        delay = APPLE_RETRY_DELAYS[attempt]
+        if deadline is not None and time.monotonic() + delay >= deadline:
+            return result
+        print(f"Temporary Apple network failure; retry {attempt + 2}/4 in {delay}s", flush=True)
+        time.sleep(delay)
+    return result
+
+
+def apple_run(*args):
+    result = apple_request(*args)
+    if result.returncode:
+        raise SystemExit(f"Apple {Path(args[0]).name} request failed (exit {result.returncode}); signing stopped")
+    return result
 
 
 def run(*args, **kwargs):
@@ -76,7 +127,7 @@ class SigningSession:
 
     def sign(self, path, *, runtime=True):
         options = ("--options", "runtime") if runtime else ()
-        run("codesign", "--force", "--sign", self.identity, "--keychain", str(self.keychain),
+        apple_run("codesign", "--force", "--sign", self.identity, "--keychain", str(self.keychain),
             *options, "--timestamp", str(path))
 
     def verify(self, path, *, runtime=True):
@@ -110,11 +161,11 @@ class SigningSession:
         logs.mkdir(parents=True, exist_ok=True)
         result_path = logs / f"{label}-submission.json"
         authentication = ("--keychain-profile", "bankingcraft-notary", "--keychain", str(self.keychain))
-        with result_path.open("w") as output:
-            result = subprocess.run([
-                "xcrun", "notarytool", "submit", str(path), *authentication,
-                "--wait", "--timeout", "30m", "--output-format", "json",
-            ], stdout=output, check=False)
+        # Upload once, then poll the same ID. An ambiguous upload failure must not
+        # create duplicate submissions; diagnostics allow an operator to reconcile it.
+        result = apple_request("xcrun", "notarytool", "submit", str(path), *authentication,
+                               "--output-format", "json", retry=False, timeout=600)
+        result_path.write_text(result.stdout or "")
         try:
             submission = json.loads(result_path.read_text())
         except (ValueError, OSError):
@@ -122,18 +173,45 @@ class SigningSession:
         if not isinstance(submission, dict):
             raise SystemExit(f"Notarization returned no valid result; inspect {result_path}")
         submission_id = submission.get("id")
-        if submission_id:
-            # Keep Apple's diagnostics outside dist so they cannot become release assets.
-            subprocess.run([
-                "xcrun", "notarytool", "log", submission_id, *authentication,
-                str(logs / f"{label}-log.json"),
-            ], check=False)
-        if result.returncode or submission.get("status") != "Accepted" or not submission_id:
+        if not isinstance(submission_id, str) or not submission_id:
+            raise SystemExit(f"No notarization submission ID; inspect {result_path} before retrying the upload")
+        if result.returncode and submission.get("status") == "Accepted":
+            # An interrupted command is not itself proof of acceptance.
+            submission["status"] = "In Progress"
+        print(f"Notarization submitted: {label} ({submission_id})", flush=True)
+        deadline = time.monotonic() + NOTARY_WAIT_SECONDS
+        while submission.get("status") not in ("Accepted", "Invalid", "Rejected"):
+            if time.monotonic() >= deadline:
+                raise SystemExit(f"Notarization timed out; submission {submission_id}; see {result_path}")
+            result = apple_request("xcrun", "notarytool", "info", submission_id, *authentication,
+                                   "--output-format", "json", deadline=deadline)
+            if result.returncode:
+                raise SystemExit(f"Notarization status unavailable; submission {submission_id}; see {result_path}")
+            try:
+                submission = json.loads(result.stdout)
+            except ValueError:
+                raise SystemExit(f"Invalid notarization status; submission {submission_id}") from None
+            if not isinstance(submission, dict) or submission.get("id") != submission_id:
+                raise SystemExit(f"Unexpected notarization status ID; submission {submission_id}")
+            (logs / f"{label}-status.json").write_text(result.stdout)
+            if submission.get("status") == "In Progress":
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise SystemExit(f"Notarization timed out; submission {submission_id}; see {result_path}")
+                time.sleep(min(15, remaining))
+            elif submission.get("status") not in ("Accepted", "Invalid", "Rejected"):
+                raise SystemExit(f"Unknown notarization status; submission {submission_id}")
+        # Keep Apple's diagnostics outside dist so they cannot become release assets.
+        diagnostic = apple_request("xcrun", "notarytool", "log", submission_id, *authentication,
+                                   str(logs / f"{label}-log.json"))
+        if diagnostic.returncode:
+            print(f"Warning: notarization log unavailable for {submission_id}", flush=True)
+        if submission.get("status") != "Accepted":
             raise SystemExit(f"Notarization not accepted ({submission.get('status', 'unknown')}); see {result_path}")
         print(f"Notarization accepted: {label} ({submission_id})", flush=True)
 
     def staple(self, path):
-        run("xcrun", "stapler", "staple", str(path))
+        apple_run("xcrun", "stapler", "staple", str(path))
         run("xcrun", "stapler", "validate", str(path))
 
 
@@ -181,7 +259,7 @@ def signing_session(mode):
             if len(matches) != 1:
                 raise SystemExit("Expected exactly one valid Developer ID Application certificate "
                                  "with private key for APPLE_SIGNING_NAME and APPLE_TEAM_ID")
-            run("xcrun", "notarytool", "store-credentials", "bankingcraft-notary",
+            apple_run("xcrun", "notarytool", "store-credentials", "bankingcraft-notary",
                 "--key", str(private_key), "--key-id", os.environ["APPLE_API_KEY_ID"],
                 "--issuer", os.environ["APPLE_API_ISSUER_ID"], "--keychain", str(keychain))
             certificate.unlink()

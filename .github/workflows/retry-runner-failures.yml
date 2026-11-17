@@ -1,0 +1,32 @@
+name: Retry runner allocation failures
+
+on:
+  workflow_run:
+    workflows: [CI, Dependency audit, Apple signing check, Release packages]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  checks: read
+
+concurrency:
+  group: runner-retry-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    name: Inspect runner allocation failures
+    if: github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Always execute the trusted workflow revision, never the triggering run's code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Retry only confirmed allocation failures within the attempt limit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/retry-runner-failures.py
