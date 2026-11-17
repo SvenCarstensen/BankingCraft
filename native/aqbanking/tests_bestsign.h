@@ -47,6 +47,27 @@ int bc_test_recv_queue(AH_OUTBOX_CBOX *box,AH_DIALOG *dialog,AH_JOBQUEUE *queue)
   return 0;
 }
 
+// Exercise the real upstream owner through both destruction paths. Linux
+// LeakSanitizer must catch any recipient strings left behind by VopResult_free.
+static void test_vop_result_ownership(void) {
+  AH_VOP_RESULT_LIST *results=AH_VopResult_List_new();
+  for (unsigned i=0;i<2;i++) {
+    AH_VOP_RESULT *result=AH_VopResult_new();
+    AH_VopResult_SetLocalBic(result,"COBADEFFXXX");
+    AH_VopResult_SetRemoteIban(result,"DE89370400440532013000");
+    AH_VopResult_SetRemoteName(result,"Synthetic recipient");
+    AH_VopResult_SetAltRemoteName(result,"Synthetic corrected recipient");
+    AH_VopResult_SetRemoteName(result,"Synthetic replacement");
+    AH_VopResult_SetAltRemoteName(result,NULL);
+    AH_VopResult_SetAltRemoteName(result,"Synthetic correction");
+    if (i==0) AH_VopResult_free(result);
+    else AH_VopResult_List_Add(result,results);
+  }
+  AH_VopResult_List_free(results);
+  AH_VopResult_free(AH_VopResult_new());
+  AH_VopResult_free(NULL);
+}
+
 static unsigned vop_dialog_calls;
 static int count_vop_dialog(GWEN_GUI *gui,GWEN_DIALOG *dialog,uint32_t id) {
   (void)gui;(void)id;

@@ -11,7 +11,9 @@ IPC and ASan/UBSan adapter checks, version consistency and the license bundle fo
 - BestSign method selection and legacy migration, pending/success/rejected/cancelled
   responses, bank-supplied polling intervals and limits, manual fallback, a single HKVPA
   submission and subsequent status-only polling. Native VoP tests retain confirmation
-  for mismatches, incomplete results and non-Postbank dialogs.
+  for mismatches, incomplete results and non-Postbank dialogs. Linux LeakSanitizer exposed
+  missing cleanup of the upstream VoP result's owned strings; the source patch and native
+  regressions cover direct/list destruction, replaced fields and empty results.
 - Chip-card batching: four native read jobs share one provider dispatch; 18 synthetic
   accounts use two IPC batches instead of 36 single reads. Tests cover per-account dates,
   partial failures, invalid result sets, read-only dispatch and no automatic retry.

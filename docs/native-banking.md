@@ -226,8 +226,10 @@ Linux package ownership is looked up against installed files rather than staging
 - Define Libchipcard's pkg-config directory variables before referencing them,
   as required by the pkg-config version on Ubuntu 22.04 release runners.
 - Release temporary SWIFT descriptors and global-data directory lists, and avoid
-  allocating an account-spec list before the getter replaces it. Linux's existing
-  LeakSanitizer tests exercise all three paths; leak detection stays enabled.
+  allocating an account-spec list before the getter replaces it. Free all four owned
+  recipient strings when a VoP result is destroyed, including list destruction and
+  partially populated results. Linux LeakSanitizer exercises these paths; leak detection
+  stays enabled.
 
 Review these patches on every native version update. Preserve native COPYING and
 AUTHORS files. Exact original archives accompany `package-source.sh` output and

@@ -46,8 +46,14 @@ def patch_source(name, source):
                      '  return GWEN_Gui_ProgressLog(gid, GWEN_LoggerLevel_Warning, I18N("Pin entry on card reader finished."));',
                      '  GWEN_Gui_HideBox(gid);\n  return 0;')
     if name == "aqbanking":
-        # Linux LeakSanitizer exposes three ownership bugs in pinned 6.9.2.
+        # Linux LeakSanitizer exposes ownership bugs in pinned 6.9.2.
         # Free temporary objects at their owners; keep leak detection enabled.
+        replace_once(source / "src/libs/plugins/backends/aqhbci/admjobs/vop_result.c",
+                     '    GWEN_LIST_FINI(AH_VOP_RESULT, vr);\n    GWEN_FREE_OBJECT(vr);',
+                     '    GWEN_LIST_FINI(AH_VOP_RESULT, vr);\n'
+                     '    free(vr->localBic);\n    free(vr->remoteIban);\n'
+                     '    free(vr->remoteName);\n    free(vr->altRemoteName);\n'
+                     '    GWEN_FREE_OBJECT(vr);')
         replace_once(source / "src/libs/plugins/backends/aqhbci/joblayer/jobqueue_account.c",
                      '    accountSpecList=AB_AccountSpec_List_new();\n    rv=AB_Banking_GetAccountSpecList(ab, &accountSpecList);',
                      '    /* GetAccountSpecList allocates the returned list. */\n    rv=AB_Banking_GetAccountSpecList(ab, &accountSpecList);')

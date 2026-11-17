@@ -14,6 +14,8 @@ and development**.
   dialog. Status checks never submit the transfer again.
 - Omit the extra Postbank recipient-verification dialog only when every submitted payee
   has a complete positive match. Missing, incomplete or mismatching results still prompt.
+- Fix AqBanking's cleanup of recipient-verification results, including all owned recipient
+  strings, with Linux leak-detection coverage.
 - Remove bank-accepted orders from the pending order list, including older sent orders.
   Preserve durable submission records and history; uncertain or failed orders remain
   visible for review and are not retried automatically.

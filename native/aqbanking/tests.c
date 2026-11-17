@@ -691,6 +691,7 @@ int main(int argc,char **argv) {
   assert(AB_Banking_EndUseProvider(bank,provider)==0); bc_free(&request);
   test_snapshot_groups_and_upgrade(bank); test_setup_and_errors();
   test_tan_medium(bank);
+  test_vop_result_ownership();
   test_bestsign(bank);
   test_camt_preference(bank); test_sepa_accounts(bank); bc_free(&request);
   GWEN_SSLCERTDESCR *cert=GWEN_SslCertDescr_new();
