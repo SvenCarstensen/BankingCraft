@@ -9,7 +9,7 @@ separate experimental read-only integration.
 > [!WARNING]
 > **Early alpha — intended for evaluation and development.**
 > BankingCraft has limited real-world validation and is not yet validated for general
-> production banking or real payment submission. The implemented features below do not
+> production banking. The implemented features below do not
 > imply that every bank, security method or payment workflow has been tested successfully.
 
 ## Development status and known limitations
@@ -18,8 +18,10 @@ separate experimental read-only integration.
 5.1.6. Postbank PIN/TAN account, balance and transaction retrieval, including
 credit-card transactions, completed successfully on macOS on November 15, 2026.
 A VR Bank Nord RDH retrieval was also exercised with a cyberJack; the user confirmed
-one reader PIN entry for the refresh. Real payments and other card/reader combinations
-remain unvalidated with this backend.**
+one reader PIN entry for the refresh. During local testing on November 17, the user
+reported a bank-accepted Postbank transfer. This is limited user-reported evidence,
+not independent confirmation of settlement or validation of other payment methods
+and card/reader combinations.**
 
 Other bank/card configurations must be validated separately. The application remains
 an evaluation build.
@@ -28,13 +30,13 @@ See [native banking](docs/native-banking.md) and the
 
 - **BankingCraft uses its own registered FinTS product ID.** It is included in normal builds
   and sent only in HKVVB's “Produktbezeichnung” field, unchanged and exactly 25 characters long.
-  Registration does not replace bank/card compatibility checks.
+  Activation may still vary by bank. Registration does not replace bank/card compatibility checks.
 - **PayPal retrieval is experimental and has not been tested with a real account.** It requires
   an eligible PayPal Business account with legacy NVP API signature credentials. Read-only
   balance and transaction retrieval is implemented; see [PayPal setup](#paypal-setup).
-- **Real payments remain untested.** Transfers, instant and scheduled transfers, standing order
-  changes and Verification of Payee have not been validated by submitting real payment orders.
-  Their automated tests use simulated bank responses. **Synchronize transactions sends saved
+- **Payment validation remains limited.** Automated transfer, standing-order and Verification
+  of Payee checks use simulated bank responses. The user-reported Postbank acceptance above
+  does not validate every bank, payment method or final settlement. **Synchronize accounts sends saved
   orders for the selected accounts before retrieving balances and transactions.**
 - **The interface uses egui/eframe 0.36.** Automated UI tests and a native macOS
   startup check have passed, but broad hands-on validation is still pending.
@@ -57,15 +59,16 @@ filename and key derivation remain compatible.
 
 ## Downloads
 
-Get the [0.1.1 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.1)
-for Linux x64, Windows x64 or Apple Silicon Macs. Version 0.1.1 adds bounded Apple/network
-and hosted-runner retries, publishes releases as Latest and drops new Intel Mac builds.
+Get the [0.2.0 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.2.0)
+for Linux x64, Windows x64 or Apple Silicon Macs. Version 0.2.0 adds Postbank BestSign
+status polling, batched chip-card retrieval, activity history, account-specific transfer
+templates and macOS notifications with a quiet chime.
 The existing [0.1.0 Intel download](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
 remains available unchanged. The macOS app and DMG are Developer ID signed and Apple notarized.
 The signing identity is **Sven Carstensen (Y322FFQ9N6)**, the authorized Apple account;
 AppCreation GmbH remains the app's publisher. Windows packages are not Authenticode signed.
 
-See the [0.1.1 release notes](docs/release-notes.md) and
+See the [0.2.0 release notes](docs/release-notes.md) and
 [installation instructions](docs/releases.md) for package choices, signature verification
 and platform requirements. Existing vaults remain compatible; the alpha limitations above
 still apply. Earlier `v0.0.10` downloads do not contain these backend and signing updates.
@@ -153,12 +156,13 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | TAN display | Native AqBanking optical HHD data, bounded photoTAN/QR images, text and app approval prompts |
 | chipTAN USB | Libchipcard generates the TAN; BankingCraft validates the bounded response |
 | HBCI smart cards | DDV and ZKA/RDH through AqBanking and Libchipcard crypt tokens; private keys remain on the card |
-| Secure PIN entry | Libchipcard handles reader PIN-pad capabilities; a shared card session avoids repeated PIN prompts within an account refresh |
+| Secure PIN entry | Libchipcard handles reader PIN-pad capabilities; a shared card session and batched reads reduce repeated reader/network work. A reader PIN dialog shows a 30-second countdown and aborts the operation on timeout. |
+| Postbank BestSign | Push approval with automatic status polling when advertised by the bank; the same dialog shows progress and the final result. Polling does not submit the transfer again. |
 | Balance completeness | Securities accounts without a balance remain visible but do not trigger a missing-account-balance warning; depot holdings and valuations are not retrieved |
 | Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
 | Payment orders and recipients | Encrypted outgoing queue showing pending/unresolved orders, automatically removing bank-accepted orders from the list (including previously sent orders), a navigation badge counting visible orders (hidden when empty), saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Local notifications (macOS) | A quiet bundled chime and a local banner signal sync completion (success, errors or cancellation) and a new card-reader input prompt. Countdown updates do not repeat alerts; completed/expired reader prompts are removed. Uses the macOS notification permission and sound settings, with fixed text excluding banking details. [Apple notification sound documentation](https://developer.apple.com/documentation/usernotifications/unnotificationsound) |
-| Activity history | Encrypted per-vault history of bank jobs, payment outcomes, local changes, imports/exports and session actions, with search, message-type filters and time/type sorting. Transfer details can prepare a new draft for review and authorization. Existing accepted orders are imported with an explicit unknown-confirmation-time note; other earlier actions cannot be reconstructed. Raw bank replies, credentials, PINs and TANs are excluded. |
+| Activity history | Encrypted per-vault history of bank jobs, payment outcomes, local changes, imports/exports and session actions, with search, message-type filters and time/type sorting. Text wraps fully without truncation. Transfer details can prepare a new draft for review and authorization. Existing accepted orders are imported with an explicit unknown-confirmation-time note; other earlier actions cannot be reconstructed. Raw bank replies, credentials, PINs and TANs are excluded. |
 | Transfer templates | Named templates per debtor account include recipient, amount and payment reference. Loading a template only fills the form; execution dates and previous payment identifiers are not reused. |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
 | Categories | A dedicated sidebar page below Bank connections; create categories, rename or delete custom and built-in categories per vault, with preserved assignments and a replacement for deleted categories |
@@ -196,7 +200,11 @@ Drivers: REINER SCT drivers on macOS and Windows; `pcscd` and `ifd-cyberjack` on
 
 ## Build
 
-Build on the operating system you intend to run. The commands below use **Rust 1.99.1**,
+Build on the operating system you intend to run. For local development and replacing a local
+installation, use `cargo build --locked -p bankingcraft` and the `target/debug` executable.
+Local builds do not use Developer ID signing, Apple notarization or uploads to Apple;
+only technically required local ad-hoc Mach-O signatures are used. The release commands
+below are for explicitly requested distribution builds. They use **Rust 1.99.1**,
 the version used by CI, and the committed lockfile. Install [Rust through rustup](https://rust-lang.org/tools/install/),
 Git and Python 3 first. Reopen your terminal after installing tools so they are on `PATH`.
 A working graphics driver with OpenGL support is required to run the native app.
@@ -395,9 +403,9 @@ validates the configured certificate and notarization credentials without buildi
 2. Open **Bank connections → New bank connection** and find the bank by name, city,
    bank code or BIC. The bank code and FinTS URL or HBCI host are filled in automatically.
    Enter the PIN/TAN user ID, or select a smart card reader and choose **Read data from card**.
-3. Choose **Synchronize transactions** on the overview page.
+3. Choose **Synchronize accounts** on the overview page (**Konten synchronisieren** in German).
 
-On **Transactions**, **Synchronize transactions** first sends the saved orders for the selected
+On **Transactions**, **Synchronize accounts** first sends the saved orders for the selected
 account, then retrieves its balance and transactions. Group synchronization does the same for
 only the accounts in that group. The global button and **All accounts** synchronize all bank
 connections: all their saved orders are sent before any balance or transaction retrieval starts.
@@ -410,7 +418,10 @@ prompts still appear when required. Errors stay visible until dismissed, with co
 selectable details available separately.
 
 Smart-card account discovery, balance retrieval and transaction retrieval share one
-card session per bank access. The card is closed after the refresh; cancellation,
+card session per bank access. Supported balance and transaction requests are batched
+for up to 16 accounts at a time, respecting each account's date range and bank capabilities.
+Reader PIN entry shows a 30-second countdown; timeout aborts the current synchronization.
+The card is closed after the refresh; cancellation,
 vault locking or a failed card read stops the session. Payments use a separate
 session. The app does not save the card PIN.
 
@@ -430,7 +441,8 @@ show a sample flicker code and are simulated locally; they do not contact a bank
 the transfer to **Payment orders** without contacting the bank. Synchronizing an
 account, group or all accounts sends the matching saved orders first, with the normal
 bank authorization. If a submission fails or is cancelled, synchronization stops before retrieval. **Send transfer** sends only the current transfer immediately after confirmation.
-Sent orders remain visible in the list and are not sent again. Interrupted or failed attempts are
+Bank-accepted orders disappear from the pending list and remain recorded in encrypted history;
+their durable submission status prevents automatic resending. Interrupted or failed attempts are
 marked **Review required** and are not retried automatically; check the bank status before creating
 a replacement. Removing a local entry does not cancel an order already received by the bank.
 
@@ -438,6 +450,26 @@ Each account has its own recipient address book. Select a recipient to fill in n
 A recipient is saved or updated only when **Save to address book** is checked when saving or sending
 the transfer. The checkbox is off by default and resets after a successful payment action or account
 change. The same IBAN updates a recipient only in that account. Existing vaults remain compatible.
+
+Use **Templates for this account** on the transfer form to save a named template for the selected
+account, including recipient, amount and payment reference. Loading it fills a new draft;
+old execution dates and payment identifiers are not reused. Templates can be deleted independently
+of the address book and are stored in the encrypted vault.
+
+Open **History** to search actions, filter by message type and sort by type or time in either
+direction. Long text wraps without truncation. Select a transfer entry and choose **Repeat transfer**
+to prepare a new draft; review and authorization are still required before sending it.
+
+Postbank BestSign push approvals display the waiting state and check the bank's status
+automatically when the selected method supports it, respecting the bank's polling intervals.
+The result appears in the same dialog. A complete positive recipient match avoids a redundant
+Postbank confirmation; mismatches or missing results still require explicit confirmation.
+
+On macOS, allow BankingCraft notifications to receive a local banner and quiet chime when a
+synchronization ends or the card reader needs input. Configure banners and sound in **System
+Settings → Notifications → BankingCraft**. Countdown ticks do not repeat the notification,
+and finished reader prompts are removed. Messages contain no account or payment details.
+Other platforms continue to use the in-app dialogs.
 
 Window size and position are saved when the window closes or the application quits and restored
 on the next launch, including the locked screen. `window-state.json` next to the vault contains
@@ -565,13 +597,14 @@ native worker. Sharing libraries with GnuCash does not establish
 identical security: BankingCraft's UI, IPC, encrypted persistence, packaging and
 payment authorization are separate code requiring review.
 
-Local verification on November 15, 2026 passed **155 workspace tests**, Clippy with warnings
-as errors, native offline regressions and ASan/UBSan adapter checks. The macOS release build
-starts successfully. A live Postbank PIN/TAN check retrieved account data, balances and
+Local verification for 0.2.0 on November 17, 2026 passed **193 workspace tests** (8 ignored),
+Clippy with warnings as errors, 25 release-tooling tests, native offline regressions and
+ASan/UBSan adapter checks. The installed macOS Debug app starts successfully. Earlier live
+Postbank PIN/TAN checks retrieved account data, balances and
 transactions, including credit-card transactions; the updated synchronization display was
 also confirmed by the user. A VR Bank Nord RDH refresh used one worker through the
 last account and one cyberJack PIN entry, confirmed by the user. These checks do not
-validate other banks, card/reader combinations or real payment submission.
+validate other banks, card/reader combinations or settlement of user-reported payments.
 
 Run `cargo test --workspace --locked`, the native offline tests and the packaged
 runtime scan described in [native banking](docs/native-banking.md).
@@ -584,7 +617,7 @@ payee proceeds without an additional VoP confirmation dialog. Mismatches, missin
 incomplete results still require explicit confirmation. Cancellation and unknown
 dialog types fail closed. To correct a payment, cancel and submit the revised form.
 Native adapter tests exercise the actual AqBanking VoP dialog with synthetic data.
-No real payment or bank VoP approval workflow has been tested with this backend.
+These synthetic tests do not independently verify live payment execution or settlement.
 
 See [security hardening and audit scope](docs/security-hardening.md) for controls,
 known limits and outstanding independent review. PCI-DSS/FAPI compliance and security

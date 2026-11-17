@@ -11,9 +11,9 @@ including its Intel package and checksums, remain available unchanged.
 
 ## Downloads and installation
 
-Get [version 0.1.1](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.1)
+Get [version 0.2.0](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.2.0)
 from GitHub Releases. It is an early-alpha release for evaluation.
-The filenames below use `VERSION=0.1.1`; choose the package for your operating system and CPU.
+The filenames below use `VERSION=0.2.0`; choose the package for your operating system and CPU.
 
 | Asset | Target and installation |
 | --- | --- |
@@ -44,7 +44,9 @@ The application uses OpenGL and needs a compatible graphics driver on Windows an
 Uninstalling the application does not delete banking vaults or user configuration.
 
 The existing [alpha limitations](../README.md#development-status-and-known-limitations) apply,
-including pending FinTS product registration. Packaged startup tests do not contact a bank.
+including limited live bank/payment validation. Public builds use BankingCraft's own
+registered FinTS identity; activation may still vary by bank. Machine-local test overrides
+and banking data are excluded from release packages. Packaged startup tests do not contact a bank.
 
 ### Verify the download
 
@@ -77,7 +79,7 @@ tools; ordinary installation does not require them.
    `publish=false` and `sign_macos=true` to validate signed packages without creating a release.
    An explicit `sign_macos=false` allows ad-hoc macOS test artifacts without Apple credentials.
 4. After a successful run, create and push an annotated tag matching the version, for example
-   `git tag -a v0.1.2 -m 'BankingCraft 0.1.2'` and `git push origin v0.1.2`.
+   `git tag -a v0.2.1 -m 'BankingCraft 0.2.1'` and `git push origin v0.2.1`.
 
 Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
 current version, then creates its tag and publishes the release only after every check passes.
@@ -99,6 +101,11 @@ published release assets remain attached to the release.
 
 Published releases are never overwritten. If an upload fails, rerun failed jobs to finish the
 draft. For changes to released application code, use a new version and tag.
+
+Local development and replacement of an installed development app use ordinary Debug builds
+without Developer ID signing, notarization or Apple uploads. Only required local ad-hoc
+Mach-O signatures are applied. The signed distribution workflow above is reserved for an
+explicitly requested public release; it does not replace the developer's installed Debug app.
 
 ## Packaging and source
 

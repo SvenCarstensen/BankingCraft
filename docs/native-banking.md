@@ -1,13 +1,15 @@
 # Native banking runtime
 
-Integration status: November 15, 2026. This change has been tested offline on
+Integration status: November 17, 2026. This change has been tested offline on
 macOS Apple Silicon. Postbank credit-card retrieval and the full Postbank account
 refresh have also completed in live checks. A VR Bank RDH refresh was exercised
 with a cyberJack, reusing one worker through the last account; the tester confirmed
 a single reader PIN entry. Other physical-card/reader combinations remain unverified.
 Windows/Linux automation is configured; its results are recorded in GitHub Actions.
-The local development app has been updated. No release containing this migration
-has been published.
+The AqBanking migration shipped in 0.1.0. Version 0.2.0 adds BestSign polling,
+batched card retrieval, bounded reader PIN prompts and the registered product identity.
+The user reported a bank-accepted Postbank transfer during local testing; final settlement
+and broader live payment compatibility have not been independently verified.
 
 ## Boundaries and migration
 

@@ -1,5 +1,47 @@
 # Testing
 
+## Version 0.2.0 release preparation — November 17, 2026
+
+The normal build uses the publisher's FinTS registration and does not read the temporary
+machine-local test configuration. The macOS preparation passed **193 workspace tests**
+(8 ignored), Clippy with warnings treated as errors, **25 release-tooling tests**, native
+IPC and ASan/UBSan adapter checks, version consistency and the license bundle for
+**488 external packages**. Local offline verification covers:
+
+- BestSign method selection and legacy migration, pending/success/rejected/cancelled
+  responses, bank-supplied polling intervals and limits, manual fallback, a single HKVPA
+  submission and subsequent status-only polling. Native VoP tests retain confirmation
+  for mismatches, incomplete results and non-Postbank dialogs.
+- Chip-card batching: four native read jobs share one provider dispatch; 18 synthetic
+  accounts use two IPC batches instead of 36 single reads. Tests cover per-account dates,
+  partial failures, invalid result sets, read-only dispatch and no automatic retry.
+- Reader PIN callback pairing, countdown, cancellation, duplicate events, deadline expiry
+  and worker termination. Tests shorten the deadline; the production limit is 30 seconds.
+- Encrypted history persistence, interrupted jobs, bank-accepted and uncertain payment
+  outcomes, search/filter/sort, repeat-to-draft, lock cleanup and legacy action labels.
+  Layout checks cover full untruncated text, row separation and clicking, narrow windows,
+  all four languages and a 5,000-entry history.
+- Account-specific templates, amount/reference preservation, duplicate names, deletion,
+  draft loading and removal of old execution dates and payment identifiers.
+- Notification event selection, one completion per synchronization, reader prompt changes
+  without repeated countdown alerts, cancellation/error outcomes and fixed translated text.
+  The native macOS notification permission and quiet bundled sound were also checked locally;
+  this does not establish behavior under every Focus or system-notification configuration.
+
+The validation commands are `cargo test --workspace --locked`,
+`cargo clippy --workspace --all-targets --locked -- -D warnings`,
+`python3 -m unittest discover -s scripts/tests -v`, `python3 scripts/test-native.py`
+and `python3 scripts/test-native-adapter.py`. Native adapter checks use ASan/UBSan on Unix.
+Version consistency and the regenerated license bundle are checked before publication.
+All automated bank tests use synthetic data, temporary vaults and simulated bank replies;
+they neither contact a bank nor submit a payment.
+
+The user reported a bank-accepted Postbank transfer during local testing. Earlier macOS
+Postbank and VR Bank retrieval checks remain the scope of live-bank evidence. Settlement,
+other bank/reader combinations and the elapsed-time improvement of batching have not been
+independently measured. The versioned GitHub release run separately requires all three
+platform package checks, including macOS signing and notarization, before publication.
+
 ## Version 0.1.1 release preparation — November 16, 2026
 
 The 25 credential-free signing, packaging and runner-retry regression tests pass.
