@@ -53,7 +53,7 @@ def main():
         initial = {str(p.relative_to(home)):p.read_bytes() for p in home.rglob("*") if p.is_file()}
         request = dict(version="1", op="probe", data_path=str(blocker), state=b"", blz="12345678",
                        user="synthetic-user", customer="synthetic-customer", medium="pintan", record="1",
-                       url="https://bank.invalid", product="SYNTHETIC", product_version="1")
+                       url="https://bank.invalid", product="SYNTHETICREGISTRATION0001", product_version="1")
         def invoke(raw):
             # Match the Rust launcher: constructors may log before C main can
             # redirect descriptors, so stderr is discarded at process creation.
@@ -67,12 +67,19 @@ def main():
             done = frames[-1]
             assert done["code"] == b"0", {k:v for k,v in done.items() if k!="state"}
             assert b"DO_NOT_IMPORT" not in done["state"]
+            assert request["product"].encode() not in done["state"]
             if op == "configure":
                 assert done["state"].count(b"synthetic-user") == 1
             assert "stage" in done
             request["state"] = done["state"]
         final = {str(p.relative_to(home)):p.read_bytes() for p in home.rglob("*") if p.is_file()}
         assert initial == final, "native code wrote outside the encrypted snapshot"
+        for product in ["", "X"*24, "X"*26, "X"*24+"+", "X"*24+" ", "X"*24+"\0", "X"*23+"Ü"]:
+            result=invoke(encode(dict(request, product=product)))
+            assert result.returncode==71 and not result.stdout, "invalid HKVVB registration accepted"
+        for version in ["", "123456", "1+2", "1\0"]:
+            result=invoke(encode(dict(request, product_version=version)))
+            assert result.returncode==71 and not result.stdout, "invalid HKVVB version accepted"
         good = encode(dict(version="1"))
         malformed = [good[:i] for i in range(len(good))]
         malformed += [struct.pack(">I", 0xffffffff), encode(dict(version=b"1\0"))]
@@ -87,7 +94,7 @@ def main():
         for raw in malformed:
             result = invoke(raw)
             assert result.returncode == 71 and not result.stdout and not result.stderr
-    print("PASS: offline initialization, state roundtrip, legacy-import isolation, no disk writes, malformed IPC")
+    print("PASS: offline initialization, state roundtrip, legacy-import isolation, HKVVB identity bounds, no disk writes, malformed IPC")
 
 if __name__ == "__main__":
     main()

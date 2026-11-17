@@ -8,8 +8,8 @@ license.workspace = true
 
 [features]
 default = []
-# Opt-in only; reads a machine-local file at runtime, never embeds its contents.
-local-fints-test = []
+# Explicit local installation only; the external ID is never compiled into the app.
+local-fints-test = ["aqbanking/local-fints-test"]
 
 [dependencies]
 sys-locale = "0.3"

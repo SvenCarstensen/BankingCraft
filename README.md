@@ -26,10 +26,9 @@ an evaluation build.
 See [native banking](docs/native-banking.md) and the
 [security implementation and audit handoff](docs/security-hardening.md).
 
-- **FinTS product registration is pending.** BankingCraft does not yet have its own registered
-  product ID. Normal builds without a configured ID send an unregistered placeholder and may
-  be rejected by banks. The local test ID used during development is neither included in the
-  repository nor embedded in builds. See [Build](#build) for the separation of local test settings.
+- **BankingCraft uses its own registered FinTS product ID.** It is included in normal builds
+  and sent only in HKVVB's “Produktbezeichnung” field, unchanged and exactly 25 characters long.
+  Registration does not replace bank/card compatibility checks.
 - **PayPal retrieval is experimental and has not been tested with a real account.** It requires
   an eligible PayPal Business account with legacy NVP API signature credentials. Read-only
   balance and transaction retrieval is implemented; see [PayPal setup](#paypal-setup).
@@ -155,7 +154,10 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | Secure PIN entry | Libchipcard handles reader PIN-pad capabilities; a shared card session avoids repeated PIN prompts within an account refresh |
 | Balance completeness | Securities accounts without a balance remain visible but do not trigger a missing-account-balance warning; depot holdings and valuations are not retrieved |
 | Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
-| Payment orders and recipients | Encrypted outgoing queue, a navigation badge counting all orders in the list (hidden when empty), saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
+| Payment orders and recipients | Encrypted outgoing queue showing pending/unresolved orders, automatically removing bank-accepted orders from the list (including previously sent orders), a navigation badge counting visible orders (hidden when empty), saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
+| Local notifications (macOS) | A quiet bundled chime and a local banner signal sync completion (success, errors or cancellation) and a new card-reader input prompt. Countdown updates do not repeat alerts; completed/expired reader prompts are removed. Uses the macOS notification permission and sound settings, with fixed text excluding banking details. [Apple notification sound documentation](https://developer.apple.com/documentation/usernotifications/unnotificationsound) |
+| Activity history | Encrypted per-vault history of bank jobs, payment outcomes, local changes, imports/exports and session actions, with search, message-type filters and time/type sorting. Transfer details can prepare a new draft for review and authorization. Existing accepted orders are imported with an explicit unknown-confirmation-time note; other earlier actions cannot be reconstructed. Raw bank replies, credentials, PINs and TANs are excluded. |
+| Transfer templates | Named templates per debtor account include recipient, amount and payment reference. Loading a template only fills the form; execution dates and previous payment identifiers are not reused. |
 | Reports | Automatic categorization with learned rules, monthly and twelve-month EUR reports; other currencies remain separate in transaction lists and balance totals |
 | Categories | A dedicated sidebar page below Bank connections; create categories, rename or delete custom and built-in categories per vault, with preserved assignments and a replacement for deleted categories |
 | Export | CSV with translated headings and categories, semicolon delimiters and German number/date formatting; camt.052.001.08; files saved to Downloads |
@@ -334,20 +336,30 @@ Wayland title bars use Crossfont/FreeType. The local `crates/crossfont-compat` r
 aligns winit's Crossfont dependency with Fontique's Fontconfig binding; it does not
 introduce a separate renderer or `ttf-parser`.
 
-### FinTS product registration and local development
+### FinTS product registration
 
-A product ID already configured in a vault takes precedence. Normal builds use only that
-setting; otherwise the client sends the unregistered placeholder `BANKINGCRAFT`.
-Product IDs are not embedded through build environment variables.
+`crates/aqbanking/src/product.rs` supplies BankingCraft's registered product identity for
+every PIN/TAN, DDV and RDH client. Legacy vault product fields are ignored.
 
-For local tests only, build with `cargo build --release --locked --features local-fints-test`.
-This opt-in build can read a fallback ID at runtime from
-`BankingCraft/local-tests/fints-product-id` inside the current user's OS configuration directory
-(macOS: `~/Library/Application Support/BankingCraft/local-tests/fints-product-id`).
-Keep this file outside the repository with permissions `0600`; its contents must never appear
-in source, examples, documentation or commits. The ID is neither compiled into the app nor
-saved to a vault. A configured vault ID always takes precedence. Normal builds ignore this file;
-copying the test app to another machine does not copy its local configuration.
+For the explicitly requested temporary local installation, `local-fints-test` reads
+`BankingCraft/local-tests/fints-product-id` from the current user's configuration
+directory (macOS: `~/Library/Application Support/BankingCraft/local-tests/fints-product-id`).
+This build requires a valid 25-character ASCII alphanumeric ID; a missing or invalid
+file stops the operation without falling back to the publisher's ID. The temporary
+ID is never compiled into the binary or saved in a vault. Normal builds ignore the
+file and use BankingCraft's own registration. Keep the local file outside Git with
+permissions `0600`.
+
+The complete registration number is used exclusively in HKVVB's “Produktbezeichnung”
+field. There are no prefixes, suffixes, truncation or use in another protocol field.
+The native worker rejects registration values that are not exactly 25 ASCII alphanumeric
+characters before initializing AqBanking. Application names, INI letters and log metadata
+use “BankingCraft”. Raw banking logs remain disabled.
+
+The separate HKVVB application version comes from the build, with five decimal digits:
+one for major, two for minor and two for patch (for example, 0.0.10 becomes `00010`).
+Old vault versions cannot replace either protocol field. No registration setup is required
+in Settings or on individual machines.
 
 Raw FinTS protocol logs are disabled. Application diagnostics retain warning/error metadata
 without formatted messages or panic payloads. Bank errors remain visible in the app through
@@ -406,8 +418,8 @@ balance in group or overall totals. Missing balances on other accounts still pro
 a **Partial balance** notice.
 
 [FinTS product registration](https://www.fints.org/de/hersteller/produktregistrierung) is handled
-by the software publisher. Once assigned, BankingCraft’s product ID will be embedded in a future
-release. Product registration fields are not shown in Settings.
+by the software publisher. BankingCraft's assigned ID is included in builds and used only
+for HKVVB's product designation. Product registration fields are not shown in Settings.
 
 Without a bank connection, **Load demo data** creates a local demo connection. Demo transfers
 show a sample flicker code and are simulated locally; they do not contact a bank.
@@ -565,8 +577,9 @@ runtime scan described in [native banking](docs/native-banking.md).
 ### Verification of Payee
 
 BankingCraft shows a fixed local payment summary before dispatch. AqBanking handles
-the bank's VoP protocol. Its complete VoP dialog text requires explicit confirmation;
-no result is silently accepted by that dialog adapter. Cancellation and unknown
+the bank's VoP protocol. For Postbank, a complete positive match for every submitted
+payee proceeds without an additional VoP confirmation dialog. Mismatches, missing or
+incomplete results still require explicit confirmation. Cancellation and unknown
 dialog types fail closed. To correct a payment, cancel and submit the revised form.
 Native adapter tests exercise the actual AqBanking VoP dialog with synthetic data.
 No real payment or bank VoP approval workflow has been tested with this backend.

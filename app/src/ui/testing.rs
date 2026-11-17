@@ -372,7 +372,7 @@ fn tan_dialog_keeps_cancel_and_submission_visible_for_all_challenges() {
         for label in [
             i18n::tr("Abbrechen"),
             i18n::tr(if kind == 3 {
-                "Freigegeben"
+                "Freigabestatus prüfen"
             } else {
                 "TAN senden"
             }),
@@ -381,6 +381,57 @@ fn tan_dialog_keeps_cancel_and_submission_visible_for_all_challenges() {
             assert!(r.top() >= 20. && r.bottom() <= 660., "kind {kind}: {r:?}");
         }
     }
+}
+
+#[test]
+fn automatic_approval_stays_open_and_shows_the_worker_result() {
+    use banking::Interaction;
+    use egui_kittest::kittest::Queryable;
+    use std::sync::{Arc,Mutex,atomic::{AtomicBool,Ordering}};
+    i18n::with_language(i18n::Language::German, || {
+        for outcome in 0..3 {
+            let app=AppWindow::new().unwrap();
+            let st=app.global::<crate::AppState>(); st.set_unlocked(true);
+            let ctx=crate::jobs::Ctx { vault:Arc::new(Mutex::new(crate::store::Vault::default())),
+                file:Arc::new(Mutex::new(None)), bridge:crate::bridge::Bridge::new(app.as_weak()), running:Arc::new(AtomicBool::new(false)) };
+            crate::CTX.with(|slot| *slot.borrow_mut()=Some(ctx.clone()));
+            let (tx,rx)=std::sync::mpsc::channel();
+            ctx.run("Synthetic transfer",move |ctx| {
+                ctx.bridge.approval_pending("BestSign-Push","Synthetischer Auftrag",5,1,60);
+                rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
+                if outcome==2 {ctx.bridge.cancelled.store(true,Ordering::Release);}
+                if outcome==0 {Ok("Die Bank hat den Auftrag angenommen.".into())} else {Err("Synthetische Ablehnung der Bank".into())}
+            });
+            let mut harness=harness(&app,1100.,680.);
+            let deadline=std::time::Instant::now()+std::time::Duration::from_secs(5);
+            while st.get_tan_kind()!=4 {
+                assert!(std::time::Instant::now()<deadline); harness.run_steps(2); std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            harness.run_steps(3);
+            assert!(st.get_show_tan());
+            harness.get_by_label("Statusprüfung beenden");
+            assert!(harness.query_by_label("TAN senden").is_none());
+            assert!(harness.query_by_label("Freigabestatus prüfen").is_none());
+            if let Some(path)=std::env::var_os("BANKINGCRAFT_APPROVAL_PREVIEW").filter(|_|outcome==0) {
+                harness.render().unwrap().save(std::path::Path::new(&path).join("waiting.png")).unwrap();
+            }
+            tx.send(()).unwrap();
+            while ctx.running.load(Ordering::Acquire) {
+                assert!(std::time::Instant::now()<deadline); harness.run_steps(2); std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            harness.run_steps(3);
+            assert!(st.get_show_tan()); assert_eq!(st.get_tan_kind(),if outcome==0 {5} else {6});
+            let expected=match outcome {0=>"Die Bank hat den Auftrag angenommen.",1=>"Synthetische Ablehnung der Bank",_=>"Statusprüfung beendet. Bitte den Bankstatus prüfen, bevor du den Auftrag erneut sendest."};
+            assert_eq!(st.get_tan_text(),expected);
+            harness.get_by_label("Schließen");
+            assert!(harness.query_by_label("Statusprüfung beenden").is_none());
+            assert!(harness.query_by_label("TAN senden").is_none());
+            if let Some(path)=std::env::var_os("BANKINGCRAFT_APPROVAL_PREVIEW").filter(|_|outcome==0) {
+                harness.render().unwrap().save(std::path::Path::new(&path).join("result.png")).unwrap();
+            }
+            crate::CTX.with(|slot| *slot.borrow_mut()=None);
+        }
+    });
 }
 
 #[test]
@@ -522,4 +573,28 @@ fn render_paypal_setup() {
             for width in [1100, 1360] { snapshot(&app, width, 1100, std::env::temp_dir().join(format!("bankingcraft-paypal-{code}-{width}.png"))); }
         });
     }
+}
+
+#[test]
+fn reader_pin_dialog_and_countdown_remain_visible_during_combined_refresh() {
+    use banking::Interaction;
+    use egui_kittest::kittest::Queryable;
+    i18n::with_language(i18n::Language::German, || {
+        let app=AppWindow::new().unwrap();let st=app.global::<crate::AppState>();
+        st.set_unlocked(true);st.set_busy(true);st.set_busy_text("VR Bank: Salden und Umsätze abrufen …".into());
+        let bridge=crate::bridge::Bridge::new(app.as_weak()).with_application_progress();
+        bridge.reader_pin(30);bridge.progress("Native progress must not hide reader input");
+        let mut harness=harness(&app,1100.,680.);
+        harness.get_by_label("PIN-Eingabe am Kartenleser");
+        harness.get_by_label("Bitte geben Sie die PIN Ihrer HBCI-Chipkarte am Kartenleser ein und bestätigen Sie mit OK.");
+        harness.get_by_label("Automatischer Abbruch in 30 s.");
+        assert!(harness.query_by_label("PIN-Eingabe").is_none());
+        if let Some(path)=std::env::var_os("BANKINGCRAFT_READER_PIN_PREVIEW") {harness.render().unwrap().save(path).unwrap();}
+        bridge.reader_pin(29);harness.run_steps(3);
+        harness.get_by_label("Automatischer Abbruch in 29 s.");
+        bridge.reader_pin_timed_out();assert!(bridge.cancelled());
+        bridge.hardware_prompt(false,"");harness.run_steps(3);
+        assert!(harness.query_by_label("PIN-Eingabe am Kartenleser").is_none());
+        harness.get_by_label("VR Bank: Salden und Umsätze abrufen …");
+    });
 }

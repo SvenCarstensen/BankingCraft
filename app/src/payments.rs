@@ -100,10 +100,13 @@ impl Vault {
         if let Some(r) = self.recipients.iter_mut().find(|r| r.account_id == account_id && r.iban == iban) {
             r.name = name.into();
             r.bic = bic;
-            return Ok(r.id);
+            let id=r.id;
+            self.history.add("Empfänger gespeichert",crate::history::Status::Success,None);
+            return Ok(id);
         }
         let id = self.new_id();
         self.recipients.push(Recipient { id, account_id, name: name.into(), iban, bic });
+        self.history.add("Empfänger gespeichert",crate::history::Status::Success,None);
         Ok(id)
     }
 

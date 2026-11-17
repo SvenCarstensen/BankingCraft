@@ -10,7 +10,7 @@ use egui::{self, pos2, vec2, Align, Align2, Color32, Layout, Rect, Sense, Ui};
 
 use zeroize::Zeroize;
 
-fn modal(ui: &Ui, t: &Theme, id: &str, width: f32, f: impl FnOnce(&mut Ui)) {
+pub(super) fn modal(ui: &Ui, t: &Theme, id: &str, width: f32, f: impl FnOnce(&mut Ui)) {
     egui::Modal::new(egui::Id::new(id))
         .backdrop_color(Color32::from_rgba_unmultiplied(11, 20, 36, 160))
         .frame(
@@ -364,27 +364,22 @@ pub fn show(
     }
 
     if d.show_pinpad {
-        modal(ui, t, "pinpad", 420., |ui| {
+        modal(ui, t, "pinpad", 480., |ui| {
             ui.horizontal(|ui| {
-                let (r, _) = ui.allocate_exact_size(vec2(52., 52.), Sense::hover());
-
-                ui.painter().circle_filled(r.center(), 26., t.accent_soft);
-
-                icon(
-                    ui,
-                    icons::READER,
-                    Rect::from_center_size(r.center(), vec2(28., 28.)),
-                    t.accent,
-                );
-
-                ui.vertical(|ui| {
-                    text(ui, tr("Bitte am Kartenleser bestätigen"), 16., true, t.text);
-
-                    text(ui, &d.pinpad_text, 14., false, t.text_muted);
-                });
+                let (r, _) = ui.allocate_exact_size(vec2(44., 44.), Sense::hover());
+                ui.painter().circle_filled(r.center(), 22., t.accent_soft);
+                icon(ui, icons::READER, Rect::from_center_size(r.center(), vec2(26., 26.)), t.accent);
+                text(ui, tr(if d.pinpad_seconds>=0 {"PIN-Eingabe am Kartenleser"} else {"Bitte am Kartenleser bestätigen"}), 18., true, t.text);
             });
+            text(ui, &d.pinpad_text, 14., false, t.text);
+            if d.pinpad_seconds>=0 {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new());
+                    text(ui, &i18n::tr_format!("Automatischer Abbruch in {} s.",d.pinpad_seconds), 14., true, t.text_muted);
+                });
+                text(ui, tr("Der Hinweis schließt sich nach der Eingabe automatisch."), 13., false, t.text_muted);
+            }
         });
-
         return;
     }
 
@@ -624,10 +619,16 @@ action!(a,invoke_tan_usb);
 
         if d.tan_kind == 3 {
             egui::Frame::new().fill(t.accent_soft).corner_radius(8.).inner_margin(12).show(ui,|ui|{
-text(ui,tr("Bitte geben Sie den Auftrag in Ihrer Banking-App frei\nund klicken Sie anschließend auf „Freigegeben“."),14.,false,t.text);
+text(ui,tr("Bitte prüfen und bestätigen Sie den Auftrag in Ihrer Freigabe-App (z. B. BestSign) oder auf Ihrem Freigabegerät.\nKlicken Sie danach auf „Freigabestatus prüfen“."),14.,false,t.text);
 }
 );
-        } else {
+        } else if d.tan_kind == 4 {
+            text(ui, tr("Bitte bestätigen Sie den Auftrag in Ihrer Freigabe-App (z. B. BestSign). Der Status wird automatisch geprüft."), 14., false, t.text);
+            ui.horizontal_wrapped(|ui| {
+                ui.add(egui::Spinner::new());
+                text(ui, &d.tan_status, 14., false, t.text_muted);
+            });
+        } else if d.tan_kind < 3 {
             let w = ui.available_width();
 
             columns(ui, &[w - 118., 110.], 8., |ui, col| {
@@ -649,16 +650,15 @@ text(ui,tr("Bitte geben Sie den Auftrag in Ihrer Banking-App frei\nund klicken S
 
         right(ui, |ui| {
             if d.tan_kind == 3 {
-                if primary(ui, t, "Freigegeben", icons::CHECK, true) {
+                if primary(ui, t, "Freigabestatus prüfen", icons::CHECK, true) {
                     action!(a, invoke_tan_confirmed);
                 }
-            } else if primary(ui, t, "TAN senden", icons::CHECK, true) {
+            } else if d.tan_kind < 3 && primary(ui, t, "TAN senden", icons::CHECK, true) {
                 action!(a, invoke_tan_ok);
             }
 
-            if ghost(ui, t, "Abbrechen", "") {
-                action!(a, invoke_tan_cancel);
-            }
+            let label=match d.tan_kind { 4=>"Statusprüfung beenden", 5|6=>"Schließen", _=>"Abbrechen" };
+            if ghost(ui, t, label, "") { action!(a, invoke_tan_cancel); }
         });
     });
 }

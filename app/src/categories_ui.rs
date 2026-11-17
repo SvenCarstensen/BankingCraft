@@ -1,11 +1,11 @@
 use crate::{AppState, AppWindow, CategoryManager, ctx, refresh_view, store::Vault, view};
 use std::sync::atomic::Ordering;
 
-fn apply<T>(app: &AppWindow, edit: impl FnOnce(&mut Vault) -> Result<T, String>) -> Option<T> {
+fn apply<T>(app: &AppWindow, action: &'static str, edit: impl FnOnce(&mut Vault) -> Result<T, String>) -> Option<T> {
     let st = app.global::<AppState>();
     let c = ctx();
     if !st.get_unlocked() || st.get_busy() || c.running.load(Ordering::Acquire) { return None; }
-    match c.edit_vault(edit) {
+    match c.edit_vault_logged(action, edit) {
         Ok(result) => Some(result),
         Err(error) => {
             let mut manager = st.get_category_manager();
@@ -34,7 +34,7 @@ pub fn install(app: &AppWindow) {
         let app = weak.unwrap();
         let manager = app.global::<AppState>().get_category_manager();
         if app.global::<AppState>().get_page() != 10 || manager.deleting { return; }
-        if let Some(category) = apply(&app, |v| if manager.original.is_empty() {
+        if let Some(category) = apply(&app, "Kategorie gespeichert", |v| if manager.original.is_empty() {
             v.create_category(&manager.name).map(|()| manager.name.trim().to_owned())
         } else { v.rename_category(&manager.original, &manager.name) }) {
             refreshed(&app, &manager.original, &category);
@@ -45,7 +45,7 @@ pub fn install(app: &AppWindow) {
         let app = weak.unwrap();
         let manager = app.global::<AppState>().get_category_manager();
         if app.global::<AppState>().get_page() != 10 || !manager.deleting { return; }
-        if apply(&app, |v| v.delete_category(&manager.original, &manager.replacement)).is_some() {
+        if apply(&app, "Kategorie gelöscht", |v| v.delete_category(&manager.original, &manager.replacement)).is_some() {
             refreshed(&app, &manager.original, &manager.replacement);
         }
     });
@@ -54,7 +54,7 @@ pub fn install(app: &AppWindow) {
         let app = weak.unwrap();
         let st = app.global::<AppState>();
         if !st.get_unlocked() || st.get_busy() { return; }
-        if crate::edit_vault(&app, |v| v.assign_category(index as usize, &category)) {
+        if crate::edit_vault(&app, "Umsatz kategorisiert", |v| v.assign_category(index as usize, &category)) {
             view::show_detail(&app, &ctx().vault.lock().unwrap(), index as usize);
         }
     });

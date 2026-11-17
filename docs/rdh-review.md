@@ -12,8 +12,10 @@ The sections below preserve the investigation's chronology. Statements that a li
 test was still pending, earlier test counts and old UI labels describe their dated
 stage, not the current release. The current UI uses egui/eframe 0.36 and the action
 is **Synchronize transactions**. Current validation is documented in [Testing](testing.md).
-Local test product IDs are read only at runtime by an explicitly enabled local-test
-build; no ID value is stored in this report, the repository or distributable binaries.
+As of November 17, 2026, normal builds use BankingCraft's own registered identity
+exclusively in HKVVB's product designation. At the user's request, the temporary local
+installation retains the explicit `local-fints-test` feature and external ID file;
+missing or invalid local values stop the operation instead of falling back.
 
 ## Initial review — November 12, 2026
 

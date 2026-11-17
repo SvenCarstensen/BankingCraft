@@ -377,3 +377,38 @@ fn group_targets_split_by_bank_handle_ungrouped_and_never_expand_invalid_or_empt
     sync_group(&ctx, group_id).unwrap(); // orders outside the group remain untouched
     assert_eq!(serde_json::to_vec(&*ctx.vault.lock().unwrap()).unwrap(), before);
 }
+
+#[test]
+fn read_plan_contains_only_selected_supported_jobs_and_excludes_securities() {
+    struct PlannedBank {bank:Bank,planned:bool}
+    impl RefreshClient for PlannedBank {
+        fn prepare_reads(&mut self,requests:Vec<aqbanking::ReadRequest>)->banking::Result<bool> {
+            assert_eq!(requests.len(),2);
+            assert_eq!(requests[0].account.account_number,self.bank.numbers[0]);
+            assert!(requests[0].balance && !requests[0].transactions);
+            assert_eq!(requests[1].account.account_number,self.bank.numbers[1]);
+            assert!(!requests[1].balance && requests[1].transactions);
+            self.planned=true;Ok(true)
+        }
+        fn accounts(&mut self)->banking::Result<Vec<Account>> {panic!("selected accounts only")}
+        fn balance(&mut self,a:&Account)->banking::Result<Option<banking::Balance>> {assert!(self.planned);self.bank.balance(a)}
+        fn transaction_report(&mut self,a:&Account,f:chrono::NaiveDate,t:Option<chrono::NaiveDate>)->banking::Result<banking::TransactionReport> {assert!(self.planned);self.bank.transaction_report(a,f,t)}
+        fn finish(self)->banking::State {self.bank.finish()}
+    }
+    let ctx=context();
+    let (access,mut selected)={
+        let mut v=ctx.vault.lock().unwrap();demo::add_demo(&mut v);
+        let access=v.accesses[0].clone();
+        let selected=v.accounts.iter().filter(|a|a.access_id==access.id).take(2).map(|a|(a.account.clone(),a.id)).collect::<Vec<_>>();
+        (access,selected)
+    };
+    assert_eq!(selected.len(),2);
+    selected[0].0.kind=1;selected[0].0.allowed=vec!["HKSAL".into()];
+    selected[1].0.kind=1;selected[1].0.allowed=vec!["HKKAZ".into()];
+    let requests=Arc::new(Mutex::new(Vec::new()));
+    let numbers=selected.iter().map(|(a,_)|a.account_number.clone()).collect::<Vec<_>>();
+    selected.push((Account {account_number:"synthetic-securities".into(),kind:30,..Default::default()},0));
+    let client=PlannedBank {bank:Bank {numbers:numbers.clone(),requests:requests.clone()},planned:false};
+    sync_with_client(&ctx,&access,Some(selected),client).unwrap();
+    assert_eq!(*requests.lock().unwrap(),[format!("balance:{}",numbers[0]),format!("transactions:{}",numbers[1])]);
+}

@@ -1,5 +1,6 @@
 //! egui presentation and a UI-thread dispatcher for the existing banking services.
 mod dialogs;
+mod history;
 mod icons;
 mod pages;
 mod render;
@@ -22,6 +23,7 @@ impl<T> Default for ModelRc<T> {
     }
 }
 impl<T> ModelRc<T> {
+    pub fn as_slice(&self) -> &[T] { &self.0 }
     pub fn new(rows: Vec<T>) -> Self {
         Self(Arc::new(rows))
     }

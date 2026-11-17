@@ -174,6 +174,7 @@ fn account_group(v: &Vault, id: u32, name: &str, rows: Vec<AccountRow>) -> Accou
 }
 
 pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
+    crate::history::refresh(app, v);
     let st = app.global::<AppState>();
     let today = Local::now().date_naive();
     let selected_tx = (st.get_tx_account() as usize).checked_sub(1).and_then(|i| vs.account_filter.get(i)).copied();
@@ -259,7 +260,7 @@ pub fn refresh_all(app: &AppWindow, v: &Vault, vs: &mut ViewState) {
     }
     crate::payments_ui::refresh(app, v, vs);
     if let Some(t) = v.accounts.iter().filter_map(|a| a.last_sync).max() {
-        st.set_last_sync(ss(i18n::tr_format!("Letzter Kontenrundruf: {}", t.format(i18n::tr("%d.%m.%Y um %H:%M Uhr")))));
+        st.set_last_sync(ss(i18n::tr_format!("Zuletzt synchronisiert: {}", t.format(i18n::tr("%d.%m.%Y um %H:%M Uhr")))));
     } else {
         st.set_last_sync(ss(i18n::tr("Willkommen – richten Sie einen Bankzugang ein oder laden Sie die Demo-Daten.")));
     }

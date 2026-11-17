@@ -4,8 +4,8 @@ use crate::{AppState, AppWindow, VIEW};
 
 pub(crate) fn install(app: &AppWindow) {
     install_with(app, |account| match account {
-        Some(id) => crate::ctx().run(i18n::tr("Konto wird aktualisiert …"), move |c| crate::jobs::sync_account(c, id)),
-        None => crate::ctx().run(i18n::tr("Kontenrundruf …"), crate::jobs::sync_all),
+        Some(id) => crate::ctx().run_sync("Konto wird aktualisiert …", move |c| crate::jobs::sync_account(c, id)),
+        None => crate::ctx().run_sync("Konten synchronisieren", crate::jobs::sync_all),
     });
 }
 

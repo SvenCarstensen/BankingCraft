@@ -66,6 +66,7 @@ pub(crate) fn install(app: &crate::AppWindow) {
             return;
         }
         current.set(mode);
+        crate::history::record(&app,"Design geändert",crate::history::Status::Success);
         apply(&app, mode);
     });
 }

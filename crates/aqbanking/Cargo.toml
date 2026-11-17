@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+local-fints-test = ["dep:directories"]
+
 [dependencies]
+directories = { version = "5", optional = true }
 pcsc = "2.9"
 banking = { package = "bankingcraft-models", path = "../banking-models" }
 chrono.workspace = true

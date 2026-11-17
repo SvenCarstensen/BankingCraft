@@ -28,6 +28,23 @@ def replace_once(path, old, new):
     path.write_text(content.replace(old, new))
 
 def patch_source(name, source):
+    if name == "gwenhywfar":
+        # Pinned Gwen reports reader PIN entry only through progress logs, which
+        # are hidden during account refresh. Emit explicit begin/end UI events.
+        replace_once(source / "src/crypttoken/ct.c",
+                     '''  int rv;
+
+  rv=GWEN_Gui_ProgressLog(gid, GWEN_LoggerLevel_Warning, I18N("Waiting for pin entry on card reader..."));
+  if (rv<0)
+    return 0;
+  return 0xffffffff;''',
+                     '''  /* BankingCraft: typed reader PIN notification, never collect the PIN. */
+  return GWEN_Gui_ShowBox(GWEN_GUI_SHOWBOX_FLAGS_BEEP,
+                          "BankingCraft:reader-pin",
+                          "Bitte geben Sie die PIN Ihrer HBCI-Chipkarte am Kartenleser ein und bestätigen Sie mit OK.", gid);''')
+        replace_once(source / "src/crypttoken/ct.c",
+                     '  return GWEN_Gui_ProgressLog(gid, GWEN_LoggerLevel_Warning, I18N("Pin entry on card reader finished."));',
+                     '  GWEN_Gui_HideBox(gid);\n  return 0;')
     if name == "aqbanking":
         # Linux LeakSanitizer exposes three ownership bugs in pinned 6.9.2.
         # Free temporary objects at their owners; keep leak detection enabled.
@@ -113,6 +130,24 @@ def patch_source(name, source):
         content = path.read_text()
         if "AB_BankingCraft_NoLegacyImport" not in content:
             path.write_text(content + "\nint AB_BankingCraft_NoLegacyImport(void) { return 1; }\n")
+        # Registration belongs exclusively to HKVVB. Upstream also uses the
+        # registration accessor in INI letters and log/app-name metadata.
+        # Keep the message-engine lookup unchanged; use the actual app name
+        # everywhere else, including the public provider accessor.
+        old = "AH_HBCI_GetProductName(h)"
+        new = "AB_Banking_GetAppName(AH_HBCI_GetBankingApi(h))"
+        for filename, count in [("banking/provider_iniletter.c", 4),
+                                ("banking/provider.c", 1), ("msglayer/message.c", 1)]:
+            path = source / "src/libs/plugins/backends/aqhbci" / filename
+            content = path.read_text()
+            if content.count(old) == count and new not in content:
+                path.write_text(content.replace(old, new))
+            elif old in content or content.count(new) != count:
+                raise RuntimeError(f"Upstream product-name usage changed: {filename}")
+        path = source / "src/libs/aqbanking/banking.c"
+        content = path.read_text()
+        if "AB_BankingCraft_HkvvbOnlyRegistration" not in content:
+            path.write_text(content + "\nint AB_BankingCraft_HkvvbOnlyRegistration(void) { return 1; }\n")
         # Never create raw FinTS logs. Besides containing credentials, the
         # upstream failure branch frees its path buffer twice. Keep the regular
         # file blocker as defence for any other attempted filesystem writes.
@@ -123,12 +158,146 @@ def patch_source(name, source):
             start = content.index("  /* create path */")
             end = content.index("\n  return dlg;", start)
             path.write_text(content[:start] + marker + "\n" + content[end:])
-        # Always show the bank's VoP result, including matches. No implicit
-        # opt-out when the bank returns no report or no explanatory message.
+        # Show VoP results by default, including missing reports. The Postbank
+        # option below omits only a complete set of typed positive matches.
         path = source / "src/libs/plugins/backends/aqhbci/applayer/cbox_vopmsg.c"
         replace_once(path,
                      '    DBG_WARN(AQHBCI_LOGDOMAIN, "No msg, no non-matching results, silently accepting.");\n    return 0;',
                      '    if (resultList==NULL) sMsg="Keine Empfängerprüfung verfügbar. Auftrag trotzdem freigeben?";')
+        # The user requested removal of the redundant successful-match dialog
+        # for Postbank. Keep the protocol, HKVPA and final bank approval intact.
+        # Match typed results against every submitted payee, never UI text.
+        declaration="int AH_OutboxCBox_LetUserConfirmVopResult(AH_OUTBOX_CBOX *cbox, AH_JOB *workJob, AH_JOB *vppJob, const char *sMsg)"
+        replace_once(path, declaration, r'''static int _bankingcraftVopMatchesTransfers(const AH_JOB *job, const AH_VOP_RESULT_LIST *results)
+{
+  const AB_TRANSACTION_LIST *transfers=AH_Job_GetTransferList(job);
+  if (!results || !transfers || AB_Transaction_List_GetCount(transfers)<1 ||
+      AH_VopResult_List_GetCount(results)!=AB_Transaction_List_GetCount(transfers) ||
+      !AH_VopResult_List_HasOnlyMatches(results)) return 0;
+  for (const AB_TRANSACTION *t=AB_Transaction_List_First(transfers);t;t=AB_Transaction_List_Next(t)) {
+    const char *iban=AB_Transaction_GetRemoteIban(t);
+    int matches=0;
+    if (!(iban && *iban)) return 0;
+    for (const AH_VOP_RESULT *r=AH_VopResult_List_First(results);r;r=AH_VopResult_List_Next(r)) {
+      const char *resultIban=AH_VopResult_GetRemoteIban(r);
+      if (resultIban && !strcmp(iban,resultIban)) matches++;
+    }
+    if (matches!=1) return 0;
+  }
+  return 1;
+}
+
+'''+declaration)
+        replace_once(path,
+                     "  resultList=vppJob?AH_Job_VPP_GetResultList(vppJob):NULL;",
+                     '''  resultList=vppJob?AH_Job_VPP_GetResultList(vppJob):NULL;
+  if (AB_Banking_RuntimeConfig_GetIntValue(ab, "bankingcraftSkipMatchingVop", 0) &&
+      _bankingcraftVopMatchesTransfers(workJob, resultList)) return 0;''')
+        # Use a structured approval callback for push methods (BestSign etc.).
+        # Empty text is an acknowledgement to poll HKTAN S, never a TAN or a
+        # successful transfer. It also works when HITAN has no challenge text.
+        path = source / "src/libs/plugins/backends/aqhbci/applayer/cbox_voptan.c"
+        content = path.read_text()
+        marker = "  /* BankingCraft: automatic decoupled status polling, no TAN. */"
+        if marker not in content:
+            start = content.index("int _letUserConfirmApproval(AH_OUTBOX_CBOX *cbox, AH_JOB *workJob, const char *challenge)\n{")
+            content = content[:start] + r'''int _letUserConfirmApproval(AH_OUTBOX_CBOX *cbox, AH_JOB *workJob, const char *challenge)
+{
+  /* BankingCraft: automatic decoupled status polling, no TAN. */
+  AB_USER *user=AH_OutboxCBox_GetUser(cbox);
+  const AH_TAN_METHOD_LIST *methods=AH_User_GetTanMethodDescriptions(user);
+  const char *name="Freigabe in der Banking-App";
+  GWEN_DB_NODE *params=GWEN_DB_Group_new("methodParams");
+  char acknowledgement[1]={0};
+  int rv;
+  int attempt=GWEN_DB_GetIntValue(AH_Job_GetArguments(workJob), "bankingcraftApprovalPoll", 0, 0);
+  int automatic=0, limit=0, wait=0;
+  GWEN_DB_NODE *bpd=GWEN_DB_Group_new("bpd");
+  if (AH_Job_SampleBpdVersions("JobTan", user, bpd)>=0) {
+    for (GWEN_DB_NODE *version=GWEN_DB_GetFirstGroup(bpd);version;version=GWEN_DB_GetNextGroup(version)) {
+      for (GWEN_DB_NODE *m=GWEN_DB_FindFirstGroup(version,"tanMethod");m;m=GWEN_DB_FindNextGroup(m,"tanMethod")) {
+        if (1000*atoi(GWEN_DB_GroupName(version))+GWEN_DB_GetIntValue(m,"function",0,0)!=AH_User_GetSelectedTanMethod(user)) continue;
+        automatic=!strcasecmp(GWEN_DB_GetCharValue(m,"confirmAllowAutomatic",0,"N"),"J");
+        limit=GWEN_DB_GetIntValue(m,"statusQueryMax",0,0);
+        wait=GWEN_DB_GetIntValue(m,attempt?"statusWaitNext":"statusWaitFirst",0,-1);
+      }
+    }
+  }
+  GWEN_DB_Group_free(bpd);
+  if (automatic) {
+    if (limit<1 || limit>999 || wait<0 || wait>999 || attempt<0 || attempt>=limit) {
+      GWEN_DB_Group_free(params);
+      GWEN_Gui_ProgressLog(0, GWEN_LoggerLevel_Error,
+        "Automatische Freigabeprüfung beendet: Abfragelimit erreicht oder Bankparameter unvollständig. Bitte Bankstatus vor erneutem Senden prüfen.");
+      return GWEN_ERROR_TIMEOUT;
+    }
+    GWEN_DB_SetIntValue(params, GWEN_DB_FLAGS_OVERWRITE_VARS, "automatic", 1);
+    GWEN_DB_SetIntValue(params, GWEN_DB_FLAGS_OVERWRITE_VARS, "wait_seconds", wait);
+    GWEN_DB_SetIntValue(params, GWEN_DB_FLAGS_OVERWRITE_VARS, "attempt", attempt+1);
+    GWEN_DB_SetIntValue(params, GWEN_DB_FLAGS_OVERWRITE_VARS, "limit", limit);
+  }
+  for (const AH_TAN_METHOD *m=methods?AH_TanMethod_List_First(methods):NULL;m;m=AH_TanMethod_List_Next(m)) {
+    if (AH_TanMethod_GetFunction(m)+1000*AH_TanMethod_GetGvVersion(m)==AH_User_GetSelectedTanMethod(user)) {
+      const char *selected=AH_TanMethod_GetMethodName(m);
+      if (selected && *selected) name=selected;
+      break;
+    }
+  }
+  GWEN_DB_SetIntValue(params, GWEN_DB_FLAGS_OVERWRITE_VARS, "tanMethodId", AB_BANKING_TANMETHOD_DECOUPLED);
+  rv=GWEN_Gui_GetPassword(GWEN_GUI_INPUT_FLAGS_TAN | GWEN_GUI_INPUT_FLAGS_SHOW | GWEN_GUI_INPUT_FLAGS_DIRECT,
+                         NULL, name,
+                         challenge && *challenge?challenge:"Bitte den Auftrag in Ihrer Freigabe-App oder auf Ihrem Freigabegerät prüfen und bestätigen.",
+                         acknowledgement, 0, sizeof(acknowledgement), GWEN_Gui_PasswordMethod_Text, params, 0);
+  GWEN_DB_Group_free(params);
+  if (automatic && rv==0)
+    GWEN_DB_SetIntValue(AH_Job_GetArguments(workJob), GWEN_DB_FLAGS_OVERWRITE_VARS, "bankingcraftApprovalPoll", attempt+1);
+  return rv;
+}
+'''
+            path.write_text(content)
+        # HKTAN S also needs HKVPA when approval has not already been sent in
+        # the 3090/3945 exchange. Send it once, not on subsequent 3956 polls.
+        replace_once(path,
+                     "rv=_sendTanAndReceiveResponseProcS(cbox, dlg, tanJob1, needVpa?vppJob:NULL, workJob);\n    } while (rv==1);",
+                     "rv=_sendTanAndReceiveResponseProcS(cbox, dlg, tanJob1, needVpa?vppJob:NULL, workJob);\n      needVpa=0;\n    } while (rv==1);")
+        content=path.read_text()
+        start=content.index("int _sendTanAndReceiveResponseProcS(AH_OUTBOX_CBOX *cbox, AH_DIALOG *dlg, AH_JOB *tanJob1, AH_JOB *vppJob, AH_JOB *workJob)\n{")
+        end=content.index("\nint _sendAndRecvQueue(",start)
+        original=content[start:end]
+        if "AH_JOB *vpaJob=NULL;" not in original:
+            updated=original.replace("  AH_JOB *tanJob2;", "  AH_JOB *tanJob2;\n  AH_JOB *vpaJob=NULL;")
+            updated=updated.replace("  jobQueue=_createQueueForStageS(user, tanJob2, workJob);", '''  if (vppJob) {
+    vpaJob=_createVpaJob(provider, user, vppJob, workJob);
+    if (vpaJob==NULL) { AH_Job_free(tanJob2); return GWEN_ERROR_GENERIC; }
+  }
+  jobQueue=_createQueueForStageS(user, tanJob2, workJob, vpaJob);
+  AH_Job_free(vpaJob);
+  if (jobQueue==NULL) { AH_Job_free(tanJob2); return GWEN_ERROR_GENERIC; }
+  AH_JobQueue_SubFlags(jobQueue, AH_JOBQUEUE_FLAGS_NEEDTAN);''')
+            # The queue owns its reference; release the creator reference on
+            # every success, pending and error path.
+            updated=updated.replace("    AH_JobQueue_free(jobQueue);\n    return rv;", "    AH_Job_free(tanJob2);\n    AH_JobQueue_free(jobQueue);\n    return rv;")
+            updated=updated.replace('    DBG_INFO(AQHBCI_LOGDOMAIN, "here (%d)", rv);\n    return rv;\n  }\n\n  /* dispatch results', '    DBG_INFO(AQHBCI_LOGDOMAIN, "here (%d)", rv);\n    AH_Job_free(tanJob2);\n    AH_JobQueue_free(jobQueue);\n    return rv;\n  }\n\n  /* dispatch results')
+            updated=updated.replace("    AH_JobQueue_free(jobQueue);\n    return 1;", "    AH_Job_free(tanJob2);\n    AH_JobQueue_free(jobQueue);\n    return 1;")
+            updated=updated.replace("  AH_JobQueue_free(jobQueue);\n  return 0;", "  AH_Job_free(tanJob2);\n  AH_JobQueue_free(jobQueue);\n  return 0;")
+            path.write_text(content[:start]+updated+content[end:])
+        # Status polling may carry the pending VoP acknowledgement, but never
+        # another copy of the payment (unlike the generic TAN-stage-2 queue).
+        content=path.read_text()
+        old="_createQueueForStageS(AB_USER *user, AH_JOB *tanJobS, AH_JOB *workJob)"
+        new="_createQueueForStageS(AB_USER *user, AH_JOB *tanJobS, AH_JOB *workJob, AH_JOB *vpaJob)"
+        if old in content:
+            if content.count(old)!=2: raise RuntimeError("Unexpected decoupled queue declarations")
+            path.write_text(content.replace(old,new))
+        replace_once(path, "  AH_Job_Attach(tanJobS);", '''  if (vpaJob) {
+    AH_Job_Attach(vpaJob);
+    rv=AH_JobQueue_AddJob(jobQueue, vpaJob);
+    if (rv!=AH_JobQueueAddResultOk) {
+      AH_JobQueue_free(jobQueue);
+      return NULL;
+    }
+  }
+  AH_Job_Attach(tanJobS);''')
         replace_once(source / "src/libs/plugins/backends/aqhbci/tan/tanmechanism.c",
                      'tanMechanism= AH_TanMechanism_ChipTanUSB_new(tanMethod, id);',
                      'tanMechanism= AH_TanMechanism_ChipTanOpt_new(tanMethod, AB_BANKING_TANMETHOD_CHIPTAN_OPTIC);')

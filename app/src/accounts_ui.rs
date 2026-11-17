@@ -7,7 +7,7 @@ pub fn install(app: &AppWindow) {
     let st = app.global::<AppState>();
     let weak = app.as_weak();
     st.on_move_group_account(move |source, group, target| {
-        crate::edit_vault(&weak.unwrap(), |v| v.move_group_account(
+        crate::edit_vault(&weak.unwrap(), "Konto verschoben", |v| v.move_group_account(
             source as u32,
             (group != 0).then_some(group as u32),
             (target.id >= 0).then_some((target.id as u32, target.after)),
@@ -34,7 +34,7 @@ pub fn install(app: &AppWindow) {
         let app = weak.unwrap();
         let st = app.global::<AppState>();
         if !st.get_show_account_name() { return; }
-        if crate::edit_vault(&app, |v| {
+        if crate::edit_vault(&app, "Kontoname geändert", |v| {
             let id = st.get_editing_account_id() as u32;
             let name = st.get_account_name_draft();
             // Saving an unchanged bank name must not create a local override.
@@ -149,7 +149,7 @@ mod tests {
 
                 // Refresh, navigation and renamed groups retain disclosure state by ID.
                 harness.get_by_label("Konten einklappen: Weitere").click(); harness.run_steps(3);
-                crate::edit_vault(&app, |v| v.rename_group(other, "Umbenannt"));
+                crate::edit_vault(&app, "Kontogruppe umbenannt", |v| v.rename_group(other, "Umbenannt"));
                 st.set_page(0); harness.run_steps(3); st.set_page(1); harness.run_steps(3);
                 assert!(harness.query_by_label("Konto verschieben: Gamma").is_none());
                 assert!(harness.query_by_label("Konten ausklappen: Umbenannt").is_some());

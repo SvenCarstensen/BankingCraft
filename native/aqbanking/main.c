@@ -38,6 +38,7 @@
 #define fdopen _fdopen
 #define BC_NULL "NUL"
 #define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #else
 #include <unistd.h>
 #include <strings.h>
@@ -49,9 +50,11 @@ static BC_FRAME request;
 // Supplied by the reviewed compatibility patch. Linking against an unpatched
 // system AqBanking must fail instead of silently importing legacy cleartext data.
 extern int AB_BankingCraft_NoLegacyImport(void);
+extern int AB_BankingCraft_HkvvbOnlyRegistration(void);
 static int was_cancelled, bad_pin, certificate_rejected;
 static int unsupported_account_job;
 static int card_session;
+static int bestsign_push_selected, bestsign_push_missing;
 static char last_notice[16384];
 static unsigned notice_count;
 static const char *operation_stage="initialize";
@@ -80,10 +83,24 @@ static int password(GWEN_GUI *g,uint32_t flags,const char *token,const char *tit
                     char *buffer,int min,int max,GWEN_GUI_PASSWORD_METHOD method,GWEN_DB_NODE *params,uint32_t id) {
   (void)g;(void)token;(void)method;(void)id;
   if(was_cancelled || min<0 || max<=0 || max>4096) return GWEN_ERROR_USER_ABORTED;
+  // A BestSign push approval must never fall back to asking for a numeric
+  // TAN. Only the native decoupled callback may return an empty approval.
+  int tan_method=params?GWEN_DB_GetIntValue(params,"tanMethodId",0,1):1;
+  if((flags&GWEN_GUI_INPUT_FLAGS_TAN) && bestsign_push_selected && tan_method!=AB_BANKING_TANMETHOD_DECOUPLED) {
+    const char *notice="BankingCraft hat eine unerwartete TAN-Abfrage für BestSign-Push abgebrochen. Es wurde keine TAN gesendet. Bitte die Bankparameter und das ausgewählte Push-Verfahren prüfen.";
+    snprintf(last_notice,sizeof(last_notice),"%s",notice); notice_count=1;
+    return GWEN_ERROR_NOT_SUPPORTED;
+  }
   BC_FRAME f=event("password"); bc_number(&f,"flags",flags); bc_string(&f,"title",title); bc_string(&f,"text",text);
   bc_number(&f,"min",min); bc_number(&f,"max",max);
   if(params) {
-    bc_number(&f,"method",GWEN_DB_GetIntValue(params,"tanMethodId",0,1));
+    bc_number(&f,"method",tan_method);
+    if ((flags&GWEN_GUI_INPUT_FLAGS_TAN) && tan_method==AB_BANKING_TANMETHOD_DECOUPLED && GWEN_DB_GetIntValue(params,"automatic",0,0)==1) {
+      bc_number(&f,"automatic",1);
+      bc_number(&f,"wait_seconds",GWEN_DB_GetIntValue(params,"wait_seconds",0,-1));
+      bc_number(&f,"attempt",GWEN_DB_GetIntValue(params,"attempt",0,0));
+      bc_number(&f,"limit",GWEN_DB_GetIntValue(params,"limit",0,0));
+    }
     bc_string(&f,"challenge",GWEN_DB_GetCharValue(params,"challenge",0,""));
     bc_string(&f,"mime",GWEN_DB_GetCharValue(params,"mimeType",0,""));
     unsigned size=0; const void *data=GWEN_DB_GetBinValue(params,"imageData",0,NULL,0,&size);
@@ -112,10 +129,17 @@ static int message_box(GWEN_GUI *g,uint32_t flags,const char *title,const char *
   return was_cancelled || answer<1 || answer>3?0:answer;
 }
 static uint32_t show_box(GWEN_GUI *g,uint32_t flags,const char *title,const char *text,uint32_t id) {
-  (void)g;(void)flags;(void)title;(void)id;
-  BC_FRAME f=event("show"); bc_string(&f,"text",text); bc_send(&f); return 1;
+  (void)g;(void)flags;(void)id;
+  static uint32_t next_box_id;
+  if(was_cancelled || next_box_id==UINT32_MAX) return 0;
+  uint32_t box_id=++next_box_id;
+  BC_FRAME f=event("show"); bc_number(&f,"id",box_id); bc_string(&f,"text",text);
+  bc_string(&f,"kind",title && !strcmp(title,"BankingCraft:reader-pin")?"reader_pin":"notice");
+  bc_send(&f); return box_id;
 }
-static void hide_box(GWEN_GUI *g,uint32_t id) { (void)g;(void)id; BC_FRAME f=event("hide"); bc_send(&f); }
+static void hide_box(GWEN_GUI *g,uint32_t id) {
+  (void)g; BC_FRAME f=event("hide"); bc_number(&f,"id",id); bc_send(&f);
+}
 static uint32_t progress_start(GWEN_GUI *g,uint32_t flags,const char *title,const char *text,uint64_t total,uint32_t id) {
   (void)g;(void)flags;(void)total;(void)id;
   // Gwenhywfar emits this for every socket wait. Keep the last meaningful
@@ -146,7 +170,8 @@ static int progress_log(GWEN_GUI *g,uint32_t id,GWEN_LOGGER_LEVEL level,const ch
   BC_FRAME f=event("progress"); bc_string(&f,"text",text); bc_send(&f); return 0;
 }
 
-/* VOP must be displayed in full before AqBanking is allowed to continue. Other
+/* VOP dialogs requested by AqBanking are displayed in full. The reviewed
+ * library policy omits complete Postbank matches before creating a dialog. Other
  * dialogs are rejected until an explicit adapter exists; there is no implicit
  * acceptance of an unknown banking dialog. */
 static GWEN_BUFFER *dialog_text;
@@ -326,20 +351,45 @@ static int configure_tan_medium(AB_USER *user,const AH_TAN_METHOD *method,int fo
         "Verwende genau die Bezeichnung des TAN-Mediums aus dem Online-Banking deiner Bank.";
   }
 }
+static int is_bestsign(const AH_TAN_METHOD *method) {
+  const char *values[]={AH_TanMethod_GetMethodName(method),AH_TanMethod_GetMethodId(method)};
+  for(unsigned i=0;i<sizeof(values)/sizeof(values[0]);i++)
+    for(const char *p=str(values[i]);*p;p++)
+      if(!strncasecmp(p,"bestsign",8)) return 1;
+  return 0;
+}
+static int is_bestsign_push(const AH_TAN_METHOD *method) {
+  // BestSign (e.g. function 920/v6) is a TAN-entry method. Only the bank's
+  // separate decoupled method may be used for a requested push approval.
+  // A display name containing "BestSign" or version 7 alone is insufficient.
+  if(!is_bestsign(method) || AH_TanMethod_GetGvVersion(method)<7 || AH_TanMethod_GetProcess(method)!=2) return 0;
+  const char *id=str(AH_TanMethod_GetMethodId(method));
+  const char *zka=str(AH_TanMethod_GetZkaTanName(method));
+  const char *name=str(AH_TanMethod_GetMethodName(method));
+  return !strcasecmp(zka,"Decoupled") || !strcasecmp(id,"Decoupled") ||
+      !strncasecmp(id,"Decoupled.",10) || !strcasecmp(name,"BestSign-Push");
+}
 static int select_tan(AB_BANKING *ab,int force) {
   begin_stage("select_tan");
+  bestsign_push_selected=0; bestsign_push_missing=0;
   if(strcmp(bc_text(&request,"medium"),"pintan")) return 0;
+  int prefer_bestsign=!strcmp(bc_text(&request,"preferred_tan"),"bestsign");
   AB_PROVIDER *provider=AB_Banking_BeginUseProvider(ab,"aqhbci");
   if(!provider) return GWEN_ERROR_NOT_FOUND;
   AB_USER *user=NULL; int rv=AB_Provider_GetUser(provider,(uint32_t)user_id(),1,0,&user);
   if(rv==0) {
     const AH_TAN_METHOD_LIST *methods=AH_User_GetTanMethodDescriptions(user);
     int current=AH_User_GetSelectedTanMethod(user), values[64], count=0, valid=0;
+    const AH_TAN_METHOD *previous=NULL;
+    for(const AH_TAN_METHOD *m=methods?AH_TanMethod_List_First(methods):NULL;m;m=AH_TanMethod_List_Next(m))
+      if(AH_TanMethod_GetFunction(m)+1000*AH_TanMethod_GetGvVersion(m)==current) { previous=m; break; }
     BC_FRAME f=event("choice"); bc_string(&f,"title","TAN-Verfahren");
-    bc_string(&f,"text","Bitte das bei der Bank eingerichtete TAN-Verfahren wählen.");
+    bc_string(&f,"text",prefer_bestsign?
+        "Bitte BestSign-Push für die Freigabe in der Postbank-App oder am BestSign-Gerät wählen. Das ältere BestSign-Verfahren mit TAN-Eingabe wird hier nicht verwendet.":
+        "Bitte das bei der Bank eingerichtete TAN-Verfahren wählen.");
     for(const AH_TAN_METHOD *m=methods?AH_TanMethod_List_First(methods):NULL;m;m=AH_TanMethod_List_Next(m)) {
       int function=AH_TanMethod_GetFunction(m);
-      if(!AH_User_HasTanMethod(user,function)) continue;
+      if(!AH_User_HasTanMethod(user,function) || (prefer_bestsign && !is_bestsign_push(m))) continue;
       int combined=function+1000*AH_TanMethod_GetGvVersion(m);
       if(combined==current) valid=1;
       if(count>=60) { rv=GWEN_ERROR_INVALID; break; }
@@ -349,9 +399,19 @@ static int select_tan(AB_BANKING *ab,int force) {
       bc_string(&f,key,label); values[count++]=combined;
     }
     if(rv==0 && (force || !valid)) {
-      if(!count) rv=GWEN_ERROR_NOT_FOUND;
+      if(!count) {
+        bestsign_push_missing=prefer_bestsign;
+        if(prefer_bestsign) progress_log(NULL,0,GWEN_LoggerLevel_Error,
+            "Die gespeicherten Bankparameter enthalten kein für diesen Zugang zugelassenes BestSign-Push-Verfahren. BestSign mit TAN-Eingabe genügt für die App-Freigabe nicht. Bitte den Bankzugang synchronisieren.");
+        rv=GWEN_ERROR_NOT_FOUND;
+      }
       else {
-        BC_FRAME answer=prompt(&f); int chosen=atoi(bc_text(&answer,"value")), found=0;
+        BC_FRAME answer={0};
+        // An existing legacy BestSign selection can migrate locally to the
+        // sole advertised push method; no bank order is sent by this step.
+        int migrate=!force && prefer_bestsign && count==1 && previous && is_bestsign(previous);
+        if(!migrate) answer=prompt(&f);
+        int chosen=migrate?values[0]:atoi(bc_text(&answer,"value")), found=0;
         for(int i=0;i<count;i++) if(chosen==values[i]) found=1;
         if(was_cancelled || !found) rv=GWEN_ERROR_USER_ABORTED;
         else {
@@ -359,9 +419,11 @@ static int select_tan(AB_BANKING *ab,int force) {
           // AqBanking presents HHD/QR through our UI. Its legacy USB input
           // parser is bypassed; the bounded Libchipcard adapter serves USB.
           AH_User_SetSelectedTanInputMechanism(user,0);
-          // A device name belongs to the selected method. Preserve it when
-          // merely opening the same method; discard it on a method change.
-          if(chosen!=current) AH_User_SetTanMediumId(user,NULL);
+          // Legacy BestSign and BestSign-Push use the same named device.
+          // Keep its exact spelling for this upgrade; other method changes
+          // still require selecting the appropriate medium again.
+          if(chosen!=current && !(prefer_bestsign && previous && is_bestsign(previous)))
+            AH_User_SetTanMediumId(user,NULL);
         }
         bc_free(&answer);
       }
@@ -373,6 +435,7 @@ static int select_tan(AB_BANKING *ab,int force) {
         if(AH_TanMethod_GetFunction(m)+1000*AH_TanMethod_GetGvVersion(m)==AH_User_GetSelectedTanMethod(user)) { selected=m; break; }
       }
       rv=selected?configure_tan_medium(user,selected,force):GWEN_ERROR_NOT_FOUND;
+      if(rv==0) bestsign_push_selected=is_bestsign_push(selected);
     }
     int saved=AB_Provider_EndExclUseUser(provider,user,rv!=0);
     AB_User_free(user); if(rv==0) rv=saved;
@@ -516,7 +579,21 @@ static int initialize_access(AB_BANKING *ab,
   *accounts_fetched=0;
   // Also repair older initialized snapshots that lack a required medium name.
   // This reads local AqBanking data; it does not open another bank dialog.
-  if(GWEN_DB_GetIntValue(bc_config,"initialized",0,0)) return choose_tan(ab,0);
+  if(GWEN_DB_GetIntValue(bc_config,"initialized",0,0)) {
+    int rv=choose_tan(ab,0);
+    const char *op=bc_text(&request,"op");
+    // A requested read-only synchronization must be able to repair stale BPD
+    // even when local validation can no longer accept the old TAN method.
+    // Refresh once, before any job, never retry a payment or authentication.
+    if(rv==GWEN_ERROR_NOT_FOUND && bestsign_push_missing &&
+       (!strcmp(op,"accounts") || !strcmp(op,"open"))) {
+      rv=command(ab,"getbankinfo");
+      if(was_cancelled || rv==GWEN_ERROR_USER_ABORTED) return GWEN_ERROR_USER_ABORTED;
+      if(certificate_rejected) return GWEN_ERROR_SSL_SECURITY;
+      if(rv==0) rv=choose_tan(ab,0);
+    }
+    return rv;
+  }
   const char *medium=bc_text(&request,"medium");
   int rv=0;
   if(!strcmp(medium,"zkacard")) rv=command(ab,"getkeys");
@@ -537,6 +614,8 @@ static int initialize_access(AB_BANKING *ab,
   }
   return rv;
 }
+
+#include "read_batch.h"
 
 static int send_card_read_with(AB_BANKING *ab,const AB_ACCOUNT_SPEC *account,AB_TRANSACTION *t,
                               AB_IMEXPORTER_CONTEXT *ctx,
@@ -651,13 +730,14 @@ cleanup:
 #include "cards.h"
 
 static int read_operation(const char *op) {
-  return !strcmp(op,"open") || !strcmp(op,"accounts") || !strcmp(op,"balance") || !strcmp(op,"transactions");
+  return !strcmp(op,"open") || !strcmp(op,"accounts") || !strcmp(op,"balance") || !strcmp(op,"transactions") || !strcmp(op,"read_batch");
 }
 static int session_request_allowed(const BC_FRAME *next) {
   const char *op=bc_text(next,"op");
   if(!read_operation(op) && strcmp(op,"close")) return 0;
   for(unsigned i=0;i<next->count;i++) {
     const char *key=next->fields[i].key;
+    if(!strcmp(op,"read_batch")) {if(!read_batch_key(key)) return 0; continue;}
     if(strcmp(key,"op") && strcmp(key,"account") && strcmp(key,"from") && strcmp(key,"to")) return 0;
   }
   return 1;
@@ -665,7 +745,7 @@ static int session_request_allowed(const BC_FRAME *next) {
 static int execute_request(AB_BANKING *ab) {
   int rv=0;
   const char *op=bc_text(&request,"op");
-  const char *operations[]={"probe","read_card","chiptan_usb","configure","open","accounts","reset_tan","balance","transactions","standing","transfer","scheduled","create_standing","delete_standing"};
+  const char *operations[]={"probe","read_card","chiptan_usb","configure","open","accounts","reset_tan","balance","transactions","read_batch","standing","transfer","scheduled","create_standing","delete_standing"};
   int known=0;
   for(unsigned i=0;i<sizeof(operations)/sizeof(operations[0]);i++) if(!strcmp(op,operations[i])) known=1;
   if(!known) rv=GWEN_ERROR_INVALID;
@@ -697,6 +777,7 @@ static int execute_request(AB_BANKING *ab) {
       }
       if(rv==0) {
         if(!strcmp(op,"accounts") || !strcmp(op,"open")) rv=0;
+        else if(!strcmp(op,"read_batch")) rv=run_read_batch_with(ab,AB_Banking_GetAccountSpecByUniqueId,AB_Provider_SendCommands);
         else if(!strcmp(op,"balance")) rv=run_job(ab,AB_Transaction_CommandGetBalance);
         else if(!strcmp(op,"transactions")) rv=run_job(ab,AB_Transaction_CommandGetTransactions);
         else if(!strcmp(op,"standing")) rv=run_job(ab,AB_Transaction_CommandSepaGetStandingOrders);
@@ -718,6 +799,18 @@ static void emit_done(int rv,int reusable) {
   emit_db(&result,"state",bc_config); bc_send(&result);
 }
 
+static int valid_product_identity(const BC_FRAME *frame) {
+  const char *product=bc_text(frame,"product");
+  if(strlen(product)!=25) return 0;
+  for(const char *p=product;*p;p++)
+    if(!((*p>='A' && *p<='Z') || (*p>='a' && *p<='z') || (*p>='0' && *p<='9'))) return 0;
+  const char *version=bc_text(frame,"product_version");
+  if(!*version || strlen(version)>5) return 0;
+  for(const char *p=version;*p;p++)
+    if(!((*p>='0' && *p<='9') || *p=='.')) return 0;
+  return 1;
+}
+
 int main(int argc,char **argv) {
   (void)argc;(void)argv;
 #ifdef _WIN32
@@ -730,7 +823,10 @@ int main(int argc,char **argv) {
   // is the sole output channel; libraries cannot accidentally corrupt it.
   if(!bc_output || !freopen(BC_NULL,"wb",stdout) || !freopen(BC_NULL,"wb",stderr)) return 71;
   if(!bc_read(&request) || strcmp(bc_text(&request,"version"),"1")) return 71;
+  // Reject missing, invalid or overlong identities before any banking work.
+  if(!valid_product_identity(&request)) return 71;
   if(AB_BankingCraft_NoLegacyImport()!=1) return 71;
+  if(AB_BankingCraft_HkvvbOnlyRegistration()!=1) return 71;
   if(GWEN_Init()<0) return 71;
   GWEN_GUI *gui=setup_gui();
   bc_config=GWEN_DB_Group_new("bankingcraft");
@@ -742,8 +838,11 @@ int main(int argc,char **argv) {
   // unwritable. No account information is ever written into this file.
   if(stat(data_path,&st) || !S_ISREG(st.st_mode)) return 71;
   AB_BANKING *ab=AB_Banking_new("BankingCraft",data_path,0);
+  // Patched AqBanking uses this value only in HKVVB/Produktbezeichnung.
   AB_Banking_RuntimeConfig_SetCharValue(ab,"fintsRegistrationKey",bc_text(&request,"product"));
   AB_Banking_RuntimeConfig_SetCharValue(ab,"fintsApplicationVersionString",bc_text(&request,"product_version"));
+  AB_Banking_RuntimeConfig_SetIntValue(ab,"bankingcraftSkipMatchingVop",
+      !strcmp(bc_text(&request,"skip_matching_vop"),"1"));
   int rv=AB_Banking_Init(ab);
   if(rv>=0) {
     BC_FRAME connection={0};

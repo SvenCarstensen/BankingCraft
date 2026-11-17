@@ -109,6 +109,7 @@ impl Guard {
 pub fn lock(app: &AppWindow) {
     let Some(c) = crate::CTX.with(|c| c.borrow().clone()) else { return };
     if c.bridge.locked.swap(true, Ordering::AcqRel) { return; }
+    c.vault.lock().unwrap().history.add("Tresor gesperrt",crate::history::Status::Success,None);
     c.bridge.generation.fetch_add(1, Ordering::AcqRel);
     c.bridge.cancelled.store(true, Ordering::Release);
     c.bridge.answer(crate::bridge::Answer::Cancel);

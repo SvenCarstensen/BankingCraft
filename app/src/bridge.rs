@@ -106,7 +106,11 @@ impl Bridge {
         let generation = self.generation.clone();
         let prompt_id = self.prompt_id.clone();
         if self.weak.upgrade_in_event_loop(move |app| {
-            if !locked.load(Ordering::Acquire) && generation.load(Ordering::Acquire) == epoch && prompt_id.load(Ordering::Acquire) == prompt { setup(&app); }
+            if !locked.load(Ordering::Acquire) && generation.load(Ordering::Acquire) == epoch && prompt_id.load(Ordering::Acquire) == prompt {
+                let st=app.global::<AppState>();
+                if st.get_tan_kind()==4 { st.set_show_tan(false); }
+                setup(&app);
+            }
         }).is_err() {
             self.pending.lock().unwrap().take();
             return Answer::Cancel;
@@ -147,6 +151,9 @@ impl Bridge {
     }
 
     pub fn pinpad(&self, show: bool, text: &str) {
+        self.reader_notice(show,text,-1);
+    }
+    fn reader_notice(&self, show:bool, text:&str, seconds:i32) {
         let t = SharedString::from(text);
         let locked = self.locked.clone();
         let generation = self.generation.clone();
@@ -154,7 +161,11 @@ impl Bridge {
         let _ = self.weak.upgrade_in_event_loop(move |app| {
             if locked.load(std::sync::atomic::Ordering::Acquire) || generation.load(std::sync::atomic::Ordering::Acquire) != epoch { return; }
             let st = app.global::<AppState>();
+            if show && (!st.get_show_pinpad() || (seconds>=0)!=(st.get_pinpad_seconds()>=0) || st.get_pinpad_text()!=t) {
+                crate::notifications::reader_requested(seconds>=0);
+            } else if !show { crate::notifications::clear_reader(); }
             st.set_pinpad_text(t);
+            st.set_pinpad_seconds(seconds);
             st.set_show_pinpad(show);
         });
     }
@@ -217,6 +228,10 @@ impl Interaction for Bridge {
         self.choose(&format!("{title}\n\n{text}"),options.iter().map(|(id,label)|(id.clone(),label.clone(),String::new())).collect())
     }
     fn hardware_prompt(&self,show:bool,text:&str) { self.pinpad(show,text); }
+    fn reader_pin_timed_out(&self) { self.cancelled.store(true,std::sync::atomic::Ordering::Release); }
+    fn reader_pin(&self,remaining:u32) {
+        self.reader_notice(true,i18n::tr("Bitte geben Sie die PIN Ihrer HBCI-Chipkarte am Kartenleser ein und bestätigen Sie mit OK."),remaining as i32);
+    }
     fn cancelled(&self) -> bool {
         self.cancelled.load(std::sync::atomic::Ordering::Acquire) || self.locked.load(std::sync::atomic::Ordering::Acquire)
     }
@@ -232,6 +247,22 @@ impl Interaction for Bridge {
     }
 
     fn tan(&self,ch:&TanChallenge,rendered:Option<&[u8]>,image:Option<(&str,&[u8])>)->TanAnswer {self.render_tan(ch,rendered,image)}
+
+    fn approval_pending(&self,title:&str,text:&str,remaining:u32,attempt:u32,limit:u32) {
+        use std::sync::atomic::Ordering;
+        let title=SharedString::from(format!("Freigabe · {title}"));
+        let text=SharedString::from(text);
+        let status=if remaining==0 { format!("Freigabestatus wird abgefragt … ({attempt}/{limit})") }
+            else { format!("Warte auf Freigabe. Nächste Statusabfrage in {remaining} s. ({attempt}/{limit})") };
+        let bridge=self.clone(); let epoch=self.session_generation();
+        let _=self.weak.upgrade_in_event_loop(move |app| {
+            if bridge.cancelled() || bridge.locked.load(Ordering::Acquire) || bridge.session_generation()!=epoch { return; }
+            let st=app.global::<AppState>();
+            st.set_tan_kind(4); st.set_tan_title(title); st.set_tan_text(text);
+            st.set_tan_status(status); st.set_tan_value(Default::default());
+            st.set_tan_usb_possible(false); st.set_show_tan(true);
+        });
+    }
 
     fn progress(&self, text: &str) {
         if self.native_progress { self.status(text); }

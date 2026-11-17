@@ -12,6 +12,7 @@ fn recipient_id(app: &AppWindow) -> Option<u32> {
 }
 
 pub fn refresh(app: &AppWindow, v: &Vault, vs: &mut view::ViewState) {
+    crate::templates::refresh(app,v,vs);
     let st = app.global::<AppState>();
     let selected = st.get_tf_recipient().checked_sub(1).and_then(|i| vs.recipient_ids.get(i as usize)).copied();
     let account = vs.sepa_accounts.get(st.get_tf_account() as usize).copied();
@@ -23,7 +24,9 @@ pub fn refresh(app: &AppWindow, v: &Vault, vs: &mut view::ViewState) {
     st.set_recipient_names(ModelRc::new(VecModel::from(names)));
     st.set_tf_recipient(selected.and_then(|id| vs.recipient_ids.iter().position(|r| *r == id)).map(|i| i as i32 + 1).unwrap_or(0));
     st.set_queued_order_count(v.payment_orders.iter().filter(|o| o.status == OrderStatus::Queued).count() as i32);
-    let rows: Vec<_> = v.payment_orders.iter().rev().map(|o| {
+    // Keep accepted records in the encrypted vault as durable send outcomes,
+    // while the outgoing list contains only pending or unresolved orders.
+    let rows: Vec<_> = v.payment_orders.iter().rev().filter(|o| o.status != OrderStatus::Sent).map(|o| {
         let needs_review = matches!(o.status, OrderStatus::Submitting | OrderStatus::NeedsReview);
         let status = match o.status {
             OrderStatus::Queued => i18n::tr("Gespeichert"),
@@ -55,7 +58,7 @@ pub fn install(app: &AppWindow) {
         let (transfer, scheduled) = match crate::transfer_from_form(&app) {
             Ok(t) => t, Err(e) => { toast(&app, &e, true); return; },
         };
-        if crate::edit_vault(&app, |v| v.queue_transfer(account, transfer, scheduled, app.global::<AppState>().get_tf_save_recipient()).map(|_| ())) {
+        if crate::edit_vault(&app, "Überweisung gespeichert", |v| v.queue_transfer(account, transfer, scheduled, app.global::<AppState>().get_tf_save_recipient()).map(|_| ())) {
             crate::clear_transfer_form(&app);
             toast(&app, i18n::tr("Überweisung gespeichert. Versand bei der nächsten Synchronisierung dieses Kontos."), false);
         }
@@ -70,6 +73,7 @@ pub fn install(app: &AppWindow) {
             st.invoke_check_iban(Default::default());
         }
         st.set_tf_recipient(0);
+        st.set_tf_template(0);
         st.set_tf_save_recipient(false);
         crate::refresh_view(&app);
     });
@@ -95,7 +99,7 @@ pub fn install(app: &AppWindow) {
         let (Some(account), Some(id)) = (account_id(&app), recipient_id(&app)) else { return; };
         let weak = app.as_weak();
         crate::confirm(&app, i18n::tr("Empfänger löschen?"), i18n::tr("Der Empfänger wird nur aus dem Adressbuch dieses Kontos entfernt."), true, move || {
-            crate::edit_vault(&weak.unwrap(), |v| v.delete_recipient(account, id));
+            crate::edit_vault(&weak.unwrap(), "Empfänger gelöscht", |v| v.delete_recipient(account, id));
         });
     });
     let weak = app.as_weak();
@@ -106,7 +110,7 @@ pub fn install(app: &AppWindow) {
             else { i18n::tr("Nur der lokale Eintrag wird entfernt. Ein bereits an die Bank übermittelter Auftrag wird dadurch nicht storniert.") };
         let weak = app.as_weak();
         crate::confirm(&app, i18n::tr("Auftrag entfernen?"), text, true, move || {
-            crate::edit_vault(&weak.unwrap(), |v| v.delete_payment_order(id as u32));
+            crate::edit_vault(&weak.unwrap(), "Auftrag gelöscht", |v| v.delete_payment_order(id as u32));
         });
     });
 }
@@ -118,6 +122,41 @@ mod tests {
     use crate::ui::Model;
     use egui_kittest::kittest::Queryable;
     use std::sync::{Arc, Mutex, atomic::AtomicBool};
+
+    #[test]
+    fn bank_accepted_orders_disappear_and_uncertain_orders_remain_after_reload() {
+        i18n::with_language(i18n::Language::German, || {
+            let app=AppWindow::new().unwrap();let st=app.global::<AppState>();
+            st.set_unlocked(true);st.set_page(9);
+            let mut vault=Vault::default();crate::demo::add_demo(&mut vault);
+            let account=vault.accounts[0].id;
+            for (index,status) in [OrderStatus::Queued,OrderStatus::Submitting,OrderStatus::NeedsReview,OrderStatus::Sent,OrderStatus::Sent].into_iter().enumerate() {
+                let mut transfer=crate::business_tests::standing().transfer;
+                transfer.creditor_name=format!("Synthetic recipient {index}");
+                if index==4 {transfer.execution_date=Some(chrono::Local::now().date_naive()+chrono::Duration::days(3));}
+                vault.queue_transfer(account,transfer,index==4,false).unwrap();
+                let order=vault.payment_orders.last_mut().unwrap();order.status=status;
+                // Text cannot convert an uncertain outcome into acceptance.
+                order.message="Die Bank hat den Auftrag angenommen.".into();
+            }
+            let mut vault:Vault=serde_json::from_slice(&serde_json::to_vec(&vault).unwrap()).unwrap();
+            let mut vs=view::ViewState::default();view::refresh_all(&app,&vault,&mut vs);
+            assert_eq!(st.get_payment_orders().iter().map(|r|r.id).collect::<Vec<_>>(),vault.payment_orders[..3].iter().rev().map(|o|o.id as i32).collect::<Vec<_>>());
+            assert_eq!(st.get_queued_order_count(),1);
+            let mut harness=crate::ui::testing::harness(&app,1100.,860.);
+            assert!(harness.query_by_label("Synthetic recipient 3").is_none());
+            assert!(harness.query_by_label("Synthetic recipient 4").is_none());
+            vault.payment_orders[0].status=OrderStatus::Sent;
+            view::refresh_all(&app,&vault,&mut vs);harness.run_steps(3);
+            assert_eq!(st.get_payment_orders().row_count(),2);assert_eq!(st.get_queued_order_count(),0);
+            assert!(harness.query_by_label("Synthetic recipient 0").is_none());
+            for order in &mut vault.payment_orders {order.status=OrderStatus::Sent;}
+            view::refresh_all(&app,&vault,&mut vs);harness.run_steps(3);
+            assert_eq!(st.get_payment_orders().row_count(),0);
+            harness.get_by_label("Keine offenen Überweisungsaufträge.");
+            assert_eq!(vault.payment_orders.len(),5,"durable acceptance records remain available for duplicate-send protection");
+        });
+    }
 
     #[test]
     fn saving_with_enter_is_default_and_address_book_requires_checkbox_for_each_account() {

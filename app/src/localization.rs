@@ -56,6 +56,7 @@ pub(crate) fn install(app: &crate::AppWindow) {
             return;
         }
         current.set(mode);
+        crate::history::record(&app,"Sprache geändert",crate::history::Status::Success);
         apply(&app, mode);
         // Transient output cannot be safely retranslated from rendered strings.
         st.set_toast(crate::Toast::default());

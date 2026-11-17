@@ -84,6 +84,10 @@ pub struct AccountGroup {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Vault {
+    #[serde(default)]
+    pub history: crate::history::History,
+    #[serde(default)]
+    pub templates: Vec<crate::templates::Template>,
     pub next_id: u32,
     pub accesses: Vec<BankAccess>,
     pub accounts: Vec<StoredAccount>,
@@ -138,6 +142,7 @@ impl Vault {
         self.standing.retain(|s| !account_ids.contains(&s.account_id));
         self.payment_orders.retain(|o| !account_ids.contains(&o.account_id));
         self.recipients.retain(|r| !account_ids.contains(&r.account_id));
+        self.templates.retain(|t| !account_ids.contains(&t.account_id));
         for group in &mut self.groups {
             group.account_ids.retain(|id| !account_ids.contains(id));
         }

@@ -1,7 +1,11 @@
 //! AqBanking runs in a disposable native process, with an in-memory config
 //! manager. Only opaque snapshots cross back into the encrypted vault.
+mod reads;
+mod reader_prompt;
+pub use reads::ReadRequest;
 mod wire;
 mod readers;
+mod product;
 pub use readers::{list_readers, ReaderInfo};
 use wire::Frame;
 use chrono::NaiveDate;
@@ -38,6 +42,9 @@ fn native_error(frame:&Frame,code:i64) -> Result<Error> {
         "getaccsepa"=>("SEPA-Kontodaten abrufen",true),
         "balance"=>("Saldo abrufen",false),
         "transactions"=>("Umsätze abrufen",false),
+        "read_batch"=>("Salden und Umsätze abrufen",false),
+        "transfer"|"scheduled"=>("Überweisung freigeben",false),
+        "create_standing"|"delete_standing"=>("Dauerauftrag freigeben",false),
         _=>("Bankauftrag",false),
     };
     let notice=banking::display::strip_html(text(frame,"notice")?);
@@ -125,7 +132,7 @@ impl CardWorker {
         }
     }
 }
-fn read_operation(op:&str) -> bool { matches!(op,"open"|"accounts"|"balance"|"transactions") }
+fn read_operation(op:&str) -> bool { matches!(op,"open"|"accounts"|"balance"|"transactions"|"read_batch") }
 
 pub struct Client<'a> {
     config:Config,
@@ -133,6 +140,9 @@ pub struct Client<'a> {
     medium:Medium,
     ui:&'a dyn Interaction,
     session:Option<CardWorker>,
+    planned_reads:Vec<reads::ReadPlan>,
+    read_generation:Option<u64>,
+    prefetched_reads:Vec<reads::ReadResult>,
 }
 impl<'a> Client<'a> {
     pub fn new(config:Config,mut state:State,medium:Medium,ui:&'a dyn Interaction) -> Result<Self> {
@@ -155,11 +165,26 @@ impl<'a> Client<'a> {
         if state.aqbanking.is_none() {
             state.aqbanking=Some(AqBankingState {version:1,binding,snapshot:Vec::new(),accounts:Vec::new()});
         }
-        Ok(Self {config,state,medium,ui,session:None})
+        Ok(Self {config,state,medium,ui,session:None,read_generation:None,planned_reads:Vec::new(),prefetched_reads:Vec::new()})
     }
     pub fn finish(mut self) -> State {
         if let Some(worker)=self.session.take() { worker.close(); }
         self.state
+    }
+    fn configure_request(&self,request:&mut Frame,registration:&str) {
+        request.put("state",&self.state.aqbanking.as_ref().unwrap().snapshot);
+        request.put("blz",&self.config.blz); request.put("user",&self.config.user_id);
+        request.put("customer",if self.config.customer_id.is_empty() {&self.config.user_id} else {&self.config.customer_id});
+        request.put("url",&self.config.url);
+        // Postbank uses push approval. Select only a BestSign method actually
+        // advertised for this user; never invent a security-function number.
+        if matches!(self.medium,Medium::PinTan)
+            && url::Url::parse(&self.config.url).ok().and_then(|u|u.host_str().map(str::to_owned)).as_deref()==Some("hbci.postbank.de") {
+            request.put("preferred_tan","bestsign");
+            request.put("skip_matching_vop","1");
+        }
+        product::configure(request,registration);
+        request.put("medium",self.medium.name()); request.put("record",self.medium.record().to_string());
     }
     fn spawn_worker(&self,request:&mut Frame,session:bool) -> Result<CardWorker> {
         let generation=self.ui.session_generation();
@@ -167,11 +192,7 @@ impl<'a> Client<'a> {
         let blocker=tempfile::NamedTempFile::new().map_err(failure)?;
         request.put("version","1"); request.put("data_path",blocker.path().to_str().ok_or_else(invalid)?);
         if session { request.put("card_session","1"); }
-        request.put("state",&self.state.aqbanking.as_ref().unwrap().snapshot);
-        request.put("blz",&self.config.blz); request.put("user",&self.config.user_id);
-        request.put("customer",if self.config.customer_id.is_empty() {&self.config.user_id} else {&self.config.customer_id});
-        request.put("url",&self.config.url); request.put("product",&self.config.product_id); request.put("product_version",&self.config.product_version);
-        request.put("medium",self.medium.name()); request.put("record",self.medium.record().to_string());
+        self.configure_request(request,&product::registration()?);
         let mut command=Command::new(helper);
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
         command.env_remove("AQBANKING_HOME").env_remove("AQHBCI_LOGLEVEL").env_remove("GWEN_LOGLEVEL");
@@ -188,10 +209,14 @@ impl<'a> Client<'a> {
         });
         Ok(CardWorker {worker,input,receive,_blocker:blocker,generation})
     }
-    fn call(&mut self,mut request:Frame) -> Result<Vec<Frame>> {
+    fn call(&mut self,request:Frame) -> Result<Vec<Frame>> {
+        self.call_with_reader_timeout(request,reader_prompt::PIN_TIMEOUT)
+    }
+    fn call_with_reader_timeout(&mut self,mut request:Frame,pin_timeout:Duration) -> Result<Vec<Frame>> {
         if self.ui.cancelled() { self.session.take(); return Err(Error::Cancelled); }
         let use_session=!matches!(self.medium,Medium::PinTan) && read_operation(text(&request,"op")?);
         if !use_session {
+            self.planned_reads.clear(); self.prefetched_reads.clear(); self.read_generation=None;
             if let Some(worker)=self.session.take() { worker.close(); }
         }
         let mut worker=if let Some(worker)=self.session.take() {
@@ -199,9 +224,11 @@ impl<'a> Client<'a> {
             worker
         } else { self.spawn_worker(&mut request,use_session)? };
         request.write(&mut worker.input).map_err(failure)?; drop(request);
+        let mut reader=reader_prompt::ReaderPrompt::new(self.ui,pin_timeout);
         let mut frames=Vec::new(); let mut bytes=0usize; let mut idle=Instant::now(); let mut start=Instant::now(); let mut events=0usize;
         loop {
             if self.ui.cancelled() || self.ui.session_generation() != worker.generation { return Err(Error::Cancelled); }
+            reader.tick(Instant::now())?;
             if idle.elapsed()>Duration::from_secs(90) || start.elapsed()>Duration::from_secs(15*60) {
                 return Err(Error::Transport("AqBanking-Zeitlimit erreicht. Bankstatus eines gesendeten Auftrags prüfen.".into()));
             }
@@ -237,14 +264,19 @@ impl<'a> Client<'a> {
                     } else { result };
                 },
                 "progress"=>self.ui.progress(&banking::display::strip_html(text(&frame,"text")?)),
-                "show"=>self.ui.hardware_prompt(true,&banking::display::strip_html(text(&frame,"text")?)),
-                "hide"=>self.ui.hardware_prompt(false,""),
+                "show"=>reader.show(&frame,Instant::now())?,
+                "hide"=>reader.hide(&frame)?,
                 "bad_pin"=>self.ui.pin_rejected(),
                 "password"|"message"|"vop"|"choice"=>{
-                    let reply=self.answer(&frame)?; reply.write(&mut worker.input).map_err(failure)?;
-                    idle=Instant::now(); start=idle;
+                    if reader.active() {return Err(invalid());} // cannot block the reader deadline on another prompt
+                    let automatic=frame.bytes("event")==b"password" && frame.bytes("automatic")==b"1";
+                    let reply=if automatic { self.wait_for_approval(&frame,start+Duration::from_secs(15*60),worker.generation)? }
+                              else { self.answer(&frame)? };
+                    reply.write(&mut worker.input).map_err(failure)?;
+                    idle=Instant::now();
+                    if !automatic { start=idle; }
                 },
-                "account"|"balance"|"transaction"|"card"|"reader"|"tan"=>{
+                "account"|"balance"|"transaction"|"card"|"reader"|"tan"|"read_result"=>{
                     // Frames are bounded individually and the batch is bounded by
                     // data size, not just the number of transactions.
                     bytes+=frame.size();
@@ -254,6 +286,31 @@ impl<'a> Client<'a> {
                 _=>return Err(invalid()),
             }
         }
+    }
+    fn wait_for_approval(&self,frame:&Frame,deadline:Instant,generation:u64) -> Result<Frame> {
+        let wait=number(frame,"wait_seconds")?;
+        let attempt=number(frame,"attempt")?;
+        let limit=number(frame,"limit")?;
+        if number(frame,"flags")?&0x20==0 || number(frame,"method")?!=7 || frame.bytes("automatic")!=b"1"
+            || !(0..=999).contains(&wait) || !(1..=999).contains(&limit) || !(1..=limit).contains(&attempt) { return Err(invalid()); }
+        let title=banking::display::strip_html(text(frame,"title")?);
+        let message=banking::display::strip_html(text(frame,"text")?);
+        let next=Instant::now()+Duration::from_secs(wait as u64);
+        let mut previous=None;
+        loop {
+            if self.ui.cancelled() || self.ui.session_generation()!=generation { return Err(Error::Cancelled); }
+            if Instant::now()>=deadline { return Err(Error::Transport("Zeitlimit der Freigabeprüfung erreicht. Bitte Bankstatus vor erneutem Senden prüfen.".into())); }
+            let remaining=next.saturating_duration_since(Instant::now());
+            let seconds=remaining.as_secs()+u64::from(remaining.subsec_nanos()!=0);
+            if previous!=Some(seconds) {
+                self.ui.approval_pending(&title,&message,seconds as u32,attempt as u32,limit as u32);
+                previous=Some(seconds);
+            }
+            if remaining.is_zero() { break; }
+            std::thread::sleep(remaining.min(Duration::from_millis(100)));
+        }
+        // Empty acknowledgement requests HKTAN S; it never authorizes success.
+        let mut reply=Frame::new("answer"); reply.put("value",""); Ok(reply)
     }
     fn answer(&self,frame:&Frame) -> Result<Frame> {
         let mut reply=Frame::new("answer");
@@ -305,7 +362,12 @@ impl<'a> Client<'a> {
         let challenge=TanChallenge {text:message.into(),decoupled:method==7,
             method:TanMethod {name:title.into(),technical_id:match method {3|4=>"HHD1.4OPT",5=>"QR",6=>"photoTAN",_=>""}.into(),
                 decoupled:method==7,max_tan_length:u32::try_from(number(frame,"max")?).map_err(|_|invalid())?}};
-        Ok(match self.ui.tan(&challenge,rendered.as_deref(),image) {TanAnswer::Tan(t)=>Some(t),TanAnswer::Confirmed=>Some(String::new()),TanAnswer::Cancel=>None})
+        match self.ui.tan(&challenge,rendered.as_deref(),image) {
+            TanAnswer::Tan(t) if !challenge.decoupled && !t.is_empty()=>Ok(Some(t)),
+            TanAnswer::Confirmed if challenge.decoupled=>Ok(Some(String::new())),
+            TanAnswer::Cancel=>Ok(None),
+            _=>Err(invalid()),
+        }
     }
     pub fn open(&mut self) -> Result<()> { self.call(Frame::new("open")).map(|_|()) }
     pub fn reset_tan(&mut self) -> Result<()> { self.call(Frame::new("reset_tan")).map(|_|()) }
@@ -336,25 +398,19 @@ impl<'a> Client<'a> {
         Ok((*id,known))
     }
     pub fn balance(&mut self,account:&Account) -> Result<Option<Balance>> {
+        if !self.planned_reads.is_empty() || !self.prefetched_reads.is_empty() {
+            if let Some(result)=self.cached_balance(account)? {return result;}
+        }
         let request=self.account_request("balance",account)?; let frames=self.call(request)?; parse_balance(&frames)
     }
     pub fn transaction_report(&mut self,account:&Account,from:NaiveDate,to:Option<NaiveDate>) -> Result<TransactionReport> {
-        let mut request=self.account_request("transactions",account)?; date_field(&mut request,"from",Some(from)); date_field(&mut request,"to",to);
-        let frames=self.call(request)?; let balance=parse_balance(&frames)?; let mut transactions=Vec::new();
-        for f in frames {
-            if text(&f,"event")?!="transaction" { continue; }
-            if !matches!(number(&f,"type")?,128|129) { return Err(invalid()); }
-            let booking=date(&f,"date")?; let value=date(&f,"value_date")?;
-            let mut tx=Transaction {booking_date:booking.or(value).unwrap_or_default(),value_date:value.or(booking).unwrap_or_default(),
-                date_unknown:booking.is_none() && value.is_none(),amount:amount(&f)?,currency:text(&f,"currency")?.into(),
-                counterparty_name:text(&f,"name")?.into(),counterparty_iban:text(&f,"iban")?.into(),counterparty_bic:text(&f,"bic")?.into(),
-                purpose:text(&f,"purpose")?.into(),posting_text:text(&f,"posting")?.into(),end_to_end_id:text(&f,"end_to_end")?.into(),
-                mandate_id:text(&f,"mandate")?.into(),creditor_id:text(&f,"creditor")?.into(),
-                pending:number(&f,"type")?==129 || number(&f,"status")?==6,fingerprint:String::new()};
-            tx.compute_fingerprint(); transactions.push(tx);
+        if !self.planned_reads.is_empty() || !self.prefetched_reads.is_empty() {
+            if let Some(result)=self.cached_transactions(account,from,to)? {return result;}
         }
-        Ok(TransactionReport {transactions,balance,warnings:Vec::new()})
+        let mut request=self.account_request("transactions",account)?; date_field(&mut request,"from",Some(from)); date_field(&mut request,"to",to);
+        let frames=self.call(request)?; parse_transaction_report(&frames)
     }
+
     fn send(&mut self,op:&str,account:&Account,transfer:&SepaTransfer,standing:Option<&StandingOrder>) -> Result<String> {
         if transfer.debtor_iban!=account.iban || transfer.amount<=Decimal::ZERO || transfer.amount.normalize().scale()>2 {
             return Err(Error::Security("Ungültiger Zahlungsauftrag".into()));
@@ -443,6 +499,24 @@ fn parse_tan(data:&[u8]) -> Option<String> {
         if lo<=9 {tan.push(char::from(b'0'+lo));}
     }
     Some(tan)
+}
+
+
+fn parse_transaction_report(frames:&[Frame]) -> Result<TransactionReport> {
+    let balance=parse_balance(frames)?; let mut transactions=Vec::new();
+    for f in frames {
+        if text(f,"event")?!="transaction" { continue; }
+        if !matches!(number(f,"type")?,128|129) { return Err(invalid()); }
+        let booking=date(f,"date")?; let value=date(f,"value_date")?;
+        let mut tx=Transaction {booking_date:booking.or(value).unwrap_or_default(),value_date:value.or(booking).unwrap_or_default(),
+            date_unknown:booking.is_none() && value.is_none(),amount:amount(f)?,currency:text(f,"currency")?.into(),
+            counterparty_name:text(f,"name")?.into(),counterparty_iban:text(f,"iban")?.into(),counterparty_bic:text(f,"bic")?.into(),
+            purpose:text(f,"purpose")?.into(),posting_text:text(f,"posting")?.into(),end_to_end_id:text(f,"end_to_end")?.into(),
+            mandate_id:text(f,"mandate")?.into(),creditor_id:text(f,"creditor")?.into(),
+            pending:number(f,"type")?==129 || number(f,"status")?==6,fingerprint:String::new()};
+        tx.compute_fingerprint(); transactions.push(tx);
+    }
+    Ok(TransactionReport {transactions,balance,warnings:Vec::new()})
 }
 
 
@@ -601,6 +675,45 @@ mod tests {
         frame.put("notice","");
         assert!(native_error(&frame,3).unwrap().to_string().contains("Keine nähere Fehlermeldung"));
     }
+    #[test]
+    fn automatic_approval_waits_and_only_acknowledges_status_queries() {
+        use std::sync::{Mutex,atomic::{AtomicBool,AtomicU64,Ordering}};
+        struct Pending { updates:Mutex<Vec<u32>>, cancel:AtomicBool, generation:AtomicU64, stop:u8 }
+        impl Interaction for Pending {
+            fn pin(&self,_:&str)->Option<String> { panic!("no PIN") }
+            fn tan(&self,_:&TanChallenge,_:Option<&[u8]>,_:Option<(&str,&[u8])>)->TanAnswer { panic!("no manual approval") }
+            fn progress(&self,_:&str) {}
+            fn cancelled(&self)->bool { self.cancel.load(Ordering::Acquire) }
+            fn session_generation(&self)->u64 { self.generation.load(Ordering::Acquire) }
+            fn approval_pending(&self,title:&str,text:&str,remaining:u32,attempt:u32,limit:u32) {
+                assert_eq!((title,text,attempt,limit),("BestSign-Push","Synthetic approval",2,60));
+                self.updates.lock().unwrap().push(remaining);
+                if self.stop==1 { self.cancel.store(true,Ordering::Release); }
+                if self.stop==2 { self.generation.store(1,Ordering::Release); }
+            }
+        }
+        let mut frame=Frame::new("password");
+        for (key,value) in [("flags","32"),("method","7"),("automatic","1"),("wait_seconds","1"),
+            ("attempt","2"),("limit","60"),("title","BestSign-Push"),("text","Synthetic approval")] {frame.put(key,value);}
+        for stop in 0..3 {
+            let ui=Pending {updates:Mutex::default(),cancel:AtomicBool::new(false),generation:AtomicU64::new(0),stop};
+            let client=local_client(Medium::PinTan,&ui).unwrap();
+            let start=Instant::now();
+            let result=client.wait_for_approval(&frame,start+Duration::from_secs(3),0);
+            if stop==0 {
+                assert!(start.elapsed()>=Duration::from_secs(1));
+                let reply=result.unwrap(); assert!(reply.bytes("value").is_empty() && reply.bytes("cancel").is_empty());
+                assert_eq!(*ui.updates.lock().unwrap(),vec![1,0]);
+                for (key,value) in [("method","1"),("flags","2"),("wait_seconds","-1"),("wait_seconds","1000"),("attempt","61"),("limit","0")] {
+                    let previous=frame.text(key).unwrap().to_owned(); frame.put(key,value);
+                    assert!(client.wait_for_approval(&frame,Instant::now()+Duration::from_secs(3),0).is_err());
+                    frame.put(key,previous);
+                }
+                assert!(matches!(client.wait_for_approval(&frame,Instant::now(),0),Err(Error::Transport(_))));
+            } else { assert!(matches!(result,Err(Error::Cancelled))); }
+        }
+    }
+
     #[derive(Default)]
     struct Capture(std::sync::Mutex<Vec<u8>>);
     impl Interaction for Capture {
@@ -608,6 +721,66 @@ mod tests {
         fn progress(&self,_:&str){}
         fn tan(&self,_:&TanChallenge,hhd:Option<&[u8]>,_:Option<(&str,&[u8])>)->TanAnswer {
             *self.0.lock().unwrap()=hhd.unwrap_or_default().to_vec(); TanAnswer::Cancel
+        }
+    }
+    #[test]
+    fn registered_identity_replaces_legacy_values_for_every_banking_medium() {
+        let ui=Capture::default();
+        for medium in [Medium::PinTan,Medium::Ddv{reader:String::new(),record:1},Medium::Rdh{reader:String::new(),record:1}] {
+            for legacy in ["", "LEGACYTESTPRODUCT", &"X".repeat(26)] {
+                let config=Config{url:"https://bank.invalid".into(),product_id:legacy.into(),
+                    product_version:legacy.into(),..Default::default()};
+                let client=Client::new(config,State::default(),medium.clone(),&ui).unwrap();
+                let mut request=Frame::new("open");
+                client.configure_request(&mut request,product::REGISTRATION);
+                let registration=request.bytes("product");
+                assert_eq!(registration.len(),25);
+                assert!(registration.iter().all(u8::is_ascii_alphanumeric));
+                assert_ne!(registration,legacy.as_bytes());
+                assert_eq!(request.bytes("product_version").len(),5);
+                assert!(request.bytes("product_version").iter().all(u8::is_ascii_digit));
+                assert_eq!(request.entries().filter(|(_,v)| v.windows(registration.len()).any(|w| w==registration))
+                    .map(|(key,_)| key).collect::<Vec<_>>(),["product"]);
+                assert_eq!(client.config.product_id,legacy); // no vault mutation
+            }
+        }
+    }
+    #[test]
+    fn postbank_prefers_advertised_bestsign_only_on_its_exact_https_endpoint() {
+        let ui=Capture::default();
+        for (endpoint,expected) in [("https://hbci.postbank.de/banking/hbci.do","bestsign"),
+            ("https://hbci.postbank.de.evil.invalid/",""),
+            ("https://bank.invalid/BestSign","")] {
+            let client=Client::new(Config{url:endpoint.into(),..Default::default()},State::default(),Medium::PinTan,&ui).unwrap();
+            let mut frame=Frame::new("transfer"); client.configure_request(&mut frame,product::REGISTRATION);
+            assert_eq!(frame.text("preferred_tan").unwrap_or(""),expected);
+            assert_eq!(frame.text("skip_matching_vop").unwrap_or(""),if expected.is_empty() {""} else {"1"});
+        }
+    }
+    #[test]
+    fn push_approval_and_tan_entry_are_not_interchangeable() {
+        struct Approval(bool,u8);
+        impl Interaction for Approval {
+            fn pin(&self,_:&str)->Option<String> {panic!("no PIN in approval")}
+            fn progress(&self,_:&str) {}
+            fn tan(&self,ch:&TanChallenge,_:Option<&[u8]>,_:Option<(&str,&[u8])>)->TanAnswer {
+                assert_eq!(ch.decoupled,self.0);
+                assert_eq!(ch.text,"Synthetic bank challenge");
+                match self.1 {0=>TanAnswer::Confirmed,1=>TanAnswer::Tan("aB1234".into()),_=>TanAnswer::Cancel}
+            }
+        }
+        let mut frame=Frame::new("password");
+        frame.put("event","password"); frame.put("flags","162");
+        frame.put("title","BestSign"); frame.put("text","Synthetic bank challenge"); frame.put("max","1");
+        for (method,answer,expected) in [(7,0,Some("")),(7,2,None),(1,1,Some("aB1234")),(1,2,None)] {
+            frame.put("method",method.to_string()); let ui=Approval(method==7,answer);
+            let client=local_client(Medium::PinTan,&ui).unwrap(); let reply=client.answer(&frame).unwrap();
+            if let Some(value)=expected {assert_eq!(reply.text("value").unwrap(),value);}
+            else {assert_eq!(reply.text("cancel").unwrap(),"1");}
+        }
+        for (method,answer) in [(7,1),(1,0)] {
+            frame.put("method",method.to_string()); let ui=Approval(method==7,answer);
+            assert!(local_client(Medium::PinTan,&ui).unwrap().answer(&frame).is_err());
         }
     }
     #[test]

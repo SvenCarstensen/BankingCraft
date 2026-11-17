@@ -169,6 +169,16 @@ pub struct Data {
     pub active_vault_name: SharedString,
     pub vault_selection_revision: i32,
     pub unlock_error: SharedString,
+    pub history_entries: ModelRc<crate::history::Entry>,
+    pub history_search: String,
+    pub history_filter: i32,
+    pub history_sort: i32,
+    pub history_selected: Option<u64>,
+    pub templates: ModelRc<crate::templates::Template>,
+    pub tf_template: i32,
+    pub template_name: String,
+    pub template_error: String,
+    pub show_template_save: bool,
     pub page: i32,
     pub busy: bool,
     pub busy_text: SharedString,
@@ -275,9 +285,11 @@ pub struct Data {
     pub paste_note: SharedString,
     pub show_pinpad: bool,
     pub pinpad_text: SharedString,
+    pub pinpad_seconds: i32,
     pub show_tan: bool,
     pub tan_title: SharedString,
     pub tan_text: SharedString,
+    pub tan_status: SharedString,
     pub tan_kind: i32,
     pub tan_value: SharedString,
     pub tan_image: Image,
@@ -322,6 +334,16 @@ impl Default for Data {
             active_vault_name: Default::default(),
             vault_selection_revision: Default::default(),
             unlock_error: Default::default(),
+            history_entries: Default::default(),
+            history_search: Default::default(),
+            history_filter: Default::default(),
+            history_sort: Default::default(),
+            history_selected: Default::default(),
+            templates: Default::default(),
+            tf_template: Default::default(),
+            template_name: Default::default(),
+            template_error: Default::default(),
+            show_template_save: Default::default(),
             page: Default::default(),
             busy: Default::default(),
             busy_text: Default::default(),
@@ -428,9 +450,11 @@ impl Default for Data {
             paste_note: Default::default(),
             show_pinpad: Default::default(),
             pinpad_text: Default::default(),
+            pinpad_seconds: -1,
             show_tan: Default::default(),
             tan_title: Default::default(),
             tan_text: Default::default(),
+            tan_status: Default::default(),
             tan_kind: Default::default(),
             tan_value: Default::default(),
             tan_image: Default::default(),
@@ -466,6 +490,10 @@ impl Default for Data {
 type Callback<F> = Option<std::rc::Rc<F>>;
 #[derive(Default)]
 pub struct Callbacks {
+    pub delete_template: Option<std::rc::Rc<dyn Fn()>>,
+    pub save_template: Option<std::rc::Rc<dyn Fn()>>,
+    pub load_template: Option<std::rc::Rc<dyn Fn(i32)>>,
+    pub repeat_history: Option<std::rc::Rc<dyn Fn(u64)>>,
     vop_accept: Callback<dyn Fn()>,
     vop_cancel: Callback<dyn Fn()>,
     vop_copy_name: Callback<dyn Fn()>,
@@ -596,6 +624,16 @@ impl AppState {
         if before.unlock_error != after.unlock_error {
             data.unlock_error = after.unlock_error.clone();
         }
+        if before.history_entries != after.history_entries { data.history_entries = after.history_entries.clone(); }
+        if before.history_search != after.history_search { data.history_search = after.history_search.clone(); }
+        if before.history_filter != after.history_filter { data.history_filter = after.history_filter; }
+        if before.history_sort != after.history_sort { data.history_sort = after.history_sort; }
+        if before.history_selected != after.history_selected { data.history_selected = after.history_selected; }
+        if before.templates != after.templates { data.templates = after.templates.clone(); }
+        if before.tf_template != after.tf_template { data.tf_template = after.tf_template; }
+        if before.template_name != after.template_name { data.template_name = after.template_name.clone(); }
+        if before.template_error != after.template_error { data.template_error = after.template_error.clone(); }
+        if before.show_template_save != after.show_template_save { data.show_template_save = after.show_template_save; }
         if before.page != after.page {
             data.page = after.page;
         }
@@ -914,6 +952,7 @@ impl AppState {
         if before.show_pinpad != after.show_pinpad {
             data.show_pinpad = after.show_pinpad;
         }
+        if before.pinpad_seconds != after.pinpad_seconds {data.pinpad_seconds=after.pinpad_seconds;}
         if before.pinpad_text != after.pinpad_text {
             data.pinpad_text = after.pinpad_text.clone();
         }
@@ -926,6 +965,7 @@ impl AppState {
         if before.tan_text != after.tan_text {
             data.tan_text = after.tan_text.clone();
         }
+        if before.tan_status != after.tan_status { data.tan_status = after.tan_status.clone(); }
         if before.tan_kind != after.tan_kind {
             data.tan_kind = after.tan_kind;
         }
@@ -1084,6 +1124,34 @@ impl AppState {
     pub fn set_unlock_error(&self, value: SharedString) {
         self.data.borrow_mut().unlock_error = value;
     }
+    pub fn get_history_entries(&self) -> ModelRc<crate::history::Entry> { self.data.borrow().history_entries.clone() }
+    pub fn set_history_entries(&self, value: ModelRc<crate::history::Entry>) { self.data.borrow_mut().history_entries = value; }
+    pub fn get_history_search(&self) -> String { self.data.borrow().history_search.clone() }
+    pub fn set_history_search(&self, value: String) { self.data.borrow_mut().history_search = value; }
+    pub fn get_history_filter(&self) -> i32 { self.data.borrow().history_filter }
+    pub fn set_history_filter(&self, value: i32) { self.data.borrow_mut().history_filter = value; }
+    pub fn get_history_sort(&self) -> i32 { self.data.borrow().history_sort }
+    pub fn set_history_sort(&self, value: i32) { self.data.borrow_mut().history_sort = value; }
+    pub fn get_history_selected(&self) -> Option<u64> { self.data.borrow().history_selected }
+    pub fn set_history_selected(&self, value: Option<u64>) { self.data.borrow_mut().history_selected = value; }
+    pub fn get_templates(&self) -> ModelRc<crate::templates::Template> { self.data.borrow().templates.clone() }
+    pub fn set_templates(&self, value: ModelRc<crate::templates::Template>) { self.data.borrow_mut().templates = value; }
+    pub fn get_tf_template(&self) -> i32 { self.data.borrow().tf_template }
+    pub fn set_tf_template(&self, value: i32) { self.data.borrow_mut().tf_template = value; }
+    pub fn get_template_name(&self) -> String { self.data.borrow().template_name.clone() }
+    pub fn set_template_name(&self, value: String) { self.data.borrow_mut().template_name = value; }
+    pub fn get_template_error(&self) -> String { self.data.borrow().template_error.clone() }
+    pub fn set_template_error(&self, value: String) { self.data.borrow_mut().template_error = value; }
+    pub fn get_show_template_save(&self) -> bool { self.data.borrow().show_template_save }
+    pub fn set_show_template_save(&self, value: bool) { self.data.borrow_mut().show_template_save = value; }
+    pub fn on_repeat_history(&self, callback: impl Fn(u64) + 'static) { self.callbacks.borrow_mut().repeat_history=Some(std::rc::Rc::new(callback)); }
+    pub fn invoke_repeat_history(&self, value: u64) { let callback=self.callbacks.borrow().repeat_history.clone(); if let Some(f)=callback {f(value);} }
+    pub fn on_load_template(&self, callback: impl Fn(i32) + 'static) { self.callbacks.borrow_mut().load_template=Some(std::rc::Rc::new(callback)); }
+    pub fn invoke_load_template(&self, value: i32) { let callback=self.callbacks.borrow().load_template.clone(); if let Some(f)=callback {f(value);} }
+    pub fn on_save_template(&self, callback: impl Fn() + 'static) { self.callbacks.borrow_mut().save_template=Some(std::rc::Rc::new(callback)); }
+    pub fn invoke_save_template(&self, ) { let callback=self.callbacks.borrow().save_template.clone(); if let Some(f)=callback {f();} }
+    pub fn on_delete_template(&self, callback: impl Fn() + 'static) { self.callbacks.borrow_mut().delete_template=Some(std::rc::Rc::new(callback)); }
+    pub fn invoke_delete_template(&self, ) { let callback=self.callbacks.borrow().delete_template.clone(); if let Some(f)=callback {f();} }
     pub fn get_page(&self) -> i32 {
         self.data.borrow().page
     }
@@ -1735,6 +1803,8 @@ impl AppState {
     pub fn set_show_pinpad(&self, value: bool) {
         self.data.borrow_mut().show_pinpad = value;
     }
+    pub fn get_pinpad_seconds(&self)->i32 {self.data.borrow().pinpad_seconds}
+    pub fn set_pinpad_seconds(&self,value:i32) {self.data.borrow_mut().pinpad_seconds=value;}
     pub fn get_pinpad_text(&self) -> SharedString {
         self.data.borrow().pinpad_text.clone()
     }
@@ -1759,6 +1829,7 @@ impl AppState {
     pub fn set_tan_text(&self, value: SharedString) {
         self.data.borrow_mut().tan_text = value;
     }
+    pub fn set_tan_status(&self, value: SharedString) { self.data.borrow_mut().tan_status = value; }
     pub fn get_tan_kind(&self) -> i32 {
         self.data.borrow().tan_kind
     }

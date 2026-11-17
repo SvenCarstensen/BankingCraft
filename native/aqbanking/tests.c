@@ -6,6 +6,8 @@
 #undef main
 #include <aqhbci/dialogs/dlg_vop.h>
 #include <aqhbci/msglayer/dialog_l.h>
+#include <aqhbci/msglayer/message_l.h>
+#include <aqhbci/banking/provider.h>
 #include <aqhbci/banking/provider_job.h>
 #include <aqhbci/joblayer/job_l.h>
 #include <aqhbci/joblayer/jobqueue_account.h>
@@ -13,6 +15,38 @@
 #include <gwenhywfar/ct_be.h>
 #include <gwenhywfar/ctplugin_be.h>
 #include <assert.h>
+#include "tests_bestsign.h"
+
+static const char synthetic_registration[]="SYNTHETICREGISTRATION0001";
+static void test_hkvvb_registration(AB_BANKING *bank,AB_PROVIDER *provider,AH_DIALOG *dialog) {
+  assert(strlen(synthetic_registration)==25);
+  assert(AB_BankingCraft_HkvvbOnlyRegistration()==1);
+  // INI letters and application metadata must use the name, never this key.
+  assert(!strcmp(AH_Provider_GetProductName(provider),"BankingCraftTest"));
+  assert(!strcmp(AB_Banking_GetAppName(bank),"BankingCraftTest"));
+  GWEN_MSGENGINE *engine=AH_Dialog_GetMsgEngine(dialog);
+  const int protocols[]={201,210,220,300,300};
+  const int versions[]={2,2,2,2,3};
+  int previous=GWEN_MsgEngine_GetProtocolVersion(engine);
+  for(unsigned i=0;i<sizeof(protocols)/sizeof(protocols[0]);i++) {
+    GWEN_MsgEngine_SetProtocolVersion(engine,protocols[i]);
+    GWEN_DB_NODE *data=GWEN_DB_Group_new("prepare");
+    GWEN_DB_SetIntValue(data,GWEN_DB_FLAGS_OVERWRITE_VARS,"head/seq",4);
+    GWEN_DB_SetIntValue(data,GWEN_DB_FLAGS_OVERWRITE_VARS,"bpdVersion",0);
+    GWEN_DB_SetIntValue(data,GWEN_DB_FLAGS_OVERWRITE_VARS,"updVersion",0);
+    GWEN_BUFFER *wire=GWEN_Buffer_new(0,256,0,1);
+    GWEN_XMLNODE *node=GWEN_MsgEngine_FindNodeByPropertyStrictProto(engine,"SEG","id",versions[i],"Prepare");
+    assert(node);
+    assert(GWEN_MsgEngine_CreateMessageFromNode(engine,node,wire,data)==0);
+    char expected[128];
+    snprintf(expected,sizeof(expected),"HKVVB:4:%d+0+0+1+%s+00010'",versions[i],synthetic_registration);
+    if(strcmp(GWEN_Buffer_GetStart(wire),expected))
+      fprintf(stderr,"Synthetic HKVVB (%d): %s; expected: %s\n",protocols[i],GWEN_Buffer_GetStart(wire),expected);
+    assert(!strcmp(GWEN_Buffer_GetStart(wire),expected));
+    GWEN_Buffer_free(wire); GWEN_DB_Group_free(data);
+  }
+  GWEN_MsgEngine_SetProtocolVersion(engine,previous);
+}
 
 static GWEN_CRYPT_TOKEN_CONTEXT *synthetic_contexts[3];
 static int synthetic_context_error, context_resolutions, adduser_calls, expected_record, expected_token;
@@ -235,6 +269,19 @@ static void test_invalid_result_amounts(void) {
   frame=event("test"); assert(emit_value(&frame,overflow)==GWEN_ERROR_BAD_DATA);
   assert(!bc_field(&frame,"amount")); AB_Value_free(overflow); bc_free(&frame);
   begin_stage("initialize");
+}
+
+static void test_reader_pin_notifications(void) {
+  GWEN_CRYPT_TOKEN *token=GWEN_Crypt_Token_new(GWEN_Crypt_Token_Device_Card,"fixture","synthetic-reader");
+  uint32_t previous=0;
+  for(int ok=0;ok<2;ok++) {
+    uint32_t id=GWEN_Crypt_Token_BeginEnterPin(token,GWEN_Crypt_PinType_Access,0);
+    assert(id && id!=previous);previous=id;
+    assert(GWEN_Crypt_Token_EndEnterPin(token,GWEN_Crypt_PinType_Access,ok,id)==0);
+  }
+  was_cancelled=1;
+  assert(GWEN_Crypt_Token_BeginEnterPin(token,GWEN_Crypt_PinType_Access,0)==0);
+  was_cancelled=0;GWEN_Crypt_Token_free(token);
 }
 
 static void test_socket_wait_progress(void) {
@@ -602,6 +649,8 @@ static void test_sepa_accounts(AB_BANKING *bank) {
   assert(AB_Banking_EndUseProvider(bank,provider)==0);
 }
 
+#include "tests_read_batch.h"
+
 int main(int argc,char **argv) {
   assert(argc==2);
   bc_output=stdout;
@@ -610,12 +659,16 @@ int main(int argc,char **argv) {
   bc_config=GWEN_DB_Group_new("bankingcraft");
   assert(bc_install_memory_config()==0);
   AB_BANKING *bank=AB_Banking_new("BankingCraftTest",argv[1],0);
+  AB_Banking_RuntimeConfig_SetCharValue(bank,"fintsRegistrationKey",synthetic_registration);
+  AB_Banking_RuntimeConfig_SetCharValue(bank,"fintsApplicationVersionString","00010");
   assert(AB_Banking_Init(bank)==0);
   test_camt_entry_amounts(bank);
   test_invalid_result_amounts();
   test_socket_wait_progress();
+  test_reader_pin_notifications();
   test_automatic_card_context(bank);
   test_card_read_session(bank);
+  test_card_read_batch(bank);
   GWEN_PLUGIN_MANAGER *tokens=GWEN_PluginManager_FindPluginManager("ct"); assert(tokens);
   const char *token_names[]={"ddvcard","zkacard"};
   for(unsigned i=0;i<2;i++) {
@@ -632,11 +685,13 @@ int main(int argc,char **argv) {
   AB_USER *user=NULL; assert(user_id()>0);
   assert(AB_Provider_GetUser(provider,(uint32_t)user_id(),1,0,&user)==0);
   AH_DIALOG *hbci=AH_Dialog_new(user,provider); assert(hbci);
+  test_hkvvb_registration(bank,provider,hbci);
   assert(AH_Dialog_GetLogFile(hbci)==NULL); AH_Dialog_free(hbci);
   assert(AB_Provider_EndExclUseUser(provider,user,0)==0); AB_User_free(user);
   assert(AB_Banking_EndUseProvider(bank,provider)==0); bc_free(&request);
   test_snapshot_groups_and_upgrade(bank); test_setup_and_errors();
   test_tan_medium(bank);
+  test_bestsign(bank);
   test_camt_preference(bank); test_sepa_accounts(bank); bc_free(&request);
   GWEN_SSLCERTDESCR *cert=GWEN_SslCertDescr_new();
   GWEN_SslCertDescr_SetIsError(cert,1);

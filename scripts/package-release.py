@@ -29,6 +29,7 @@ def run(*args, **kwargs):
 def resources(destination):
     run(sys.executable, "scripts/update-licenses.py", "--check")
     destination.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "macos/bankingcraft-gentle.wav", destination / "bankingcraft-gentle.wav")
     for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(ROOT / name, destination / name)
     shutil.copytree(ROOT / "licenses", destination / "licenses")

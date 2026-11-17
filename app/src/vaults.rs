@@ -243,6 +243,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
         if selection.borrow().offers_demo() && !st.get_unlocked() && st.get_create_with_demo() {
             crate::demo::add_demo_account(&mut vault);
         }
+        vault.history.add("Tresor erstellt",crate::history::Status::Success,None);
         let result = save_current(&app).and_then(|_| VaultFile::create_new(selection.borrow().path.clone(), &password, &vault));
         match result {
             Ok(file) => activate(&app, &selection, vault, file),
@@ -255,6 +256,7 @@ fn install_at(app: &AppWindow, settings: PathBuf, legacy: PathBuf) -> Manager {
 /// Never carry a payment, bank-access draft, authorization or selected transaction
 /// from one vault into another. The caller has already checked that no job is running.
 pub(crate) fn reset_vault_view(app: &AppWindow) {
+    crate::notifications::clear_reader();
     let c = ctx();
     c.bridge.answer(crate::bridge::Answer::Cancel);
     *c.bridge.pin_cache.lock().unwrap() = None;
@@ -270,6 +272,11 @@ pub(crate) fn reset_vault_view(app: &AppWindow) {
     let st = app.global::<AppState>();
     crate::payee_ui::clear(&st);
     st.set_page(0);
+    st.set_templates(Default::default()); st.set_tf_template(0);
+    st.set_template_name(Default::default()); st.set_template_error(Default::default()); st.set_show_template_save(false);
+    st.set_history_entries(Default::default());
+    st.set_history_search(Default::default());
+    st.set_history_filter(0); st.set_history_sort(0); st.set_history_selected(None);
     st.set_tx_period(1);
     st.set_so_day("1".into());
     st.set_so_first(chrono::Local::now().date_naive().format("%d.%m.%Y").to_string());
@@ -367,9 +374,11 @@ pub(crate) fn reset_vault_view(app: &AppWindow) {
     st.set_paste_note(Default::default());
     st.set_show_pinpad(Default::default());
     st.set_pinpad_text(Default::default());
+    st.set_pinpad_seconds(-1);
     st.set_show_tan(Default::default());
     st.set_tan_title(Default::default());
     st.set_tan_text(Default::default());
+    st.set_tan_status(Default::default());
     st.set_tan_kind(Default::default());
     st.set_tan_value(Default::default());
     st.set_tan_image(Default::default());

@@ -22,7 +22,7 @@ pub fn save_access(app: &AppWindow, ctx: &Ctx) -> Result<u32, String> {
     let sealed = ctx.file.lock().unwrap().as_ref().ok_or(i18n::tr("Tresor ist gesperrt"))?.seal_secret(&json)?;
     let name = st.get_af_name();
     let sandbox = st.get_af_paypal_sandbox();
-    ctx.edit_vault(|v| {
+    ctx.edit_vault_logged("PayPal-Zugang angelegt", |v| {
         let id = v.new_id();
         v.accesses.push(BankAccess { id, name: if name.trim().is_empty() { if sandbox { "PayPal Sandbox" } else { "PayPal" }.into() } else { name.trim().into() },
             kind: AccessKind::PayPal { sandbox, credentials: sealed }, config: Default::default(), state: Default::default(), saved_pin: None });

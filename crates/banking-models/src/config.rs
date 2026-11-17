@@ -10,8 +10,9 @@ pub struct Config {
     pub customer_id: String,
     /// https://... for PIN/TAN, host[:port] for TCP (chip card).
     pub url: String,
-    /// FinTS product registration number (Deutsche Kreditwirtschaft).
+    /// Legacy vault value; the adapter uses BankingCraft's registered identity instead.
     pub product_id: String,
+    /// Legacy vault value; the adapter derives the FinTS version from the build.
     pub product_version: String,
 }
 /// Native settings only. Serde ignores obsolete fields in old vaults.

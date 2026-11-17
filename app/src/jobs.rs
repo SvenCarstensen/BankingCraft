@@ -30,6 +30,7 @@ mod account_refresh_tests;
 /// The production implementation delegates all bank communication to AqBanking.
 /// Keeping this small interface also permits socket-free refresh regressions.
 trait RefreshClient: Sized {
+    fn prepare_reads(&mut self, _requests:Vec<aqbanking::ReadRequest>) -> banking::Result<bool> {Ok(false)}
     fn accounts(&mut self) -> banking::Result<Vec<Account>>;
     fn current_accounts(&mut self, accounts: Vec<Account>) -> banking::Result<Vec<Account>> { Ok(accounts) }
     fn balance(&mut self, account: &Account) -> banking::Result<Option<banking::Balance>>;
@@ -39,6 +40,7 @@ trait RefreshClient: Sized {
 macro_rules! refresh_client {
     ($client:ty) => {
         impl RefreshClient for $client {
+            fn prepare_reads(&mut self, r:Vec<aqbanking::ReadRequest>) -> banking::Result<bool> { self.prepare_reads(r) }
             fn accounts(&mut self) -> banking::Result<Vec<Account>> { self.accounts() }
             fn current_accounts(&mut self, a: Vec<Account>) -> banking::Result<Vec<Account>> { self.current_accounts(a) }
             fn balance(&mut self, a: &Account) -> banking::Result<Option<banking::Balance>> { self.balance(a) }
@@ -50,6 +52,25 @@ macro_rules! refresh_client {
 refresh_client!(Client<'_>);
 
 impl Ctx {
+    pub fn record_activity(&self, action: &'static str, status: crate::history::Status) {
+        if self.file.lock().unwrap().is_none() {return;}
+        let id=self.vault.lock().unwrap().history.add(action,status,None);
+        if self.save().is_err() { self.vault.lock().unwrap().history.save_failed(id); }
+    }
+
+    pub fn edit_vault_logged<T>(&self, action: &'static str, edit: impl FnOnce(&mut Vault) -> Result<T, String>) -> Result<T, String> {
+        let result=self.edit_vault(|v| {
+            let result=edit(v)?;
+            let transfer=if action=="Überweisung gespeichert" {
+                v.payment_orders.last().map(|o|crate::history::Transfer::from_order(v,o))
+            } else {None};
+            v.history.add(action,crate::history::Status::Success,transfer);
+            Ok(result)
+        });
+        if result.is_err() { self.record_activity(action,crate::history::Status::Error); }
+        result
+    }
+
     /// Commit a local edit only after the encrypted vault was saved successfully.
     pub fn edit_vault<T>(&self, edit: impl FnOnce(&mut Vault) -> Result<T, String>) -> Result<T, String> {
         let mut vault = self.vault.lock().unwrap();
@@ -69,7 +90,13 @@ impl Ctx {
     }
 
     /// Run `f` on a worker thread with the busy overlay, then save and refresh.
-    pub fn run(&self, title: &str, f: impl FnOnce(&Ctx) -> JobResult + Send + 'static) {
+    pub fn run(&self, title: &'static str, f: impl FnOnce(&Ctx) -> JobResult + Send + 'static) {
+        self.run_job(title, false, f);
+    }
+    pub fn run_sync(&self, title: &'static str, f: impl FnOnce(&Ctx) -> JobResult + Send + 'static) {
+        self.run_job(title, true, f);
+    }
+    fn run_job(&self, title: &'static str, notify_sync: bool, f: impl FnOnce(&Ctx) -> JobResult + Send + 'static) {
         if self.bridge.locked.load(Ordering::Acquire) { return; }
         // Reserve synchronously before the busy overlay is posted to the event loop.
         if self.running.swap(true, Ordering::AcqRel) {
@@ -77,7 +104,8 @@ impl Ctx {
         }
         self.bridge.cancelled.store(false, Ordering::Release);
         let ctx = self.clone();
-        let title = SharedString::from(title);
+        let activity=ctx.vault.lock().unwrap().history.add(title,crate::history::Status::Running,None);
+        let title = SharedString::from(i18n::tr(title));
         let locked = self.bridge.locked.clone();
         let _ = self.bridge.weak.upgrade_in_event_loop(move |app| {
             if locked.load(Ordering::Acquire) { return; }
@@ -87,17 +115,28 @@ impl Ctx {
         });
         std::thread::spawn(move || {
             *ctx.bridge.pin_cache.lock().unwrap() = None;
-            let result = f(&ctx);
+            // Persist a start marker so an interrupted session cannot look successful.
+            let result = ctx.save().and_then(|()|f(&ctx));
+            let status=crate::history::Status::result(result.is_ok(),ctx.bridge.cancelled.load(Ordering::Acquire));
+            ctx.vault.lock().unwrap().history.finish(activity,status);
             *ctx.bridge.pin_cache.lock().unwrap() = None;
             let save = ctx.save();
+            if save.is_err() { ctx.vault.lock().unwrap().history.save_failed(activity); }
             // Keep the session reserved until its final UI update has run, so a
             // vault switch cannot overtake callbacks belonging to the old vault.
             let running = ctx.running.clone();
+            let cancelled = ctx.bridge.cancelled.clone();
             let locked = ctx.bridge.locked.clone();
             let queued = ctx.bridge.weak.upgrade_in_event_loop(move |app| {
                 let st = app.global::<AppState>();
                 st.set_busy(false);
                 running.store(false, Ordering::Release);
+                crate::notifications::clear_reader();
+                if notify_sync {
+                    crate::notifications::sync_finished(if cancelled.load(Ordering::Acquire) {crate::notifications::Outcome::Cancelled}
+                        else if result.is_ok() && save.is_ok() {crate::notifications::Outcome::Success}
+                        else {crate::notifications::Outcome::Error});
+                }
                 if locked.load(Ordering::Acquire) {
                     crate::session::finish_lock(&app);
                     if save.is_err() { st.set_unlock_error("Tresor gesperrt. Letztes Speichern fehlgeschlagen; Bankstatus vor erneutem Senden prüfen.".into()); }
@@ -105,12 +144,21 @@ impl Ctx {
                 }
                 st.set_show_pinpad(false);
                 crate::refresh_view(&app);
-                match (result, save) {
-                    (Ok(msg), Ok(())) => crate::toast(&app, &msg, false),
-                    (Ok(msg), Err(e)) => crate::toast(&app, &i18n::tr_format!("{msg}\n\nLokales Speichern fehlgeschlagen: {e}"), true),
-                    (Err(e), Ok(())) => crate::toast(&app, &e, true),
-                    (Err(e), Err(save)) => crate::toast(&app, &i18n::tr_format!("{e}\n\nLokales Speichern fehlgeschlagen: {save}"), true),
-                }
+                let result=if st.get_tan_kind()==4 && cancelled.load(Ordering::Acquire) {
+                    Err("Statusprüfung beendet. Bitte den Bankstatus prüfen, bevor du den Auftrag erneut sendest.".into())
+                } else { result };
+                let (message,error)=match (result, save) {
+                    (Ok(msg), Ok(())) => (msg,false),
+                    (Ok(msg), Err(e)) => (i18n::tr_format!("{msg}\n\nLokales Speichern fehlgeschlagen: {e}"),true),
+                    (Err(e), Ok(())) => (e,true),
+                    (Err(e), Err(save)) => (i18n::tr_format!("{e}\n\nLokales Speichern fehlgeschlagen: {save}"),true),
+                };
+                if st.get_tan_kind()==4 {
+                    st.set_tan_kind(if error {6} else {5});
+                    st.set_tan_title(if error {"Ergebnis der Freigabeprüfung"} else {"Bankanfrage abgeschlossen"}.into());
+                    st.set_tan_text(message); st.set_tan_status(Default::default());
+                    st.set_show_tan(true);
+                } else { crate::toast(&app,&message,error); }
             });
             if queued.is_err() { ctx.running.store(false, Ordering::Release); }
         });
@@ -142,6 +190,7 @@ fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String
         *bridge.pin_cache.lock().unwrap() = None;
         *bridge.pin_save_requested.lock().unwrap() = false;
         if access.saved_pin.take().is_some() {
+            v.history.add("Abgelehnte gespeicherte PIN gelöscht",crate::history::Status::Success,None);
             return Some(i18n::tr("Die gespeicherte PIN wurde von der Bank abgelehnt und gelöscht.").into());
         }
         return None;
@@ -150,6 +199,7 @@ fn handle_saved_pin(ctx: &Ctx, access_id: u32, wrong_pin: bool) -> Option<String
         let pin = bridge.pin_cache.lock().unwrap().clone()?;
         let sealed = ctx.file.lock().unwrap().as_ref()?.seal_secret(&pin).ok()?;
         access.saved_pin = Some(sealed);
+        v.history.add("PIN verschlüsselt gespeichert",crate::history::Status::Success,None);
         return Some(i18n::tr("PIN verschlüsselt gespeichert.").into());
     }
     None
@@ -198,13 +248,7 @@ fn make_client<'a>(ctx: &Ctx, access: &BankAccess, bridge: &'a Bridge) -> Result
     };
     *bridge.pin_cache.lock().unwrap() = saved;
     let medium = medium_for(ctx, access)?;
-    let mut cfg = access.config.clone();
-    {
-        let v = ctx.vault.lock().unwrap();
-        // This fallback belongs only to the transient client config, never the vault.
-        cfg.product_id = crate::product_id::resolve(&v.product_id);
-        cfg.product_version = v.product_version.clone();
-    }
+    let cfg = access.config.clone();
     Client::new(cfg, access.state.clone(), medium, bridge).map_err(|e| err_text(ctx, &e))
 }
 
@@ -341,8 +385,18 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
             let ids = ctx.vault.lock().unwrap().merge_accounts(access_id, accounts.clone());
             (accounts, ids)
         };
+        let dates={
+            let vault=ctx.vault.lock().unwrap();
+            ids.iter().map(|id|vault.last_booking(*id).map(|d|d-Duration::days(10))
+                .unwrap_or_else(||Local::now().date_naive()-Duration::days(89))).collect::<Vec<_>>()
+        };
+        let reads=accounts.iter().zip(&dates).filter(|(a,_)|!(30..=39).contains(&a.kind))
+            .map(|(a,from)|aqbanking::ReadRequest {account:a.clone(),from:*from,
+                balance:allowed(a,&["HKSAL","HKKKS","DKKKS"]),transactions:allowed(a,&["HKKAZ","HKCAZ","HKKKU","DKKKU"])})
+            .filter(|r|r.balance || r.transactions).collect();
+        let batched=client.prepare_reads(reads)?;
         let mut updated=0;
-        for (acc, id) in accounts.iter().zip(ids) {
+        for ((acc, id), from) in accounts.iter().zip(ids).zip(dates) {
             let warnings_before = warnings.len();
             let mut fetched = false;
             let mut unavailable = false;
@@ -351,7 +405,7 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
             }
             let label = view::account_label(&ctx.vault.lock().unwrap(), id);
             if allowed(acc, &["HKSAL", "HKKKS", "DKKKS"]) {
-                ctx.bridge.status(&i18n::tr_format!("{}: Saldo abrufen …", label));
+                ctx.bridge.status(&if batched {i18n::tr_format!("{}: Salden und Umsätze abrufen …",name)} else {i18n::tr_format!("{}: Saldo abrufen …", label)});
                 match client.balance(acc) {
                     Ok(Some(b)) => {
                         fetched = true;
@@ -366,15 +420,7 @@ fn sync_with_client(ctx: &Ctx, access: &BankAccess, selected: Option<AccountBatc
                 }
             }
             if allowed(acc, &["HKKAZ", "HKCAZ", "HKKKU", "DKKKU"]) {
-                let from = ctx
-                    .vault
-                    .lock()
-                    .unwrap()
-                    .last_booking(id)
-                    .map(|d| d - Duration::days(10))
-                    // PSD2: up to 90 days of history need no extra approval
-                    .unwrap_or_else(|| Local::now().date_naive() - Duration::days(89));
-                ctx.bridge.status(&i18n::tr_format!("{}: Umsätze abrufen …", label));
+                ctx.bridge.status(&if batched {i18n::tr_format!("{}: Salden und Umsätze abrufen …",name)} else {i18n::tr_format!("{}: Umsätze abrufen …", label)});
                 match client.transaction_report(acc, from, None) {
                     Ok(report) => {
                         fetched = true;
@@ -481,7 +527,7 @@ fn demo_tan(ctx: &Ctx, what: &str) -> Result<(), String> {
 
 /// Immediate sending uses the same durable record as a saved order.
 pub fn transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool, save_recipient: bool) -> JobResult {
-    let id = ctx.edit_vault(|v| v.queue_transfer(account_id, t, scheduled, save_recipient))?;
+    let id = ctx.edit_vault_logged("Überweisung gespeichert", |v| v.queue_transfer(account_id, t, scheduled, save_recipient))?;
     submit_order_with(ctx, id, perform_transfer)
 }
 
@@ -513,11 +559,14 @@ fn submit_order_with(
     if ctx.bridge.cancelled.load(Ordering::Acquire) { return Err(i18n::tr("Vorgang abgebrochen.").into()); }
     // If persistence fails, no bank request is made. A crash or lost reply leaves a
     // non-queued record on disk, so a later synchronization cannot send it twice.
-    let order: PaymentOrder = ctx.edit_vault(|v| {
+    let (order, activity): (PaymentOrder, u64) = ctx.edit_vault(|v| {
         let order = v.payment_orders.iter_mut().find(|o| o.id == id).ok_or(i18n::tr("Auftrag nicht gefunden"))?;
         if order.status != OrderStatus::Queued { return Err(i18n::tr("Dieser Auftrag wurde bereits verarbeitet. Bitte den Status prüfen.").into()); }
         order.status = OrderStatus::Submitting;
-        Ok(order.clone())
+        let order=order.clone();
+        let transfer=crate::history::Transfer::from_order(v,&order);
+        let activity=v.history.add("Überweisung eingereicht",crate::history::Status::Running,Some(transfer));
+        Ok((order,activity))
     })?;
     let result = (|| {
         let t = ctx.vault.lock().unwrap().prepare_transfer(order.account_id, order.transfer, order.scheduled)?;
@@ -528,10 +577,12 @@ fn submit_order_with(
         let stored = v.payment_orders.iter_mut().find(|o| o.id == id).expect("order retained while job runs");
         stored.status = if result.is_ok() { OrderStatus::Sent } else { OrderStatus::NeedsReview };
         stored.message = match &result { Ok(message) | Err(message) => message.clone() };
+        v.history.finish(activity,if result.is_ok() {crate::history::Status::Success} else {crate::history::Status::NeedsReview});
     }
     // Keep the in-memory outcome even on a save failure. Disk still contains the
     // Submitting marker, which is deliberately never eligible for automatic retry.
     if let Err(e) = ctx.save() {
+        ctx.vault.lock().unwrap().history.save_failed(activity);
         return Err(i18n::tr_format!("Auftragsstatus konnte nicht gespeichert werden: {e}. Bitte vor einem erneuten Auftrag den Bankstatus prüfen."));
     }
     result
@@ -920,6 +971,20 @@ mod outgoing_order_tests {
             |_, _, _, _| panic!("cancelled"), |_, _, _| panic!("no retrieval even with an empty queue")).is_err());
     }
 
+    #[test]
+    fn activity_records_bank_acceptance_and_uncertain_outcomes_without_raw_messages() {
+        for ok in [true,false] {
+            let f=Fixture::new();let id=f.queue();
+            let result=submit_order_with(&f.ctx,id,|_,_,_,_| if ok {Ok("synthetic-private-bank-reply".into())} else {Err("synthetic-private-bank-reply".into())});
+            assert_eq!(result.is_ok(),ok);
+            let v=f.reload();let event=v.history.entries.iter().find(|e|e.transfer.is_some()).unwrap();
+            assert_eq!(event.status,if ok {crate::history::Status::Success} else {crate::history::Status::NeedsReview});
+            assert_eq!(event.transfer.as_ref().unwrap().order_id,id);
+            assert!(!serde_json::to_string(&v.history).unwrap().contains("synthetic-private-bank-reply"));
+            f.ctx.edit_vault(|v|v.delete_payment_order(id)).unwrap();
+            assert!(f.reload().history.entries.iter().any(|e|e.transfer.as_ref().is_some_and(|t|t.order_id==id)));
+        }
+    }
     #[test]
     fn queue_survives_restart_sends_once_and_only_for_matching_access() {
         let f = Fixture::new(); let id = f.queue();

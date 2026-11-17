@@ -29,6 +29,13 @@ The old optical HHD encoder and matrix container parser were also removed. The
 UI renders already prepared AqBanking HHD bytes/images. The offline demo uses a
 fixed published sample. Custom FinTS protocol/error trace output was removed.
 Native message construction, statement parsing and VoP handling belong to AqBanking.
+The Rust adapter supplies BankingCraft's registered identity independently of legacy
+vault fields. It passes the complete 25-character number only as `fintsRegistrationKey`,
+which feeds HKVVB's “Produktbezeichnung”. The native worker rejects invalid lengths
+and characters before initialization. The separate five-digit build version cannot
+contain the registration number. Normal builds ignore local test files. The explicit
+`local-fints-test` build requires a valid machine-local registration file and uses
+its value only in the same HKVVB field, without embedding it in the application.
 The application's CSV/camt export remains an output feature for the user's stored
 transactions. Its test checks XML directly, without retaining a bank-response parser.
 
@@ -73,6 +80,20 @@ after each read. No PIN is cached by the adapter or added to the snapshot; the
 reader still verifies it. Additional card-required authentication remains possible.
 The first import may need a separate PIN for automatic card-context selection.
 
+Reader PIN entry now has a dedicated dialog with a 30-second countdown. The pinned
+Gwenhywfar `BeginEnterPin`/`EndEnterPin` callbacks emit typed show/hide events with
+matching IDs instead of ordinary progress log messages. They remain visible during
+combined account retrieval. The PIN is entered and confirmed only on the reader.
+The device reports completion, not individual keystrokes. The adapter therefore
+requires completed PIN entry within 30 seconds; bank progress or duplicate begin
+events cannot extend this deadline. Expiry terminates/reaps the native worker,
+clears the dialog and stops the enclosing synchronization without retrying or
+continuing with other accesses. Completion, cancellation,
+process errors and vault locking also clear the notice. Ordinary PIN/TAN prompts
+and BestSign approval retain their own flow and are not subject to this timer.
+Offline tests exercise the actual native callbacks, the visible countdown and
+worker termination with a short test deadline; production always uses 30 seconds.
+
 The session accepts only read operations and account/date selectors after startup;
 it cannot change its bank identity, reader, medium or snapshot. Payments and card
 management run separately. Successful reads export updated snapshots immediately.
@@ -80,7 +101,24 @@ Normal completion closes/unmounts the token. Vault locking, cancellation, proces
 failure and timeout dispose of the worker. A card/bank read failure stops the
 refresh instead of restarting authentication for each remaining account; local
 unsupported-account capabilities may be skipped without reopening the card.
-The application's per-account balance/transaction progress labels remain intact.
+As of November 17, 2026, card refreshes submit balances and statements together
+for up to 16 selected accounts per provider queue. AqHBCI builds one outbox for
+that queue and retains control of bank message limits, signatures and pagination.
+Each account keeps its own statement start date and requested capabilities;
+securities and unselected accounts are excluded. The UI shows combined retrieval
+progress for these batches. PIN/TAN retains its per-account progress and flow.
+
+The adapter validates the complete result set against the selected native account
+IDs before applying it. Per-job failures and unsupported capabilities stay visible;
+there is no retry or fallback to resending the failed batch. Completed earlier
+chunks remain applied if a later chunk fails. Payment commands, identity changes
+and cross-account command IDs are rejected by the batch dispatcher.
+
+The batch optimization is verified offline: four native read jobs use one provider
+dispatch; 18 synthetic accounts use two IPC batches instead of 36 individual read
+requests. Tests cover distinct account/date mappings, partial/transport failures,
+missing/duplicate/foreign results, session invalidation and read-only boundaries.
+Elapsed time with the VR Bank/card has not yet been measured for this version.
 
 PIN/TAN initialization follows AqBanking's setup wizard and
 [documented setup order](https://www.aquamaniac.de/rdm/projects/aqbanking/wiki/SetupPinTan):
@@ -172,8 +210,13 @@ Linux package ownership is looked up against installed files rather than staging
   when an explicit directory is supplied; an exported marker prevents linking
   accidentally against an unpatched AqBanking.
 - Disable creation of raw FinTS message logs in the native dialog constructor.
-- Require explicit presentation of AqBanking VoP results even for all matches or
-  a missing result; the adapter rejects unsupported dialogs.
+- Use the application name in INI letters, log metadata and the provider's product-name
+  accessor. Only HKVVB's message-engine lookup reads the registration number. A separate
+  exported marker prevents linking the worker against a library missing this change.
+- Present AqBanking VoP results explicitly by default, including missing results.
+  For Postbank, omit the extra dialog only when all submitted payees have a
+  unique positive match; incomplete or non-matching results still prompt.
+  The adapter rejects unsupported dialogs.
 - Route native chipTAN USB challenges through the optical challenge callback and
   the bounded Libchipcard adapter, avoiding the legacy upstream USB TAN parser.
 - Filter Libchipcard reader selection by the exact user-selected reader name.
@@ -310,3 +353,13 @@ is heuristic; zero findings is not proof of absence of vulnerabilities.
 Follow-up validation requires other bank configurations, TAN modes, VoP, DDV/RDH and
 chipTAN readers, payment rejection/uncertainty scenarios, and all three operating
 systems. Historical successes of the former backend do not cover these paths.
+
+## Postbank-Freigabe mit BestSign
+
+Für den PIN/TAN-Zugang am Postbank-Endpunkt `hbci.postbank.de` wählt der Adapter ausschließlich **BestSign-Push** aus den von der Bank gemeldeten und für den Benutzer zugelassenen Verfahren. Das ältere **BestSign** mit TAN-Eingabe (z. B. 920/v6) ist kein Push-Verfahren. Zur Erkennung dienen die technischen Decoupled-Metadaten bzw. die eindeutige Bezeichnung BestSign-Push, Prozess 2 und HITANS ab Version 7; die Funktionsnummer ist nicht fest codiert. Eine gespeicherte ältere BestSign-Auswahl wechselt beim nächsten Aufruf automatisch auf das einzige verfügbare Push-Verfahren; dabei bleibt der genaue Gerätename erhalten. Bei mehreren Varianten oder einer anderen bisherigen Methode erscheint die Auswahl ausschließlich mit geeigneten Push-Verfahren. Verfahrensnummern werden nicht fest vorgegeben. Wenn die Bank einen Gerätenamen verlangt, muss die genaue Bezeichnung aus dem Online-Banking eingegeben werden; sie bleibt im verschlüsselten Zugang gespeichert. Unter **Bankzugänge → TAN-Verfahren wählen** lässt sie sich korrigieren. Fehlt ein zugelassenes BestSign-Push in gespeicherten Parametern, kann eine ausdrücklich angeforderte Kontensynchronisierung die Bankparameter einmal neu abrufen und die Auswahl erneut prüfen. Ein Zahlungsauftrag wird dabei nicht wiederholt. Bleibt Push nicht verfügbar, wird der Vorgang mit einem Hinweis abgebrochen.
+
+Nach der Empfängerprüfung fordert die Bank die Push-Freigabe an (3955). BankingCraft zeigt den Banktext in einem Freigabedialog ohne TAN-Eingabefeld. Den Auftrag in BestSign prüfen und bestätigen. Sofern die Bank automatische Statusabfragen erlaubt (`confirmAllowAutomatic`), bleibt der Dialog geöffnet und zeigt den Countdown bis zur nächsten Abfrage. Die Wartezeiten vor der ersten und den folgenden Abfragen (`statusWaitFirst`, `statusWaitNext`) sowie das Abfragelimit (`statusQueryMax`) stammen aus den BPD des exakt ausgewählten Verfahrens. AqBanking fragt mit HKTAN S und der von der Bank gelieferten Auftragsreferenz nach. Bei 3956 wird nach der nächsten Wartezeit erneut geprüft. Erfolg, Bankfehler, Zeitlimit oder eine beendete Statusprüfung erscheinen im selben Dialog. Das Beenden der Statusprüfung behauptet keine Stornierung des Bankauftrags. Ohne automatische Erlaubnis bleibt die manuelle Schaltfläche **Freigabestatus prüfen** erhalten. Ein leeres internes Polling-Acknowledgement bedeutet keinen Erfolg. Ein noch nötiges HKVPA wird genau einmal mitgesendet. Statusabfragen enthalten keine erneute Überweisung. Abbruch und Bankfehler werden weitergegeben. Ein unerwarteter numerischer TAN-Dialog bei ausgewähltem BestSign-Push wird nicht als Push-Freigabe beantwortet.
+
+Offline abgesichert sind der Wechsel von BestSign 920/v6 auf BestSign-Push 921/v7 bei einem bereits eingerichteten Zugang einschließlich der tatsächlichen Dialog-Sicherheitsfunktion, der Ausschluss nicht erlaubter Verfahren, Freigaben mit und ohne Banktext, ausstehende und erfolgreiche Antworten, Ablehnung und Abbruch sowie HKVPA nur bei der ersten Statusabfrage. Geprüft werden außerdem Bankwartezeiten, das Abfragelimit, manuelle Verfahren ohne automatische Erlaubnis, Abbruch/Sitzungswechsel während des Wartens und die Anzeige des abschließenden Worker-Ergebnisses im Dialog. Die Tests verwenden die gepatchten AqBanking-Funktionen mit einer simulierten Transportschicht; sie ersetzen keinen abschließenden Test mit der Postbank.
+
+Für Postbank entfällt der zusätzliche Dialog „Empfängerprüfung der Bank“, wenn die strukturierten Bankdaten für jeden übermittelten Empfänger einen eindeutigen vollständigen `match` liefern. Die Überweisungsübersicht und die BestSign-Freigabe bleiben bestehen. Abweichungen, unbekannte, fehlende oder unvollständige Ergebnisse benötigen weiterhin eine Rückfrage. Die Entscheidung verwendet die Ergebniswerte und IBAN-Zuordnung von AqBanking; Banktexte und übersetzte Dialogtitel werden dafür nicht ausgewertet. Die VoP-Abfrage und die erforderlichen Protokollbestätigungen bleiben Teil des Bankablaufs.

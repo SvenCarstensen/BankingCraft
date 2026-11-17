@@ -64,6 +64,7 @@ impl Drop for Desktop {
 impl Desktop {
     pub fn new(app: AppWindow, ctx: &egui::Context) -> Self {
         app.attach(ctx);
+        crate::notifications::init();
         install_fonts(ctx);
         let bytes = include_bytes!("../../../macos/bankingcraft-icon.png");
         let img = image::load_from_memory(bytes)
@@ -138,7 +139,7 @@ impl Desktop {
         style(ui.ctx(), &t);
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 0., t.page_bg);
-        let modal = d.show_pin
+        let modal = d.show_template_save || d.show_pin
             || d.show_tan
             || d.show_choice
             || d.show_confirm
@@ -186,6 +187,7 @@ impl Desktop {
             );
         }
         dialogs::show(ui, &t, &mut d, &mut actions, &mut self.texture);
+        if d.unlocked { super::history::template_dialog(ui,&t,&mut d,&mut actions); }
         if d.toast.visible {
             egui::Area::new(egui::Id::new("toast"))
                 .anchor(
@@ -293,7 +295,10 @@ impl Desktop {
             t.nav_text_muted,
             Align2::LEFT_TOP,
         );
-        let mut y = rail.top() + 83.;
+        ui.scope_builder(egui::UiBuilder::new().max_rect(Rect::from_min_max(
+            pos2(rail.left(),rail.top()+83.),pos2(rail.right(),rail.bottom()-227.))), |ui| {
+            egui::ScrollArea::vertical().id_salt("main-navigation").auto_shrink([false,false]).show(ui,|ui| {
+        let mut y = ui.cursor().top();
         for (page, label, path) in [
             (0, "Übersicht", icons::OVERVIEW),
             (1, "Konten", icons::BANK),
@@ -304,6 +309,7 @@ impl Desktop {
             (4, "Daueraufträge", icons::REPEAT),
             (-1, "FINANZEN", ""),
             (5, "Auswertungen", icons::CHART),
+            (11, "Historie", icons::REPEAT),
         ] {
             if page < 0 {
                 elide(
@@ -329,6 +335,9 @@ impl Desktop {
             );
             y += 43.;
         }
+        ui.allocate_space(vec2(208.,y-ui.cursor().top()));
+            });
+        });
         for (i, (page, label, path)) in [
             (6, "Bankzugänge", icons::KEY),
             (10, "Kategorien", icons::TAG),

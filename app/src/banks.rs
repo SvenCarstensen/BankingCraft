@@ -120,7 +120,7 @@ pub fn login_hint(b: &Bank) -> Option<&'static str> {
         _ => {},
     }
     Some(i18n::tr(match BankProfile::for_endpoint(b.url) {
-        BankProfile::Postbank => "Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); TAN per BestSign oder photoTAN",
+        BankProfile::Postbank => "Anmeldename: Ihre Postbank ID, ggf. mit Profil (PostbankID#Profilname); Aufträge in BestSign freigeben",
         BankProfile::DeutscheBank => "Deutsche Bank: Deutsche Bank ID oder Filial- und Kontonummer, dazu Onlinebanking-Passwort. Nach dem Banking-Upgrade neue Zugangsdaten verwenden; Freigabe per photoTAN oder BestSign.",
         BankProfile::Ing => "ING: Benutzername oder Zugangsnummer und Onlinebanking-Passwort; Kunden-ID leer lassen. Nur Lesezugriff, Girokonto-Umsätze bis 90 Tage. Alle 90 Tage im ING-Onlinebanking anmelden.",
         BankProfile::Dkb => "DKB: Anmeldename wie im Onlinebanking; Kunden-ID leer lassen. Freigabe über DKB-App, chipTAN manuell oder chipTAN QR.",

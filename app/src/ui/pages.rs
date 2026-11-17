@@ -23,6 +23,10 @@ pub fn show(
     drafts: &mut HashMap<i32, (String, String)>,
     drag: &mut Option<i32>,
 ) {
+    if d.page == 11 {
+        egui::Frame::new().inner_margin(24).show(ui, |ui| super::history::show(ui,t,d,a));
+        return;
+    }
     if d.page == 2 {
         egui::Frame::new()
             .inner_margin(24)
@@ -1330,6 +1334,8 @@ fn transfer(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
         ui.add_space(14.);
 
+        super::history::templates(ui,t,d,a);
+
         text(ui, tr("Adressbuch dieses Kontos"), 12., true, t.text_muted);
 
         ui.add_space(14.);
@@ -1833,7 +1839,7 @@ fn orders(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
     if d.payment_orders.row_count() == 0 {
         text(
             ui,
-            tr("Noch keine Überweisungsaufträge gespeichert."),
+            tr("Keine offenen Überweisungsaufträge."),
             14.,
             false,
             t.text_muted,
