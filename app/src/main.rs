@@ -1025,6 +1025,12 @@ fn transfer_template_from_form(app: &AppWindow) -> Result<(SepaTransfer, bool), 
 }
 fn transfer_from_form_mode(app: &AppWindow, mode:i32) -> Result<(SepaTransfer, bool), String> {
     let st = app.global::<AppState>();
+    if mode == 1 && !st.get_tf_instant_available() {
+        return Err(i18n::tr("Echtzeit ist für dieses Konto noch nicht bestätigt. Bitte den Bankzugang synchronisieren.").into());
+    }
+    if mode == 2 && !st.get_tf_scheduled_available() {
+        return Err(i18n::tr("Terminüberweisungen sind für dieses Konto noch nicht bestätigt. Bitte den Bankzugang synchronisieren.").into());
+    }
     let name = st.get_tf_name().trim().to_string();
     let iban: String = st.get_tf_iban().chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase();
     let amount = view::parse_amount(&st.get_tf_amount()).ok_or(i18n::tr("Bitte einen gültigen Betrag angeben."))?;

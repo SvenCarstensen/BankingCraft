@@ -46,6 +46,10 @@ def patch_source(name, source):
                      '  return GWEN_Gui_ProgressLog(gid, GWEN_LoggerLevel_Warning, I18N("Pin entry on card reader finished."));',
                      '  GWEN_Gui_HideBox(gid);\n  return 0;')
     if name == "aqbanking":
+        import importlib.util
+        spec=importlib.util.spec_from_file_location("patch_instant", ROOT/"scripts/patch-instant.py")
+        instant=importlib.util.module_from_spec(spec); spec.loader.exec_module(instant)
+        instant.patch(source, replace_once)
         # Linux LeakSanitizer exposes ownership bugs in pinned 6.9.2.
         # Free temporary objects at their owners; keep leak detection enabled.
         replace_once(source / "src/libs/plugins/backends/aqhbci/admjobs/vop_result.c",
@@ -398,7 +402,9 @@ def main():
                 tar.extractall(work, filter="data")
         patch_source(package["name"], source)
         stamp = source / ".bankingcraft-built-v2"
-        recipe = hashlib.sha256(Path(__file__).read_bytes() + (ROOT / "native/dependencies.json").read_bytes()).hexdigest()
+        recipe = hashlib.sha256(Path(__file__).read_bytes() + (ROOT / "native/dependencies.json").read_bytes() +
+            (ROOT / "scripts/patch-instant.py").read_bytes() +
+            b"".join(p.read_bytes() for p in sorted((ROOT / "native/aqbanking/instant").glob("*")))).hexdigest()
         if not stamp.exists() or stamp.read_text().strip() != recipe:
             print("Building", stem, flush=True)
             package_env = env.copy()

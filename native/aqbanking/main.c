@@ -524,7 +524,8 @@ static int emit_accounts(AB_BANKING *ab) {
       {AB_Transaction_CommandGetBalance,"HKSAL"},{AB_Transaction_CommandGetTransactions,"HKKAZ"},
       {AB_Transaction_CommandSepaGetStandingOrders,"HKCDB"},{AB_Transaction_CommandSepaTransfer,"HKCCS"},
       {AB_Transaction_CommandSepaCreateDatedTransfer,"HKCSE"},{AB_Transaction_CommandSepaCreateStandingOrder,"HKCDE"},
-      {AB_Transaction_CommandSepaDeleteStandingOrder,"HKCDL"}};
+      {AB_Transaction_CommandSepaDeleteStandingOrder,"HKCDL"},
+      {AB_Transaction_CommandSepaInstantTransfer,"HKIPZ"},{AB_Transaction_CommandGetSepaInstantStatus,"HKIPS"}};
     for(unsigned i=0;i<sizeof(allowed)/sizeof(allowed[0]);i++) if(AB_AccountSpec_GetTransactionLimitsForCommand(a,allowed[i].cmd)) {
       GWEN_Buffer_AppendString(caps,allowed[i].code); GWEN_Buffer_AppendString(caps,"\n");
     }
@@ -646,6 +647,10 @@ static int send_card_read_with(AB_BANKING *ab,const AB_ACCOUNT_SPEC *account,AB_
 }
 
 static int run_job(AB_BANKING *ab,int cmd) {
+  int instant=cmd==AB_Transaction_CommandSepaInstantTransfer;
+  int instant_status=cmd==AB_Transaction_CommandGetSepaInstantStatus;
+  if(!strcmp(bc_text(&request,"instant"),"1") && !instant) return GWEN_ERROR_INVALID;
+  if(instant && *bc_text(&request,"date")) return GWEN_ERROR_INVALID;
   AB_ACCOUNT_SPEC *account=NULL;
   int rv=AB_Banking_GetAccountSpecByUniqueId(ab,(uint32_t)strtoul(bc_text(&request,"account"),NULL,10),&account);
   if(rv<0) return rv;
@@ -689,7 +694,7 @@ static int run_job(AB_BANKING *ab,int cmd) {
     AB_VALUE *value=AB_Value_fromString(bc_text(&request,"amount"));
     if(!value) {rv=GWEN_ERROR_INVALID;goto cleanup;}
     AB_Value_SetCurrency(value,"EUR"); AB_Transaction_SetValue(t,value); AB_Value_free(value);
-    if(!strcmp(bc_text(&request,"instant"),"1")) AB_Transaction_SetSubType(t,AB_Transaction_SubTypeEuASAP);
+    if(instant) AB_Transaction_SetSubType(t,AB_Transaction_SubTypeEuASAP);
     const char *date_keys[]={"date","first","last"};
     for(unsigned i=0;i<3;i++) if(*bc_text(&request,date_keys[i])) {
       GWEN_DATE *d=GWEN_Date_fromString(bc_text(&request,date_keys[i])); if(!d) {rv=GWEN_ERROR_INVALID;goto cleanup;}
@@ -710,11 +715,30 @@ static int run_job(AB_BANKING *ab,int cmd) {
       rv=AB_Banking_CheckTransactionAgainstLimits_Date(t,limits); if(rv<0) goto cleanup;
     }
   }
+  if(instant_status) {
+    const char *reference=bc_text(&request,"reference");
+    if(!*reference || strlen(reference)>396) {rv=GWEN_ERROR_INVALID;goto cleanup;}
+    AB_Transaction_SetFiId(t,reference);
+  }
   AB_TRANSACTION_LIST2 *commands=AB_Transaction_List2_new(); AB_Transaction_List2_PushBack(commands,t);
   AB_IMEXPORTER_CONTEXT *context=AB_ImExporterContext_new();
   rv=card_session?send_card_read_with(ab,account,t,context,AB_Provider_SendCommands):
                   AB_Banking_SendCommands(ab,commands,context);
   int status=AB_Transaction_GetStatus(t);
+  if(instant || instant_status) {
+    /* Emit the reference even after a failed/uncertain exchange, before done.
+     * Rust persists it before any read-only status query. Never resubmit HKIPZ. */
+    BC_FRAME result=event("instant_result");
+    bc_string(&result,"iban",AB_AccountSpec_GetIban(account));
+    bc_string(&result,"reference",AB_Transaction_GetFiId(t));
+    const char *outcome=AB_Transaction_GetMemo(t);
+    if(!outcome || (rv<0 && !strcmp(outcome,"executed"))) outcome="unknown";
+    bc_string(&result,"outcome",outcome);
+    bc_number(&result,"wait_seconds",AB_Transaction_GetMemo(t)?AB_Transaction_GetTextKey(t):99);
+    bc_send(&result);
+    /* Pending/rejected are typed outcomes, not a successful execution. */
+    if(rv>=0) status=AB_Transaction_StatusAccepted;
+  }
   // An outer success is not proof that an individual payment was accepted.
   if(rv>=0 && status!=AB_Transaction_StatusAccepted) rv=GWEN_ERROR_GENERIC;
   if(rv>=0) for(AB_IMEXPORTER_ACCOUNTINFO *a=AB_ImExporterContext_GetFirstAccountInfo(context);a;a=AB_ImExporterAccountInfo_List_Next(a)) {
@@ -745,7 +769,7 @@ static int session_request_allowed(const BC_FRAME *next) {
 static int execute_request(AB_BANKING *ab) {
   int rv=0;
   const char *op=bc_text(&request,"op");
-  const char *operations[]={"probe","read_card","chiptan_usb","configure","open","accounts","reset_tan","balance","transactions","read_batch","standing","transfer","scheduled","create_standing","delete_standing"};
+  const char *operations[]={"probe","read_card","chiptan_usb","configure","open","accounts","reset_tan","balance","transactions","read_batch","standing","transfer","instant_status","scheduled","create_standing","delete_standing"};
   int known=0;
   for(unsigned i=0;i<sizeof(operations)/sizeof(operations[0]);i++) if(!strcmp(op,operations[i])) known=1;
   if(!known) rv=GWEN_ERROR_INVALID;
@@ -781,7 +805,9 @@ static int execute_request(AB_BANKING *ab) {
         else if(!strcmp(op,"balance")) rv=run_job(ab,AB_Transaction_CommandGetBalance);
         else if(!strcmp(op,"transactions")) rv=run_job(ab,AB_Transaction_CommandGetTransactions);
         else if(!strcmp(op,"standing")) rv=run_job(ab,AB_Transaction_CommandSepaGetStandingOrders);
-        else if(!strcmp(op,"transfer")) rv=run_job(ab,AB_Transaction_CommandSepaTransfer);
+        else if(!strcmp(op,"transfer")) rv=run_job(ab,!strcmp(bc_text(&request,"instant"),"1")?
+            AB_Transaction_CommandSepaInstantTransfer:AB_Transaction_CommandSepaTransfer);
+        else if(!strcmp(op,"instant_status")) rv=run_job(ab,AB_Transaction_CommandGetSepaInstantStatus);
         else if(!strcmp(op,"scheduled")) rv=run_job(ab,AB_Transaction_CommandSepaCreateDatedTransfer);
         else if(!strcmp(op,"create_standing")) rv=run_job(ab,AB_Transaction_CommandSepaCreateStandingOrder);
         else if(!strcmp(op,"delete_standing")) rv=run_job(ab,AB_Transaction_CommandSepaDeleteStandingOrder);

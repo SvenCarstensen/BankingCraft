@@ -1,0 +1,57 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only; FinTS CR0482 / CR0514 -->
+<definitions>
+<SEGs>
+<SEGdef id="BCInstantTransfer" code="HKIPZ" version="1" delimiter="+" terminator="'">
+<GROUP type="SegHead" name="head" /><GROUP type="kti_i_forced_sepa" version="1" /><ELEM name="descriptor" type="ascii" maxsize="256" /><ELEM name="transfer" type="bin" trustlevel="4" />
+<VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCInstantTransferResponse" code="HIIPZ" version="1" delimiter="+" terminator="'"><GROUP type="SegHead" name="head" /><ELEM name="referenceId" type="an" maxsize="99" />
+<ELEM name="cancellationCode" type="num" size="1" minnum="0" />
+<ELEM name="paymentStatus" type="num" size="1" minnum="0" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef code="HIIPZS" version="1" delimiter="+" terminator="'" isbpdjob="1">
+<GROUP type="BPDJob" version="2" /><GROUP delimiter=":" terminator="">
+
+<ELEM name="purposeCodes" type="ascii" maxsize="4096" minnum="0" />
+<ELEM name="supportedFormat" type="ascii" maxsize="256" minnum="0" maxnum="9" />
+</GROUP><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCInstantTransfer" code="HKIPZ" version="2" delimiter="+" terminator="'">
+<GROUP type="SegHead" name="head" /><GROUP type="kti_i_forced_sepa" version="1" /><ELEM name="descriptor" type="ascii" maxsize="256" /><ELEM name="transfer" type="bin" trustlevel="4" />
+<ELEM name="convertToSepa" type="an" size="1" minnum="0" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCInstantTransferResponse" code="HIIPZ" version="2" delimiter="+" terminator="'"><GROUP type="SegHead" name="head" /><ELEM name="referenceId" type="an" maxsize="99" />
+<ELEM name="cancellationCode" type="num" size="1" minnum="0" />
+<ELEM name="paymentStatus" type="num" size="1" minnum="0" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef code="HIIPZS" version="2" delimiter="+" terminator="'" isbpdjob="1">
+<GROUP type="BPDJob" version="2" /><GROUP delimiter=":" terminator="">
+<ELEM name="conversionAllowed" type="an" size="1" />
+<ELEM name="purposeCodes" type="ascii" maxsize="4096" minnum="0" />
+<ELEM name="supportedFormat" type="ascii" maxsize="256" minnum="0" maxnum="9" />
+</GROUP><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCInstantStatus" code="HKIPS" version="1" delimiter="+" terminator="'">
+<GROUP type="SegHead" name="head" /><GROUP type="kti_i_forced_sepa" version="1" /><GROUP name="SupportedFormats" delimiter=":" terminator=""><ELEM name="format" type="ascii" maxsize="256" maxnum="9" /></GROUP>
+<ELEM name="referenceId" type="an" maxsize="99" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCInstantStatusResponse" code="HIIPS" version="1" delimiter="+" terminator="'">
+<GROUP type="SegHead" name="head" /><GROUP type="kti_i_forced_sepa" version="1" /><ELEM name="descriptor" type="ascii" maxsize="256" minnum="0" /><ELEM name="transfer" type="bin" minnum="0" />
+<ELEM name="referenceId" type="an" maxsize="99" />
+<ELEM name="cancellationCode" type="num" size="1" minnum="0" />
+<ELEM name="paymentStatus" type="num" size="1" minnum="0" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef code="HIIPSS" version="1" delimiter="+" terminator="'" isbpdjob="1"><GROUP type="BPDJob" version="2" />
+<GROUP delimiter=":" terminator=""><ELEM name="minWait" type="num" maxsize="2" />
+<ELEM name="supportedFormat" type="ascii" maxsize="256" minnum="0" maxnum="9" /></GROUP><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCScheduledTransfer" code="HKCSE" version="1" delimiter="+" terminator="'">
+<GROUP type="SegHead" name="head"/><GROUP type="kti_i_forced_sepa" version="1"/>
+<ELEM name="descriptor" type="ascii" maxsize="256"/><ELEM name="transfer" type="bin" trustlevel="4"/><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef id="BCScheduledTransferResponse" code="HICSE" version="1" delimiter="+" terminator="'">
+<GROUP type="SegHead" name="head"/><ELEM name="referenceId" type="an" maxsize="99" minnum="0"/><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+<SEGdef code="HICSES" version="1" delimiter=":" terminator="'" isbpdjob="1">
+<GROUP type="BPDJob" version="2"/><ELEM name="minDelay" type="num" maxsize="4"/><ELEM name="maxDelay" type="num" maxsize="4"/><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></SEGdef>
+</SEGs>
+<JOBs>
+<JOBdef id="JobBCInstantTransfer" code="HKIPZ" params="HIIPZS" version="1" crypt="1" sign="1" needBPD="1" response="BCInstantTransferResponse">
+<SEG type="BCInstantTransfer" version="1" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></JOBdef>
+<JOBdef id="JobBCInstantTransfer" code="HKIPZ" params="HIIPZS" version="2" crypt="1" sign="1" needBPD="1" response="BCInstantTransferResponse">
+<SEG type="BCInstantTransfer" version="2" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></JOBdef>
+<JOBdef id="JobBCInstantStatus" code="HKIPS" params="HIIPSS" version="1" crypt="1" sign="1" needBPD="1" response="BCInstantStatusResponse">
+<SEG type="BCInstantStatus" version="1" /><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></JOBdef>
+<JOBdef id="JobBCScheduledTransfer" code="HKCSE" params="HICSES" version="1" crypt="1" sign="1" needBPD="1" response="BCScheduledTransferResponse">
+<SEG type="BCScheduledTransfer" version="1"/><VALUES><VALUE path="head/code">%code</VALUE><VALUE path="head/version">%version</VALUE></VALUES></JOBdef>
+</JOBs>
+</definitions>

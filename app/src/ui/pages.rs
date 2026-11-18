@@ -1451,12 +1451,8 @@ fn transfer(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
         columns(ui, &[420., 150.], 12., |ui, col| {
             if col == 0 {
-                segmented(
-                    ui,
-                    t,
-                    &["Standard", "Echtzeit", "Terminüberweisung"],
-                    &mut d.tf_mode,
-                );
+                segmented_enabled(ui, t, &["Standard", "Echtzeit", "Terminüberweisung"],
+                    &mut d.tf_mode, |i| match i {1 => d.tf_instant_available, 2 => d.tf_scheduled_available, _ => true});
             } else if d.tf_mode == 2 {
                 let r = input(ui, t, "transfer-date", &mut d.tf_date, "TT.MM.JJJJ", false);
 
@@ -1466,12 +1462,19 @@ fn transfer(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
 
         ui.add_space(14.);
 
+        if !d.tf_instant_available {
+            text(ui, tr("Echtzeit ist für dieses Konto noch nicht bestätigt. Bitte den Bankzugang synchronisieren."), 12., false, t.text_muted);
+            ui.add_space(10.);
+        }
+        if d.tf_mode == 2 && !d.tf_scheduled_available {
+            text(ui, tr("Terminüberweisungen sind für dieses Konto noch nicht bestätigt. Bitte den Bankzugang synchronisieren."), 12., false, t.text_muted);
+        }
         text(ui,tr("Beim Synchronisieren werden zuerst die gespeicherten Aufträge der gewählten Konten gesendet, danach die Umsätze abgerufen."),12.,false,t.text_muted);
 
         ui.add_space(20.);
 
         right(ui, |ui| {
-            if primary(ui, t, "Überweisung speichern", icons::LIST, !d.busy) {
+            if primary(ui, t, "Überweisung speichern", icons::LIST, !d.busy && (d.tf_mode != 1 || d.tf_instant_available) && (d.tf_mode != 2 || d.tf_scheduled_available)) {
                 action!(a, invoke_save_transfer);
             }
 
@@ -1481,7 +1484,7 @@ fn transfer(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
                 tr("Überweisung senden"),
                 icons::TRANSFER,
                 false,
-                !d.busy,
+                !d.busy && (d.tf_mode != 1 || d.tf_instant_available) && (d.tf_mode != 2 || d.tf_scheduled_available),
             )
             .clicked()
             {
@@ -1775,6 +1778,9 @@ fn orders(ui: &mut Ui, t: &Theme, d: &mut Data, a: &mut Actions) {
                     text(ui, &order.name, 15., true, t.text);
 
                     right(ui, |ui| {
+                        if order.can_check && button(ui, t, tr("Status prüfen"), icons::REFRESH, false, !d.busy).clicked() {
+                            action!(a, invoke_check_payment_status, order.id);
+                        }
                         if button(ui, t, "", icons::TRASH, false, !d.busy).clicked() {
                             action!(a, invoke_delete_payment_order, order.id);
                         }

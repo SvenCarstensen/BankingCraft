@@ -23,6 +23,8 @@ pub struct Ctx {
 }
 
 pub type JobResult = Result<String, String>;
+mod instant;
+pub use instant::check_instant;
 
 #[cfg(test)]
 mod account_refresh_tests;
@@ -622,6 +624,10 @@ fn perform_transfer(ctx: &Ctx, account_id: u32, t: SepaTransfer, scheduled: bool
     }
     let bridge = ctx.bridge.clone();
     let mut client = make_client(ctx, &access, &bridge)?;
+    if t.instant {
+        let id = instant::submitting_order(ctx, account_id, &t.end_to_end_id)?;
+        client.observe_instant(move |result| instant::persist(ctx, id, result).map_err(Error::Other));
+    }
     let r = if scheduled { client.scheduled_transfer(&acc, &t) } else { client.transfer(&acc, &t) };
     let summary = conclude(ctx, access.id, client, r)?;
     Ok(i18n::tr_format!("Auftrag übermittelt.\n{summary}"))
@@ -879,6 +885,53 @@ mod outgoing_order_tests {
         fn reload(&self) -> Vault { VaultFile::open(self.path.clone(), "test").unwrap().1 }
     }
     impl Drop for Fixture { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.dir); } }
+
+    #[test]
+    fn instant_bank_reference_survives_encrypted_reload_and_never_requeues() {
+        use banking::{InstantOutcome, InstantPayment};
+        for outcome in [InstantOutcome::Pending,InstantOutcome::Unknown,InstantOutcome::Rejected,InstantOutcome::Executed] {
+            let f=Fixture::new();
+            let id=f.ctx.edit_vault(|v| {
+                let mut t=crate::business_tests::standing().transfer;t.instant=true;
+                v.queue_transfer(f.account,t,false,false)
+            }).unwrap();
+            let result=submit_order_with(&f.ctx,id,|ctx,account,t,_| {
+                assert_eq!(instant::submitting_order(ctx,account,&t.end_to_end_id).unwrap(),id);
+                let report=InstantPayment {debtor_iban:t.debtor_iban.clone(),reference:"SYNTHETIC-BANK-REFERENCE".into(),outcome,
+                    next_query_at:chrono::Utc::now()+chrono::Duration::seconds(5)};
+                instant::persist(ctx,id,&report)?;
+                let on_disk=f.reload();let stored=&on_disk.payment_orders[0];
+                assert_eq!(stored.status,OrderStatus::Submitting);assert_eq!(stored.instant_payment.as_ref(),Some(&report));
+                assert!(!serde_json::to_string(&on_disk.history).unwrap().contains("SYNTHETIC-BANK-REFERENCE"));
+                if outcome==InstantOutcome::Executed {Ok(report.message().into())} else {Err(report.message().into())}
+            });
+            assert_eq!(result.is_ok(),outcome==InstantOutcome::Executed);
+            let saved=f.reload();let order=&saved.payment_orders[0];
+            assert_eq!(order.status,if outcome==InstantOutcome::Executed {OrderStatus::Sent} else {OrderStatus::NeedsReview});
+            assert_eq!(order.instant_payment.as_ref().unwrap().can_query(),matches!(outcome,InstantOutcome::Pending|InstantOutcome::Unknown));
+            assert!(submit_order_with(&f.ctx,id,|_,_,_,_|panic!("never resend an existing instant order")).is_err());
+        }
+    }
+    #[test]
+    fn instant_reference_binding_and_persistence_failure_are_fail_closed() {
+        let f=Fixture::new();let id=f.ctx.edit_vault(|v| {
+            let mut t=crate::business_tests::standing().transfer;t.instant=true;v.queue_transfer(f.account,t,false,false)
+        }).unwrap();
+        let result=submit_order_with(&f.ctx,id,|ctx,_,t,_| {
+            let mut report=banking::InstantPayment{debtor_iban:"wrong account".into(),reference:"REF".into(),
+                outcome:banking::InstantOutcome::Pending,next_query_at:chrono::Utc::now()};
+            assert!(instant::persist(ctx,id,&report).is_err());
+            report.debtor_iban=t.debtor_iban.clone();instant::persist(ctx,id,&report)?;
+            report.reference="DIFFERENT".into();assert!(instant::persist(ctx,id,&report).is_err());
+            report.reference="REF".into();report.outcome=banking::InstantOutcome::Executed;
+            ctx.file.lock().unwrap().take();
+            instant::persist(ctx,id,&report)?;panic!("must stop after a persistence failure")
+        });
+        assert!(result.is_err());let saved=f.reload();
+        assert_eq!(saved.payment_orders[0].status,OrderStatus::Submitting);
+        assert_eq!(saved.payment_orders[0].instant_payment.as_ref().unwrap().outcome,banking::InstantOutcome::Pending);
+        assert_eq!(f.ctx.vault.lock().unwrap().payment_orders[0].instant_payment.as_ref().unwrap().outcome,banking::InstantOutcome::Executed);
+    }
 
     #[test]
     fn global_sync_sends_all_orders_before_any_retrieval_and_uses_updated_bank_state() {

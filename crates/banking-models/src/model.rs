@@ -175,3 +175,28 @@ pub enum TanAnswer {
     Confirmed,
     Cancel,
 }
+
+/// Bank outcome for one SCT Inst order. Persisted only in the encrypted vault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstantOutcome { Pending, Executed, Rejected, Unknown }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstantPayment {
+    pub debtor_iban: String,
+    pub reference: String,
+    pub outcome: InstantOutcome,
+    pub next_query_at: chrono::DateTime<chrono::Utc>,
+}
+impl InstantPayment {
+    pub fn can_query(&self) -> bool {
+        !self.reference.is_empty() && matches!(self.outcome, InstantOutcome::Pending | InstantOutcome::Unknown)
+    }
+    pub fn message(&self) -> &'static str {
+        i18n::tr(match self.outcome {
+            InstantOutcome::Executed => "Echtzeitüberweisung ausgeführt. Das Geld ist für den Empfänger verfügbar.",
+            InstantOutcome::Rejected => "Die Bank hat die Echtzeitüberweisung abgelehnt oder als fehlgeschlagen gemeldet.",
+            InstantOutcome::Pending => "Die Echtzeitüberweisung wird noch verarbeitet. Bitte den Status prüfen; den Auftrag nicht erneut senden.",
+            InstantOutcome::Unknown => "Der Ausgang der Echtzeitüberweisung ist unklar. Bitte den Bankstatus prüfen; den Auftrag nicht erneut senden.",
+        })
+    }
+}

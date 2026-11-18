@@ -22,6 +22,20 @@ pub struct PaymentOrder {
     pub created_at: NaiveDateTime,
     pub status: OrderStatus,
     pub message: String,
+    #[serde(default)]
+    pub instant_payment: Option<banking::InstantPayment>,
+}
+
+impl PaymentOrder {
+    /// A worker may report execution and then disappear before its final IPC
+    /// acknowledgement. An unresolved local order can recheck that reference.
+    pub fn instant_status_query(&self) -> Option<banking::InstantPayment> {
+        if !matches!(self.status, OrderStatus::Submitting | OrderStatus::NeedsReview) { return None; }
+        let mut payment = self.instant_payment.clone()?;
+        if payment.reference.is_empty() || payment.outcome == banking::InstantOutcome::Rejected { return None; }
+        if payment.outcome == banking::InstantOutcome::Executed { payment.outcome = banking::InstantOutcome::Unknown; }
+        Some(payment)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +82,7 @@ impl Vault {
         let id = self.new_id();
         self.payment_orders.push(PaymentOrder {
             id, account_id, transfer, scheduled, created_at: Local::now().naive_local(),
-            status: OrderStatus::Queued, message: String::new(),
+            status: OrderStatus::Queued, message: String::new(), instant_payment: None,
         });
         Ok(id)
     }

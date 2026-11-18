@@ -153,6 +153,7 @@ pub struct PaymentOrderRow {
     pub detail: SharedString,
     pub needs_review: bool,
     pub queued: bool,
+    pub can_check: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -234,6 +235,8 @@ pub struct Data {
     pub tf_amount: SharedString,
     pub tf_purpose: SharedString,
     pub tf_mode: i32,
+    pub tf_instant_available: bool,
+    pub tf_scheduled_available: bool,
     pub tf_date: SharedString,
     pub tf_iban_hint: SharedString,
     pub tf_iban_error: bool,
@@ -399,6 +402,8 @@ impl Default for Data {
             tf_amount: Default::default(),
             tf_purpose: Default::default(),
             tf_mode: Default::default(),
+            tf_instant_available: false,
+            tf_scheduled_available: false,
             tf_date: Default::default(),
             tf_iban_hint: Default::default(),
             tf_iban_error: Default::default(),
@@ -531,6 +536,7 @@ pub struct Callbacks {
     send_transfer: Callback<dyn Fn()>,
     save_transfer: Callback<dyn Fn()>,
     delete_payment_order: Callback<dyn Fn(i32)>,
+    check_payment_status: Callback<dyn Fn(i32)>,
     payment_account_changed: Callback<dyn Fn()>,
     select_recipient: Callback<dyn Fn(i32)>,
     delete_recipient: Callback<dyn Fn()>,
@@ -795,6 +801,12 @@ impl AppState {
         }
         if before.tf_purpose != after.tf_purpose {
             data.tf_purpose = after.tf_purpose.clone();
+        }
+        if before.tf_instant_available != after.tf_instant_available {
+            data.tf_instant_available = after.tf_instant_available;
+        }
+        if before.tf_scheduled_available != after.tf_scheduled_available {
+            data.tf_scheduled_available = after.tf_scheduled_available;
         }
         if before.tf_mode != after.tf_mode {
             data.tf_mode = after.tf_mode;
@@ -1487,6 +1499,10 @@ impl AppState {
     pub fn set_tf_purpose(&self, value: SharedString) {
         self.data.borrow_mut().tf_purpose = value;
     }
+    pub fn get_tf_instant_available(&self) -> bool { self.data.borrow().tf_instant_available }
+    pub fn set_tf_instant_available(&self, value: bool) { self.data.borrow_mut().tf_instant_available = value; }
+    pub fn get_tf_scheduled_available(&self) -> bool { self.data.borrow().tf_scheduled_available }
+    pub fn set_tf_scheduled_available(&self, value: bool) { self.data.borrow_mut().tf_scheduled_available = value; }
     pub fn get_tf_mode(&self) -> i32 {
         self.data.borrow().tf_mode
     }
@@ -2237,6 +2253,13 @@ impl AppState {
     pub fn invoke_save_transfer(&self) {
         let callback = self.callbacks.borrow().save_transfer.clone();
         callback.map(|f| f()).unwrap_or_default()
+    }
+    pub fn on_check_payment_status(&self, callback: impl Fn(i32) + 'static) {
+        self.callbacks.borrow_mut().check_payment_status = Some(std::rc::Rc::new(callback));
+    }
+    pub fn invoke_check_payment_status(&self, id: i32) {
+        let callback = self.callbacks.borrow().check_payment_status.clone();
+        if let Some(callback) = callback { callback(id); }
     }
     pub fn on_delete_payment_order(&self, callback: impl Fn(i32) + 'static) {
         self.callbacks.borrow_mut().delete_payment_order = Some(std::rc::Rc::new(callback));

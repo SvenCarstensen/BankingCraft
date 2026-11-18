@@ -41,6 +41,7 @@ runs:
         python3 scripts/build-native.py
         python3 scripts/test-native.py
         python3 scripts/test-native-adapter.py
+        python3 scripts/test-native-payments.py
         python3 scripts/package-native.py .native/review
         python3 scripts/audit-native.py .native/review/native
     - name: Build and test native runtime (Windows)

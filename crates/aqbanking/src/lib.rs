@@ -1,6 +1,7 @@
 //! AqBanking runs in a disposable native process, with an in-memory config
 //! manager. Only opaque snapshots cross back into the encrypted vault.
 mod reads;
+mod instant;
 mod reader_prompt;
 pub use reads::ReadRequest;
 mod wire;
@@ -43,6 +44,7 @@ fn native_error(frame:&Frame,code:i64) -> Result<Error> {
         "balance"=>("Saldo abrufen",false),
         "transactions"=>("Umsätze abrufen",false),
         "read_batch"=>("Salden und Umsätze abrufen",false),
+        "instant_status"=>("Status der Echtzeitüberweisung abrufen",false),
         "transfer"|"scheduled"=>("Überweisung freigeben",false),
         "create_standing"|"delete_standing"=>("Dauerauftrag freigeben",false),
         _=>("Bankauftrag",false),
@@ -134,6 +136,8 @@ impl CardWorker {
 }
 fn read_operation(op:&str) -> bool { matches!(op,"open"|"accounts"|"balance"|"transactions"|"read_batch") }
 
+type InstantObserver<'a> = Box<dyn Fn(&banking::InstantPayment)->Result<()>+'a>;
+
 pub struct Client<'a> {
     config:Config,
     pub state:State,
@@ -143,6 +147,12 @@ pub struct Client<'a> {
     planned_reads:Vec<reads::ReadPlan>,
     read_generation:Option<u64>,
     prefetched_reads:Vec<reads::ReadResult>,
+    #[cfg(test)]
+    test_workers:Option<std::collections::VecDeque<CardWorker>>,
+    payment_notice:String,
+    instant_context:Option<(String,Option<String>)>,
+    instant_result:Option<banking::InstantPayment>,
+    instant_observer:Option<InstantObserver<'a>>,
 }
 impl<'a> Client<'a> {
     pub fn new(config:Config,mut state:State,medium:Medium,ui:&'a dyn Interaction) -> Result<Self> {
@@ -165,7 +175,7 @@ impl<'a> Client<'a> {
         if state.aqbanking.is_none() {
             state.aqbanking=Some(AqBankingState {version:1,binding,snapshot:Vec::new(),accounts:Vec::new()});
         }
-        Ok(Self {config,state,medium,ui,session:None,read_generation:None,planned_reads:Vec::new(),prefetched_reads:Vec::new()})
+        Ok(Self {config,state,medium,ui,session:None,read_generation:None,planned_reads:Vec::new(),prefetched_reads:Vec::new(),#[cfg(test)] test_workers:None, payment_notice:String::new(),instant_context:None,instant_result:None,instant_observer:None})
     }
     pub fn finish(mut self) -> State {
         if let Some(worker)=self.session.take() { worker.close(); }
@@ -209,6 +219,11 @@ impl<'a> Client<'a> {
         });
         Ok(CardWorker {worker,input,receive,_blocker:blocker,generation})
     }
+    fn next_worker(&mut self,request:&mut Frame,session:bool)->Result<CardWorker> {
+        #[cfg(test)]
+        if let Some(workers)=&mut self.test_workers { return workers.pop_front().ok_or_else(invalid); }
+        self.spawn_worker(request,session)
+    }
     fn call(&mut self,request:Frame) -> Result<Vec<Frame>> {
         self.call_with_reader_timeout(request,reader_prompt::PIN_TIMEOUT)
     }
@@ -222,7 +237,7 @@ impl<'a> Client<'a> {
         let mut worker=if let Some(worker)=self.session.take() {
             if worker.generation!=self.ui.session_generation() { return Err(Error::Cancelled); }
             worker
-        } else { self.spawn_worker(&mut request,use_session)? };
+        } else { self.next_worker(&mut request,use_session)? };
         request.write(&mut worker.input).map_err(failure)?; drop(request);
         let mut reader=reader_prompt::ReaderPrompt::new(self.ui,pin_timeout);
         let mut frames=Vec::new(); let mut bytes=0usize; let mut idle=Instant::now(); let mut start=Instant::now(); let mut events=0usize;
@@ -252,6 +267,7 @@ impl<'a> Client<'a> {
                     if number(&frame,"bad_pin")?!=0 { self.ui.pin_rejected(); }
                     if number(&frame,"cancelled")?!=0 { return Err(Error::Cancelled); }
                     let code=number(&frame,"code")?;
+                    self.payment_notice=banking::display::strip_html(text(&frame,"notice")?);
                     let result=if code!=0 { Err(native_error(&frame,code)?) } else { Ok(frames) };
                     if use_session && frame.text("session").unwrap_or("0")=="1"
                         && (result.is_ok() || matches!(&result,Err(Error::NotSupported(_)))) {
@@ -263,6 +279,7 @@ impl<'a> Client<'a> {
                         result.map_err(|e| match e { Error::Bank{code,text}=>Error::Access{code,text},other=>other })
                     } else { result };
                 },
+                "instant_result"=>self.receive_instant(&frame)?,
                 "progress"=>self.ui.progress(&banking::display::strip_html(text(&frame,"text")?)),
                 "show"=>reader.show(&frame,Instant::now())?,
                 "hide"=>reader.hide(&frame)?,
@@ -415,6 +432,16 @@ impl<'a> Client<'a> {
         if transfer.debtor_iban!=account.iban || transfer.amount<=Decimal::ZERO || transfer.amount.normalize().scale()>2 {
             return Err(Error::Security("Ungültiger Zahlungsauftrag".into()));
         }
+        if transfer.instant && (op!="transfer" || transfer.execution_date.is_some()) {
+            return Err(Error::Security("Echtzeitüberweisungen werden nur sofort als Einzelauftrag ausgeführt.".into()));
+        }
+        if (op=="scheduled" && transfer.execution_date.is_none_or(|d| d<=chrono::Local::now().date_naive()))
+            || (op=="transfer" && transfer.execution_date.is_some()) {
+            return Err(Error::Security("Ungültiges Ausführungsdatum für diese Überweisungsart.".into()));
+        }
+        self.payment_notice.clear();
+        self.instant_result=None;
+        self.instant_context=transfer.instant.then(||(account.iban.clone(),None));
         let mut request=self.account_request(op,account)?;
         request.put("name",&transfer.creditor_name); request.put("iban",&transfer.creditor_iban); request.put("bic",&transfer.creditor_bic);
         request.put("amount",transfer.amount.to_string()); request.put("purpose",&transfer.purpose); request.put("end_to_end",&transfer.end_to_end_id);
@@ -425,7 +452,12 @@ impl<'a> Client<'a> {
             request.put("cycle",standing.every.to_string()); request.put("day",standing.day.to_string());
             date_field(&mut request,"first",Some(standing.first_date)); date_field(&mut request,"last",standing.last_date);
         }
-        self.call(request)?; Ok("Die Bank hat den Auftrag angenommen.".into())
+        self.call(request)?;
+        if transfer.instant {self.complete_instant(account)}
+        else if op=="scheduled" {
+            Ok(format!("Die Bank hat die Terminüberweisung zur späteren Ausführung angenommen.{}",
+                if self.payment_notice.is_empty() {String::new()} else {format!("\n{}",self.payment_notice)}))
+        } else {Ok("Die Bank hat den Auftrag angenommen.".into())}
     }
     pub fn transfer(&mut self,a:&Account,t:&SepaTransfer) -> Result<String> { self.send("transfer",a,t,None) }
     pub fn scheduled_transfer(&mut self,a:&Account,t:&SepaTransfer) -> Result<String> { self.send("scheduled",a,t,None) }

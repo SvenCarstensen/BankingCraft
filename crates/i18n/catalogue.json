@@ -4097,5 +4097,15 @@
     "Could not save the bank connection name: {e}",
     "Impossible d’enregistrer le nom de l’accès bancaire : {e}",
     "No se pudo guardar el nombre del acceso bancario: {e}"
-  ]
+  ],
+  "In Bearbeitung": ["Processing", "En cours de traitement", "En proceso"],
+  "Abgelehnt": ["Rejected", "Rejeté", "Rechazada"],
+  "Status prüfen": ["Check status", "Vérifier le statut", "Comprobar estado"],
+  "Status der Echtzeitüberweisung": ["Instant transfer status", "Statut du virement instantané", "Estado de la transferencia inmediata"],
+  "Echtzeit ist für dieses Konto noch nicht bestätigt. Bitte den Bankzugang synchronisieren.": ["Instant transfers are not yet confirmed for this account. Please synchronize the bank connection.", "Les virements instantanés ne sont pas encore confirmés pour ce compte. Synchronisez la connexion bancaire.", "Las transferencias inmediatas aún no están confirmadas para esta cuenta. Sincronice la conexión bancaria."],
+  "Terminüberweisungen sind für dieses Konto noch nicht bestätigt. Bitte den Bankzugang synchronisieren.": ["Scheduled transfers are not yet confirmed for this account. Please synchronize the bank connection.", "Les virements différés ne sont pas encore confirmés pour ce compte. Synchronisez la connexion bancaire.", "Las transferencias programadas aún no están confirmadas para esta cuenta. Sincronice la conexión bancaria."],
+  "Echtzeitüberweisung ausgeführt. Das Geld ist für den Empfänger verfügbar.": ["Instant transfer executed. The funds are available to the recipient.", "Virement instantané exécuté. Les fonds sont disponibles pour le bénéficiaire.", "Transferencia inmediata ejecutada. Los fondos están disponibles para el beneficiario."],
+  "Die Bank hat die Echtzeitüberweisung abgelehnt oder als fehlgeschlagen gemeldet.": ["The bank rejected the instant transfer or reported it as failed.", "La banque a rejeté le virement instantané ou signalé son échec.", "El banco rechazó la transferencia inmediata o indicó que falló."],
+  "Die Echtzeitüberweisung wird noch verarbeitet. Bitte den Status prüfen; den Auftrag nicht erneut senden.": ["The instant transfer is still processing. Check its status; do not send the payment again.", "Le virement instantané est encore en cours de traitement. Vérifiez son statut ; ne renvoyez pas l’ordre.", "La transferencia inmediata sigue en proceso. Compruebe su estado; no vuelva a enviarla."],
+  "Der Ausgang der Echtzeitüberweisung ist unklar. Bitte den Bankstatus prüfen; den Auftrag nicht erneut senden.": ["The instant transfer outcome is unclear. Check its status with the bank; do not send the payment again.", "Le résultat du virement instantané est incertain. Vérifiez son statut auprès de la banque ; ne renvoyez pas l’ordre.", "El resultado de la transferencia inmediata es incierto. Compruebe su estado con el banco; no vuelva a enviarla."]
 }

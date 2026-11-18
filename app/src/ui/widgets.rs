@@ -389,6 +389,9 @@ pub fn options(values: &[&str]) -> ModelRc<String> {
     ModelRc::new(values.iter().map(|s| tr(s).to_owned()).collect())
 }
 pub fn segmented(ui: &mut Ui, t: &Theme, values: &[&str], selected: &mut i32) -> bool {
+    segmented_enabled(ui, t, values, selected, |_| true)
+}
+pub fn segmented_enabled(ui: &mut Ui, t: &Theme, values: &[&str], selected: &mut i32, enabled: impl Fn(usize) -> bool) -> bool {
     let before = *selected;
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.), Sense::hover());
     ui.painter().rect_filled(rect, 6., t.segmented_bg);
@@ -398,16 +401,17 @@ pub fn segmented(ui: &mut Ui, t: &Theme, values: &[&str], selected: &mut i32) ->
             rect.min + vec2(3. + i as f32 * width, 3.),
             vec2(width - 3., 28.),
         );
-        let response = ui.interact(r, ui.id().with(("segment", label)), Sense::click());
+        let active = ui.is_enabled() && enabled(i);
+        let response = ui.interact(r, ui.id().with(("segment", label)), if active { Sense::click() } else { Sense::hover() });
         response.widget_info(|| {
             egui::WidgetInfo::selected(
                 egui::WidgetType::SelectableLabel,
-                ui.is_enabled(),
+                active,
                 *selected == i as i32,
                 tr(label),
             )
         });
-        if response.clicked() {
+        if active && response.clicked() {
             *selected = i as i32;
         }
         if *selected == i as i32 {
@@ -419,7 +423,7 @@ pub fn segmented(ui: &mut Ui, t: &Theme, values: &[&str], selected: &mut i32) ->
             tr(label),
             13.,
             *selected == i as i32,
-            if *selected == i as i32 {
+            if !active { t.text_muted.gamma_multiply(0.5) } else if *selected == i as i32 {
                 t.text
             } else {
                 t.text_muted
