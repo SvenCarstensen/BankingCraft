@@ -112,7 +112,9 @@ mod tests {
         });
         (CardWorker{worker:Worker(child),input,receive,_blocker:tempfile::NamedTempFile::new().unwrap(),generation:ui.session_generation()},handle)
     }
+    #[cfg(unix)]
     struct NoBank;
+    #[cfg(unix)]
     impl Interaction for NoBank {
         fn progress(&self,_:&str) {}
         fn pin(&self,_:&str)->Option<String> {panic!("no bank/PIN in offline tests")}

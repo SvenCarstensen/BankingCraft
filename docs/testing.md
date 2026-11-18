@@ -39,6 +39,10 @@ push approval, rejection, polling and cancellation. No real bank connection, PIN
 card access or payment is used by these checks. They do **not** establish production
 Postbank acceptance or settlement of either new payment type.
 
+The Unix-only pipe fixtures and their interaction helper share the same platform guard.
+Clippy for all targets of `bankingcraft-aqbanking` also passes when cross-checking
+`x86_64-pc-windows-gnu`; the release workflow separately checks Windows MSVC.
+
 Commands: `cargo test --workspace --locked`,
 `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --locked`,
 `python3 -m unittest discover -s scripts/tests -v`, `python3 scripts/test-native.py`,
