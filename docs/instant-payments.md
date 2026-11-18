@@ -1,5 +1,7 @@
 # Echtzeit- und Terminüberweisungen über AqBanking
 
+Verfügbar ab BankingCraft 0.2.1. Offline geprüft am 18. November 2026.
+
 BankingCraft erweitert das fest eingebundene AqBanking 6.9.2 reproduzierbar mit
 `scripts/patch-instant.py`. Die Änderungen liegen in `native/aqbanking/instant/`
 und fließen in den Hash des nativen Build-Rezepts ein. Eine Systeminstallation
@@ -65,8 +67,9 @@ Vorlagen wechseln bei fehlender Berechtigung nicht unbemerkt die Zahlungsart.
 - `python3 scripts/test-native-payments.py`: echte Provider-Factory,
   FinTS-Parser und -Serializer, Zahlungs-XML für alle drei Formate,
   BPD/UPD/VoP-Abhängigkeiten, Versionswahl, Konvertierungsverbot,
-  Datumsgrenzen und Bankrückmeldungen. Das Testprogramm ersetzt `connect`
-  durch einen sofortigen Abbruch und läuft mit ASan/UBSan.
+  Datumsgrenzen und Bankrückmeldungen. Das Testprogramm bricht Netzwerkverbindungen
+  über `connect` sofort ab und läuft mit ASan/UBSan. Unter Linux bleiben lokale
+  Unix-Sockets für die PC/SC-Initialisierung erlaubt.
 - `python3 scripts/test-native-adapter.py`: vorhandene VoP-/BestSign-Dialoge,
   Freigabeintervalle, Freigabeablehnung und Abbruch mit synthetischem Transport.
 - `cargo test --workspace`: zusätzlich IPC-Folgen, maximale Statusabfragen,

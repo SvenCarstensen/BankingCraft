@@ -59,16 +59,17 @@ filename and key derivation remain compatible.
 
 ## Downloads
 
-Get the [0.2.0 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.2.0)
-for Linux x64, Windows x64 or Apple Silicon Macs. Version 0.2.0 adds Postbank BestSign
-status polling, batched chip-card retrieval, activity history, account-specific transfer
-templates and macOS notifications with a quiet chime.
+Get the [0.2.1 alpha release](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.2.1)
+for Linux x64, Windows x64 or Apple Silicon Macs. Version 0.2.1 fixes instant transfers
+with a dedicated FinTS payment operation and persistent status queries, and implements
+scheduled transfers with bank-supplied lead-time limits. These paths have been tested
+offline; production Postbank acceptance is not established by those tests.
 The existing [0.1.0 Intel download](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.1.0)
 remains available unchanged. The macOS app and DMG are Developer ID signed and Apple notarized.
 The signing identity is **Sven Carstensen (Y322FFQ9N6)**, the authorized Apple account;
 AppCreation GmbH remains the app's publisher. Windows packages are not Authenticode signed.
 
-See the [0.2.0 release notes](docs/release-notes.md) and
+See the [0.2.1 release notes](docs/release-notes.md) and
 [installation instructions](docs/releases.md) for package choices, signature verification
 and platform requirements. Existing vaults remain compatible; the alpha limitations above
 still apply. Earlier `v0.0.10` downloads do not contain these backend and signing updates.
@@ -102,6 +103,9 @@ inspect pending entries and refresh the selected account.
 ### Transfers
 
 Prepare a standard, instant or scheduled transfer with an account-specific recipient address book.
+Instant and scheduled choices require explicit support for the selected account. Refresh
+its bank connection after upgrading. Unresolved instant payments can be checked from
+Payment orders without sending the payment again; see [instant and scheduled payments](docs/instant-payments.md).
 
 ![Transfer form populated with fictional recipient details](docs/screenshots/transfer.png)
 
@@ -159,7 +163,7 @@ locally in the encrypted vault. Exports are saved locally; sharing an exported f
 | Secure PIN entry | Libchipcard handles reader PIN-pad capabilities; a shared card session and batched reads reduce repeated reader/network work. A reader PIN dialog shows a 30-second countdown and aborts the operation on timeout. |
 | Postbank BestSign | Push approval with automatic status polling when advertised by the bank; the same dialog shows progress and the final result. Polling does not submit the transfer again. |
 | Balance completeness | Securities accounts without a balance remain visible but do not trigger a missing-account-balance warning; depot holdings and valuations are not retrieved |
-| Payments | AqBanking SEPA transfers, scheduled transfers and standing order operations; availability follows account capabilities; full local confirmation before submission |
+| Payments | AqBanking SEPA, instant (HKIPZ/HKIPS) and scheduled (HKCSE) transfers, plus standing order operations; explicit account capabilities, local confirmation and durable protection against duplicate submission |
 | Payment orders and recipients | Encrypted outgoing queue showing pending/unresolved orders, automatically removing bank-accepted orders from the list (including previously sent orders), a navigation badge counting visible orders (hidden when empty), saved orders sent before transaction retrieval for the selected accounts, immediate sending on request, and a separate opt-in address book per account |
 | Local notifications (macOS) | A quiet bundled chime and a local banner signal sync completion (success, errors or cancellation) and a new card-reader input prompt. Countdown updates do not repeat alerts; completed/expired reader prompts are removed. Uses the macOS notification permission and sound settings, with fixed text excluding banking details. [Apple notification sound documentation](https://developer.apple.com/documentation/usernotifications/unnotificationsound) |
 | Activity history | Encrypted per-vault history of bank jobs, payment outcomes, local changes, imports/exports and session actions, with search, message-type filters and time/type sorting. Text wraps fully without truncation. Transfer details can prepare a new draft for review and authorization. Existing accepted orders are imported with an explicit unknown-confirmation-time note; other earlier actions cannot be reconstructed. Raw bank replies, credentials, PINs and TANs are excluded. |
@@ -597,9 +601,12 @@ native worker. Sharing libraries with GnuCash does not establish
 identical security: BankingCraft's UI, IPC, encrypted persistence, packaging and
 payment authorization are separate code requiring review.
 
-Local verification for 0.2.0 on November 17, 2026 passed **193 workspace tests** (8 ignored),
-Clippy with warnings as errors, 25 release-tooling tests, native offline regressions and
-ASan/UBSan adapter checks. The installed macOS Debug app starts successfully. Earlier live
+Local verification for 0.2.1 on November 18, 2026 passed **202 workspace tests** (8 ignored),
+Clippy with warnings as errors, 25 release-tooling tests, a Debug build, native offline
+regressions and ASan/UBSan payment/adapter checks. New coverage includes nine payment-XML
+variants, bank capabilities, scheduled-date limits, persisted instant-payment references,
+bounded status-only polling and recovery after lost responses. No real payment was sent.
+Earlier live
 Postbank PIN/TAN checks retrieved account data, balances and
 transactions, including credit-card transactions; the updated synchronization display was
 also confirmed by the user. A VR Bank Nord RDH refresh used one worker through the

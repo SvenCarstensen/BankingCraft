@@ -1,5 +1,46 @@
 # Testing
 
+## Version 0.2.1 release preparation — November 18, 2026
+
+Local macOS verification passed **202 workspace tests** (8 ignored), Clippy with warnings
+as errors, the Debug build, **25 release-tooling tests**, version consistency and the
+license bundle for **488 external packages**. Native IPC, adapter and payment tests pass;
+the Unix C harnesses use ASan/UBSan. The new payment suite exercises the real pinned
+AqBanking provider, parser, serializer, XML exporter, result handlers and worker dispatch:
+
+- HKIPZ versions 1/2, explicit account/PIN-TAN/VoP/status permissions, bank-specific
+  format selection and HISPAS fallback. Unsupported jobs never become standard transfers.
+- `INST`, the immediate-execution marker, conditional prohibition of SEPA conversion and
+  unchanged payment bytes through preparation. Nine XML variants cover instant, scheduled
+  and standard transfers in pain.001.001.09, pain.001.001.03 and pain.001.003.03.
+- HKCSE with a future execution date and the bank's minimum/maximum lead time; acceptance
+  codes remain distinct from actual execution. Wrong dates and missing permissions stop
+  before dispatch.
+- All instant-payment states, rejected/unknown responses, account/reference correlation,
+  and the distinction between failure of a status query and failure of the original payment.
+- One initial payment followed only by bounded HKIPS requests, bank waiting intervals,
+  cancellation, failed persistence, transport loss and recovery after restart. The encrypted
+  bank reference is saved before another query. An unresolved order remains checkable if
+  the execution report arrived but the worker's final acknowledgement was lost.
+- Old-vault compatibility, explicit capability gating in the form, retained template mode,
+  and pending/rejected status labels in the outgoing list.
+
+The native payment test aborts network `connect` calls, allowing only local Unix sockets
+for Linux PC/SC initialization, and substitutes the worker's final sending function with
+a synthetic callback. The Rust IPC fixtures use
+local pipes only. Existing VoP/BestSign regressions continue to cover recipient mismatch,
+push approval, rejection, polling and cancellation. No real bank connection, PIN/TAN,
+card access or payment is used by these checks. They do **not** establish production
+Postbank acceptance or settlement of either new payment type.
+
+Commands: `cargo test --workspace --locked`,
+`cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --locked`,
+`python3 -m unittest discover -s scripts/tests -v`, `python3 scripts/test-native.py`,
+`python3 scripts/test-native-adapter.py` and `python3 scripts/test-native-payments.py`.
+The release workflow repeats the required checks on GitHub-hosted platforms and publishes
+only after package startup checks and macOS signing/notarization succeed. This preparation
+record does not claim that an unfinished release run has already passed.
+
 ## Version 0.2.0 release preparation — November 17, 2026
 
 The normal build uses the publisher's FinTS registration and does not read the temporary

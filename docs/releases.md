@@ -11,9 +11,9 @@ including its Intel package and checksums, remain available unchanged.
 
 ## Downloads and installation
 
-Get [version 0.2.0](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.2.0)
+Get [version 0.2.1](https://github.com/SvenCarstensen/BankingCraft/releases/tag/v0.2.1)
 from GitHub Releases. It is an early-alpha release for evaluation.
-The filenames below use `VERSION=0.2.0`; choose the package for your operating system and CPU.
+The filenames below use `VERSION=0.2.1`; choose the package for your operating system and CPU.
 
 | Asset | Target and installation |
 | --- | --- |
@@ -48,6 +48,20 @@ including limited live bank/payment validation. Public builds use BankingCraft's
 registered FinTS identity; activation may still vary by bank. Machine-local test overrides
 and banking data are excluded from release packages. Packaged startup tests do not contact a bank.
 
+### Upgrading to 0.2.1
+
+Synchronize the bank connection to refresh the selected account's payment capabilities.
+Instant transfers require both payment and status-query support; scheduled transfers
+require the bank's dated-transfer operation. A disabled choice never falls back to a
+standard transfer. The demo remains available without a bank connection.
+
+Unresolved instant payments retain their bank reference in the encrypted vault. Use
+**Status prüfen / Check status** in Payment orders to query that existing payment,
+including after restarting the app. A missing reference requires checking the bank's
+records. Do not submit a second payment to resolve an uncertain outcome.
+Saving with an older app can discard the new status metadata; retain a vault backup
+and use 0.2.1 or newer for further edits. See [payment behavior and offline validation](instant-payments.md).
+
 ### Verify the download
 
 Download `SHA256SUMS.txt` from the same release. Compare the package's SHA-256 digest
@@ -79,7 +93,7 @@ tools; ordinary installation does not require them.
    `publish=false` and `sign_macos=true` to validate signed packages without creating a release.
    An explicit `sign_macos=false` allows ad-hoc macOS test artifacts without Apple credentials.
 4. After a successful run, create and push an annotated tag matching the version, for example
-   `git tag -a v0.2.1 -m 'BankingCraft 0.2.1'` and `git push origin v0.2.1`.
+   `git tag -a v0.2.2 -m 'BankingCraft 0.2.2'` and `git push origin v0.2.2`.
 
 Alternatively, run the workflow on `master` with **publish** checked. This builds and tests the
 current version, then creates its tag and publishes the release only after every check passes.

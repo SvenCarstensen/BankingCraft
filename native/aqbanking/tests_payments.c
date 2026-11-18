@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Real AqBanking factory/parser/exporter/result handlers, synthetic BPD/UPD.
  * This executable cannot open a network connection, even accidentally. */
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #define AB_Banking_SendCommands payment_test_send
 #define main bankingcraft_unused_worker_main
 #include "main.c"
@@ -13,7 +16,16 @@
 #include <aqbanking/banking_imex.h>
 #include <sys/socket.h>
 #include <assert.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 int connect(int fd,const struct sockaddr *address,socklen_t length) {
+#ifdef __linux__
+  /* Libchipcard initializes PC/SC over a local socket before any card is opened. */
+  if(address && length>=sizeof(address->sa_family) && address->sa_family==AF_UNIX)
+    return (int)syscall(SYS_connect,fd,address,length);
+#endif
   (void)fd;(void)address;(void)length; abort();
 }
 static int dispatch_calls,dispatch_expected,dispatch_result;
@@ -279,5 +291,5 @@ int main(int argc,char **argv) {
   AB_Account_free(account);assert(AB_Banking_EndUseProvider(bank,provider)==0);
   adapter_dispatch(bank,account_id);
   AB_Banking_Fini(bank);AB_Banking_free(bank);bc_free(&request);GWEN_DB_Group_free(bc_config);GWEN_Gui_free(gui);GWEN_Fini();fclose(bc_output);
-  puts("Offline payment protocol tests passed; no socket connections possible.");
+  puts("Offline payment protocol tests passed; bank network connections are blocked.");
 }

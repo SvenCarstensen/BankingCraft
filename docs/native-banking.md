@@ -1,6 +1,6 @@
 # Native banking runtime
 
-Integration status: November 17, 2026. This change has been tested offline on
+Integration status: November 18, 2026. This change has been tested offline on
 macOS Apple Silicon. Postbank credit-card retrieval and the full Postbank account
 refresh have also completed in live checks. A VR Bank RDH refresh was exercised
 with a cyberJack, reusing one worker through the last account; the tester confirmed
@@ -8,7 +8,10 @@ a single reader PIN entry. Other physical-card/reader combinations remain unveri
 Windows/Linux automation is configured; its results are recorded in GitHub Actions.
 The AqBanking migration shipped in 0.1.0. Version 0.2.0 adds BestSign polling,
 batched card retrieval, bounded reader PIN prompts and the registered product identity.
-The user reported a bank-accepted Postbank transfer during local testing; final settlement
+Version 0.2.1 adds dedicated HKIPZ/HKIPS instant-payment jobs and HKCSE scheduled
+transfers through a reproducible source patch inside the pinned AqHBCI backend.
+The new payment paths have offline coverage only; see [instant and scheduled payments](instant-payments.md).
+The user reported a bank-accepted Postbank transfer during earlier local testing; final settlement
 and broader live payment compatibility have not been independently verified.
 
 ## Boundaries and migration
@@ -236,6 +239,15 @@ AUTHORS files. Exact original archives accompany `package-source.sh` output and
 can be consumed from `native/vendor/`. Matching source and patches for bundled
 transitive GPL/LGPL libraries still need collecting before a public binary release.
 
+The payment extension adds HKIPZ 1/2, HIIPZ 1/2, HKIPS/HIIPS 1 and HKCSE/HICSE 1,
+including BPD parsing, account permission checks, schema negotiation and typed outcomes.
+`INST` is emitted only for the new instant-transfer command. Its bank reference and next
+allowed query time cross the worker pipe before a subsequent HKIPS request and are saved
+in the encrypted order. Scheduled transfers preserve the future date and validate both
+bank lead-time bounds. They report bank acceptance for later execution, not settlement.
+The application exposes only confirmed account capabilities and never silently changes
+the requested transfer type.
+
 ## Building
 
 Use a build cache path without whitespace; the repository may contain spaces.
@@ -245,8 +257,8 @@ Default: `~/.cache/bankingcraft/native`. Python needs tar extraction filters
 ```sh
 python3 scripts/build-native.py
 python3 scripts/test-native.py
-cargo build --release --locked -p bankingcraft
-python3 scripts/package-native.py target/release
+cargo build --locked -p bankingcraft
+python3 scripts/package-native.py target/debug
 ```
 
 Packaging requires a fresh destination `native/` directory. Do not overwrite a
@@ -280,7 +292,7 @@ pacman -S --needed make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-python \
 python scripts/build-native.py
 python scripts/test-native.py
 # After building the Rust GUI with MSVC:
-python scripts/package-native.py target/release
+python scripts/package-native.py target/debug
 ```
 
 The CI composite action `.github/actions/native-runtime/action.yml` encodes these
@@ -311,6 +323,7 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 python3 scripts/test-native.py
 python3 scripts/test-native-adapter.py
+python3 scripts/test-native-payments.py
 python3 scripts/package-native.py /tmp/bankingcraft-runtime-review
 python3 scripts/audit-native.py /tmp/bankingcraft-runtime-review/native
 python3 scripts/update-licenses.py --check
