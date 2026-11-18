@@ -25,8 +25,9 @@ AqBanking provider, parser, serializer, XML exporter, result handlers and worker
 - Old-vault compatibility, explicit capability gating in the form, retained template mode,
   and pending/rejected status labels in the outgoing list.
 
-The initial Linux release run exposed upstream leaks in SEPA export groups, transfer
-descriptors and the user-supported format parser. The reproducible AqBanking patch frees
+The Linux release checks exposed upstream leaks in SEPA export groups, control sums,
+schema search paths, transfer descriptors and the user-supported format parser.
+The reproducible AqBanking patch frees
 these objects at their owners; the payment suite covers these paths with Linux
 LeakSanitizer enabled.
 

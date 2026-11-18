@@ -64,6 +64,9 @@ def patch_source(name, source):
         replace_once(source / "src/libs/aqbanking/banking_imex.c",
                      '  } /* while(seGlobalDataDir) */\n  GWEN_Buffer_free(pathBuffer);',
                      '  } /* while(seGlobalDataDir) */\n  GWEN_StringList_free(slGlobalDataDirs);\n  GWEN_Buffer_free(pathBuffer);')
+        replace_once(source / "src/libs/aqbanking/banking_imex.c",
+                     '  rv=GWEN_Directory_FindFileInPaths(sl, GWEN_Buffer_GetStart(buf), fullPathBuffer);',
+                     '  rv=GWEN_Directory_FindFileInPaths(sl, GWEN_Buffer_GetStart(buf), fullPathBuffer);\n  GWEN_StringList_free(sl);')
         replace_once(source / "src/libs/plugins/backends/aqhbci/joblayer/job_swift.c",
                      '      DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%d", sName, family, version1);\n    }',
                      '      DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%d", sName, family, version1);\n    }\n    AB_SwiftDescr_free(tmpDescr);')
@@ -82,6 +85,9 @@ def patch_source(name, source):
         replace_once(path,
                      '  _writePaymentGroups(paymentGroupList, dbData, dbParams);\n\n  return dbData;',
                      '  _writePaymentGroups(paymentGroupList, dbData, dbParams);\n  AB_ImExporterXML_PaymentGroup_List_free(paymentGroupList);\n\n  return dbData;')
+        replace_once(path,
+                     '  _writeAmountToDbWithoutCurrency(totalControlSum, "controlSum", dbData);',
+                     '  _writeAmountToDbWithoutCurrency(totalControlSum, "controlSum", dbData);\n  AB_Value_free(totalControlSum);')
         # camt.052.001.08 creates one transaction per Ntry, but 6.9.2 reads
         # its amount inside optional NtryDtls/TxDtls. Banks can omit those
         # details, and a detail/foreign-currency amount is not the booked
