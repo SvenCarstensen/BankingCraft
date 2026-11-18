@@ -67,6 +67,21 @@ def patch_source(name, source):
         replace_once(source / "src/libs/plugins/backends/aqhbci/joblayer/job_swift.c",
                      '      DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%d", sName, family, version1);\n    }',
                      '      DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%d", sName, family, version1);\n    }\n    AB_SwiftDescr_free(tmpDescr);')
+        replace_once(source / "src/libs/plugins/backends/aqhbci/joblayer/job_swift.c",
+                     '          DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%03d", s, family, version1);\n        }',
+                     '          DBG_INFO(AQHBCI_LOGDOMAIN, "Param [%s] does not match family %s.%03d", s, family, version1);\n        }\n        AB_SwiftDescr_free(tmpDescr);')
+        replace_once(source / "src/libs/plugins/backends/aqhbci/ajobs/jobtransferbase.c",
+                     '  free(aj->profileName);\n  free(aj->fiid);',
+                     '  free(aj->profileName);\n  free(aj->descriptor);\n  free(aj->fiid);')
+        # Export groups own temporary metadata and only borrow transactions.
+        # Release them after copying to the DB, including message-ID failure.
+        path = source / "src/libs/plugins/imexporters/xml/xml_sepa_exp.c"
+        replace_once(path,
+                     '    DBG_ERROR(AQBANKING_LOGDOMAIN, "Could not generate message id, aborting.");\n    GWEN_DB_Group_free(dbData);',
+                     '    DBG_ERROR(AQBANKING_LOGDOMAIN, "Could not generate message id, aborting.");\n    AB_ImExporterXML_PaymentGroup_List_free(paymentGroupList);\n    GWEN_DB_Group_free(dbData);')
+        replace_once(path,
+                     '  _writePaymentGroups(paymentGroupList, dbData, dbParams);\n\n  return dbData;',
+                     '  _writePaymentGroups(paymentGroupList, dbData, dbParams);\n  AB_ImExporterXML_PaymentGroup_List_free(paymentGroupList);\n\n  return dbData;')
         # camt.052.001.08 creates one transaction per Ntry, but 6.9.2 reads
         # its amount inside optional NtryDtls/TxDtls. Banks can omit those
         # details, and a detail/foreign-currency amount is not the booked

@@ -25,6 +25,11 @@ AqBanking provider, parser, serializer, XML exporter, result handlers and worker
 - Old-vault compatibility, explicit capability gating in the form, retained template mode,
   and pending/rejected status labels in the outgoing list.
 
+The initial Linux release run exposed upstream leaks in SEPA export groups, transfer
+descriptors and the user-supported format parser. The reproducible AqBanking patch frees
+these objects at their owners; the payment suite covers these paths with Linux
+LeakSanitizer enabled.
+
 The native payment test aborts network `connect` calls, allowing only local Unix sockets
 for Linux PC/SC initialization, and substitutes the worker's final sending function with
 a synthetic callback. The Rust IPC fixtures use

@@ -69,6 +69,8 @@ Local preparation passed 202 workspace tests (8 ignored), Clippy, a Debug build,
 nine XML variants, FinTS messages, bank capabilities, date boundaries and response
 handling using the actual patched backend. It prevents network connections and
 substitutes the sending step. Existing VoP/BestSign regressions remain enabled.
+The Linux payment tests also exposed upstream temporary-object leaks in SEPA export and
+format selection; the bundled AqBanking patch corrects their ownership cleanup.
 
 Publication requires all three GitHub-hosted platform builds, license checks,
 workspace tests, Clippy, native runtime validation and package startup checks to
